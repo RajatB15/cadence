@@ -8,6 +8,7 @@ from statistics import fmean
 from typing import Literal
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Request
+from fastapi.concurrency import run_in_threadpool
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.responses import FileResponse, JSONResponse, Response
 from pydantic import BaseModel, Field
@@ -15,7 +16,7 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from cadence_app import days, journal, push, strength
+from cadence_app import days, journal, ocr, push, strength
 from cadence_app.analytics import exercises
 from cadence_app.activity_types import activity_family
 from cadence_app.analytics import insights as insights_service
@@ -662,6 +663,22 @@ def create_app(
     def strength_parse(body: StrengthText) -> dict:
         blocks = exercises.parse(body.text)
         return strength.view(body.text, blocks)
+
+    @app.post("/api/strength/ocr")
+    async def strength_ocr(request: Request) -> dict:
+        """Reads a class screenshot on this Mac (Apple Vision); returns the text and its parsed blocks, unsaved."""
+        if not request.headers.get("content-type", "").startswith("image/"):
+            raise HTTPException(415, "Send the screenshot as an image")
+        data = await request.body()
+        if not data or len(data) > ocr.MAX_IMAGE_BYTES:
+            raise HTTPException(413, "Image is empty or larger than 15 MB")
+        if not ocr.available():
+            raise HTTPException(501, "Text recognition isn't available on this computer")
+        try:
+            text = await run_in_threadpool(ocr.image_text, data)
+        except ValueError as exc:
+            raise HTTPException(400, str(exc)) from None
+        return strength.view(text, exercises.parse(text))
 
     @app.put("/api/strength/{activity_id}")
     def strength_save(activity_id: int, body: StrengthText, session: Session = Depends(get_session)) -> dict:

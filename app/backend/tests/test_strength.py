@@ -90,3 +90,36 @@ def test_label_survives_an_offline_rebuild(env):  # noqa: F811
     client.post("/api/sync/demo", headers=MUTATE)
     again = client.get("/api/activities?family=strength&limit=1").json()["items"][0]["id"]
     assert client.get(f"/api/activities/{again}").json()["strength"]["label"] is not None
+
+
+def class_png(lines: list[str]) -> bytes:
+    """Render text lines to a PNG with AppKit, like a phone screenshot of a class list."""
+    import pytest
+
+    AppKit = pytest.importorskip("AppKit")
+    img = AppKit.NSImage.alloc().initWithSize_((700, 60 * len(lines) + 40))
+    img.lockFocus()
+    AppKit.NSColor.whiteColor().set()
+    AppKit.NSRectFill(((0, 0), (700, 60 * len(lines) + 40)))
+    attrs = {AppKit.NSFontAttributeName: AppKit.NSFont.systemFontOfSize_(30), AppKit.NSForegroundColorAttributeName: AppKit.NSColor.blackColor()}
+    for i, line in enumerate(lines):
+        AppKit.NSString.stringWithString_(line).drawAtPoint_withAttributes_((30, 60 * (len(lines) - i - 1) + 20), attrs)
+    img.unlockFocus()
+    rep = AppKit.NSBitmapImageRep.imageRepWithData_(img.TIFFRepresentation())
+    return bytes(rep.representationUsingType_properties_(AppKit.NSBitmapImageFileTypePNG, {}))
+
+
+def test_screenshot_upload_is_read_on_the_mac(env):  # noqa: F811
+    from cadence_app import ocr
+    import pytest
+
+    if not ocr.available():
+        pytest.skip("Apple Vision not available")
+    client, _ = env
+    png = class_png(["Get Stronger", "Barbell Front Squats", "Glute Bridges", "Core", "Beast Hold drag", "Bodyweight crunches"])
+    r = client.post("/api/strength/ocr", content=png, headers={**MUTATE, "Content-Type": "image/png"})
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert [b["name"] for b in body["blocks"]] == ["Get Stronger", "Core"] and body["summary"]["heavy_lower"]
+    assert client.post("/api/strength/ocr", content=b"hello", headers={**MUTATE, "Content-Type": "text/plain"}).status_code == 415
+    assert client.post("/api/strength/ocr", content=b"", headers={**MUTATE, "Content-Type": "image/png"}).status_code == 413

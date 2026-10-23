@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { clsx } from "clsx";
-import { ClipboardPaste, Dumbbell } from "lucide-react";
+import { ClipboardPaste, Dumbbell, ImageUp } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../lib/api";
@@ -125,6 +125,16 @@ function LabelForm({ id, initial, templates, onDone, canCancel }: {
     },
   });
   const box = useRef<HTMLTextAreaElement>(null);
+  const picker = useRef<HTMLInputElement>(null);
+  const read = useMutation({
+    // Several screenshots (a long class list) are read in order and joined.
+    mutationFn: async (files: File[]) => {
+      const parts = [];
+      for (const f of files) parts.push((await api.readScreenshot(f)).text);
+      return parts.join("\n");
+    },
+    onSuccess: (joined) => setText(joined),
+  });
   const [pasteError, setPasteError] = useState(false);
   // Safari only exposes clipboard reading on secure (HTTPS) pages: over home Wi-Fi (plain HTTP) it doesn't exist.
   const canRead = typeof window !== "undefined" && window.isSecureContext && Boolean(navigator.clipboard?.readText);
@@ -141,19 +151,28 @@ function LabelForm({ id, initial, templates, onDone, canCancel }: {
   return (
     <div className="space-y-4">
       <p className="text-sm text-mute">
-        On your iPhone, open the class screenshot, long-press the text and choose <b className="text-paper">Copy</b> (or Select All → Copy), then paste it here.
-        Cadence finds the blocks and exercises; warm-up and cool-down are added from your heart rate.
+        Upload the class screenshot: your Mac reads the text (nothing leaves it), finds the blocks and exercises, and you check them before saving.
+        Warm-up and cool-down are added from your heart rate.
       </p>
+      <input ref={picker} type="file" accept="image/*" multiple hidden
+        onChange={(e) => {
+          const files = Array.from(e.target.files ?? []);
+          if (files.length) read.mutate(files);
+          e.target.value = "";
+        }} />
+      <button type="button" className="pop pop-lime w-full justify-center sm:w-auto" disabled={read.isPending} onClick={() => picker.current?.click()}>
+        <ImageUp size={18} /> {read.isPending ? "Reading screenshot…" : "Upload screenshot"}
+      </button>
+      {read.isError && <p className="text-sm text-coral">{(read.error as Error).message}</p>}
+      <p className="text-xs text-dim">Or paste or type the text below. Several screenshots can be picked at once.</p>
       <div className="flex flex-wrap gap-2">
         {canRead && <button type="button" className="pop pop-ghost" onClick={paste}><ClipboardPaste size={16} /> Paste</button>}
         {templates.map((t) => (
           <button key={t.id} type="button" className="chip pointer-coarse:py-2" onClick={() => setText(t.text)}>{t.name}</button>
         ))}
       </div>
-      {(!canRead || pasteError) && !text && (
-        <p className="text-sm text-gold">
-          {pasteError ? "Your browser didn't share the clipboard. " : ""}Tap the box below, then tap again (or hold) and choose <b>Paste</b>.
-        </p>
+      {pasteError && !text && (
+        <p className="text-sm text-gold">Your browser didn't share the clipboard. Tap the box below, then tap again (or hold) and choose <b>Paste</b>.</p>
       )}
       <textarea ref={box} value={text} onChange={(e) => setText(e.target.value)} rows={8} maxLength={4000} aria-label="Class text"
         placeholder={"Tap here, then hold and choose Paste\n\nGet Stronger\nBarbell Front Squats\nGlute Bridges"}

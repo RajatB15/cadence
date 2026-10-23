@@ -105,6 +105,19 @@ export const api = {
   updateBehaviour: (key: string, patch: { active?: boolean }) =>
     request<Behaviour>(`/api/journal/behaviours/${encodeURIComponent(key)}`, { method: "PATCH", body: JSON.stringify(patch) }),
   parseStrength: (text: string) => request<StrengthLabel>("/api/strength/parse", { method: "POST", body: JSON.stringify({ text }) }),
+  readScreenshot: async (file: Blob): Promise<StrengthLabel> => {
+    // Raw image body: the Mac reads it with Apple Vision; nothing is stored until you save.
+    const res = await fetch("/api/strength/ocr", {
+      method: "POST",
+      body: file,
+      headers: { "X-Cadence-Request": "1", "Content-Type": file.type || "image/png" },
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => null);
+      throw new ApiError(res.status, typeof body?.detail === "string" ? body.detail : res.statusText);
+    }
+    return res.json() as Promise<StrengthLabel>;
+  },
   saveStrength: (id: number, text: string, template: string | null) =>
     request<StrengthLabel>(`/api/strength/${id}`, { method: "PUT", body: JSON.stringify({ text, template }) }),
   deleteStrength: (id: number) => request<{ deleted: boolean }>(`/api/strength/${id}`, { method: "DELETE" }),
