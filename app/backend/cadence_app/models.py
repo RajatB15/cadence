@@ -134,6 +134,24 @@ class DayHeartHistogram(Base):
     computed_at: Mapped[datetime] = mapped_column(DateTime)
 
 
+class PlannedSession(Base):
+    """A session planned for a day: the chosen option and what it was predicted to do."""
+
+    __tablename__ = "planned_sessions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    day: Mapped[date] = mapped_column(Date, index=True)
+    sport: Mapped[str] = mapped_column(String(16))  # run | ride | swim | strength
+    kind: Mapped[str] = mapped_column(String(24))
+    option_key: Mapped[str] = mapped_column(String(48))
+    title: Mapped[str] = mapped_column(String(120))
+    detail: Mapped[str] = mapped_column(Text)
+    minutes: Mapped[int] = mapped_column(Integer)
+    predicted: Mapped[str] = mapped_column(Text)  # JSON from analytics.planner.predict
+    strength_text: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime)
+
+
 class StrengthTemplate(Base):
     __tablename__ = "strength_templates"
 

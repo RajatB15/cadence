@@ -279,11 +279,7 @@ def readiness(day: date, series: dict[str, Series], pmc_by_day: dict[date, dict]
 
     p = pmc_by_day.get(day)
     if p and p["fitness"] > 5:
-        acwr = p["acwr"] or 1.0
-        acwr_score = 90 if acwr <= 1 else 90 - (acwr - 1) * 100 if acwr <= 1.3 else 60 - (acwr - 1.3) * 150
-        ratio = p["form"] / p["fitness"]
-        form_score = 90 if ratio >= 0 else 90 + 100 * ratio
-        parts["load"] = {"score": clamp((acwr_score + form_score) / 2), "value": p["form"], "acwr": p["acwr"], "fitness": p["fitness"]}
+        parts["load"] = {"score": load_score(p), "value": p["form"], "acwr": p["acwr"], "fitness": p["fitness"]}
 
     battery = g("body_battery")
     if day in battery:
@@ -299,6 +295,15 @@ def readiness(day: date, series: dict[str, Series], pmc_by_day: dict[date, dict]
         v["score"] = round(v["score"])
         v["weight"] = round(READINESS_WEIGHTS[k] / weight, 2)
     return {"day": day, "score": round(score), "label": readiness_label(score), "components": parts}
+
+
+def load_score(p: dict) -> float:
+    """The training-load part of readiness (0-100) from one day's fitness/form/acute:chronic."""
+    acwr = p["acwr"] or 1.0
+    acwr_score = 90 if acwr <= 1 else 90 - (acwr - 1) * 100 if acwr <= 1.3 else 60 - (acwr - 1.3) * 150
+    ratio = p["form"] / p["fitness"] if p["fitness"] > 0 else 0.0
+    form_score = 90 if ratio >= 0 else 90 + 100 * ratio
+    return clamp((acwr_score + form_score) / 2)
 
 
 STRAIN_HALF_LIFE_H = 7.0

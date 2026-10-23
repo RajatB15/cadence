@@ -16,8 +16,10 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from cadence_app import days, journal, ocr, push, strength
+from cadence_app import days, journal, ocr, planner_store, push, strength
 from cadence_app.analytics import exercises
+from cadence_app.analytics import plan as training_plan
+from cadence_app.analytics import planner as session_planner
 from cadence_app.activity_types import activity_family
 from cadence_app.analytics import insights as insights_service
 from cadence_app.analytics import notes as coach_notes
@@ -123,6 +125,13 @@ class BehaviourUpdate(BaseModel):
     active: bool | None = None
     label: str | None = Field(default=None, min_length=1, max_length=60)
     question: str | None = Field(default=None, min_length=1, max_length=150)
+
+
+class PlanRequest(BaseModel):
+    day: RaceDate
+    sport: Literal["run", "ride", "swim", "strength"]
+    option_key: str = Field(max_length=48)
+    strength_text: str | None = Field(default=None, max_length=4000)
 
 
 class StrengthText(BaseModel):
@@ -663,6 +672,73 @@ def create_app(
     def strength_parse(body: StrengthText) -> dict:
         blocks = exercises.parse(body.text)
         return strength.view(body.text, blocks)
+
+    def _plan_options(session: Session, ctx: dict, day: date, sport: str, strength_text: str | None = None) -> list[dict]:
+        today = clock.today()
+        start, end = planner_store.window(today)
+        planned = planner_store.listing(session, start, end + timedelta(days=7))
+        if sport == "run":
+            opts = session_planner.run_options(ctx, training_plan.weekly_plan(ctx))
+        elif sport == "ride":
+            opts = session_planner.ride_options(ctx)
+        elif sport == "swim":
+            opts = session_planner.swim_options()
+        else:
+            blocks = exercises.parse(strength_text) if strength_text else []
+            opts = [session_planner.strength_option(ctx, blocks, exercises.summary(blocks) if blocks else None)]
+        model = session_planner.load_model(ctx["acts"], ctx["as_of"])
+        for o in opts:
+            o["predicted"] = session_planner.predict(ctx, model, day, o, planned)
+        readiness = insights_service.readiness_on(ctx, ctx["as_of"]) if day == ctx["as_of"] else None
+        return session_planner.rank(ctx, day, opts, planned, readiness)
+
+    def _planning_day(day: date) -> None:
+        today = clock.today()
+        if not today <= day < today + timedelta(days=planner_store.HORIZON_DAYS):
+            raise HTTPException(400, f"Plan today or up to {planner_store.HORIZON_DAYS - 1} days ahead")
+
+    @app.get("/api/planner")
+    def planner_week(session: Session = Depends(get_session)) -> dict:
+        source_id = _active_source(session)
+        today = clock.today()
+        start, end = planner_store.window(today)
+        plans = planner_store.reconcile(session, source_id, planner_store.listing(session, start, end), today, clock.now())
+        ctx = insights_service.context(session, source_id, today)
+        model = session_planner.load_model(ctx["acts"], ctx["as_of"]) if ctx else None
+        return {
+            "today": today,
+            "days": [{"day": d, "plans": [p for p in plans if p["day"] == d]} for d in (start + timedelta(days=i) for i in range((end - start).days + 1))],
+            "projection": session_planner.projection(ctx) if ctx else None,
+            "model": {k: model[k] for k in ("n", "r2", "counts")} if model else None,
+        }
+
+    @app.get("/api/planner/options")
+    def planner_options(
+        day: date, sport: Literal["run", "ride", "swim", "strength"], strength_text: str | None = Query(None, max_length=4000),
+        session: Session = Depends(get_session),
+    ) -> dict:
+        _planning_day(day)
+        ctx = insights_service.context(session, _active_source(session), clock.today())
+        if ctx is None:
+            raise HTTPException(409, "Sync some training first")
+        return {"day": day, "sport": sport, "options": _plan_options(session, ctx, day, sport, strength_text)}
+
+    @app.post("/api/planner")
+    def planner_create(body: PlanRequest, session: Session = Depends(get_session)) -> dict:
+        _planning_day(body.day)
+        ctx = insights_service.context(session, _active_source(session), clock.today())
+        if ctx is None:
+            raise HTTPException(409, "Sync some training first")
+        option = next((o for o in _plan_options(session, ctx, body.day, body.sport, body.strength_text) if o["key"] == body.option_key), None)
+        if option is None:
+            raise HTTPException(400, "That option isn't available for this day")
+        return planner_store.create(session, body.day, option, option["predicted"], clock.now(), body.strength_text if body.sport == "strength" else None)
+
+    @app.delete("/api/planner/{plan_id}")
+    def planner_delete(plan_id: int, session: Session = Depends(get_session)) -> dict:
+        if not planner_store.delete(session, plan_id):
+            raise HTTPException(404, "Not found")
+        return {"deleted": True}
 
     @app.post("/api/strength/ocr")
     async def strength_ocr(request: Request) -> dict:
