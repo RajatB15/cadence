@@ -518,6 +518,8 @@ def create_app(
         ).all()
         ctx = insights_service.context(session, source_id, clock.today())
         verdicts = coach_notes.verdicts(ctx)
+        if source_id == "garmin" and insights_service.pending_strain_days(session):
+            analysis.kick()  # cache all-day heart rate in the background so strain targets have history
 
         weight = _weight_summary(session, clock.today())
         journal.ensure_catalogue(session, clock.now())

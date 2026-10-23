@@ -10,6 +10,8 @@ from cadence_app.garmin.client import GarminClient, GarminError, RateLimited
 from cadence_app.garmin.engine import CORE_RANGE, SyncEngine, SyncManager
 from cadence_app.models import Activity, DailyMetric, DatasetState, RawResponse, SyncRun, WeightReading
 
+LIVE_HR_DAYS = 2  # today and yesterday, refreshed every sync for live strain
+
 TODAY = date(2026, 10, 22)
 
 
@@ -92,8 +94,9 @@ def test_second_sync_only_refreshes_recent_days(world):
 
     run_sync(factory, fake, clock, archive)
 
-    # One token + one provisional recent window per core dataset; no history is re-fetched.
-    assert fake.total <= 1 + len(CORE_RANGE)
+    # One token + one provisional recent window per core dataset + today's and yesterday's all-day heart rate
+    # (live strain); no history is re-fetched.
+    assert fake.total <= 1 + len(CORE_RANGE) + LIVE_HR_DAYS
     assert counts(factory) == before
     with factory() as s:
         provisional = s.execute(
@@ -111,7 +114,7 @@ def test_days_later_fetches_only_new_days(world):
 
     run_sync(factory, fake, clock, archive)
 
-    assert fake.total <= 1 + 2 * len(CORE_RANGE)
+    assert fake.total <= 1 + 2 * len(CORE_RANGE) + LIVE_HR_DAYS
     with factory() as s:
         assert s.scalar(select(func.max(DailyMetric.day)).where(DailyMetric.metric == "steps")) == clock.day
 
@@ -195,3 +198,13 @@ def test_errors_never_leak_key():
     with pytest.raises(GarminError) as error:
         client.authenticate()
     assert "synthetic-secret" not in str(error.value)
+
+
+def test_every_sync_refreshes_todays_all_day_heart_rate(world):
+    factory, fake, clock, archive = world
+    run_sync(factory, fake, clock, archive)
+    with factory() as s:
+        live = s.execute(
+            select(RawResponse.window_start, RawResponse.final).where(RawResponse.dataset == "hr_intraday", RawResponse.window_start >= TODAY - timedelta(days=1))
+        ).all()
+    assert sorted(live) == [(TODAY - timedelta(days=1), False), (TODAY, False)]

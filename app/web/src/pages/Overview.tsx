@@ -126,6 +126,8 @@ function Dashboard({ data }: { data: Extract<Overview, { has_data: true }> }) {
 
       {coach && <TodayCall coach={coach} />}
 
+      {coach?.strain && <StrainRow s={coach.strain} />}
+
       {coach?.tonight && <TonightRow t={coach.tonight} />}
 
       {coach && coach.recent.items.length > 0 && <RecentSessions recent={coach.recent} />}
@@ -406,6 +408,29 @@ const hhmm = (m: number) => {
   const v = ((Math.round(m) % 1440) + 1440) % 1440;
   return `${String(Math.floor(v / 60)).padStart(2, "0")}:${String(v % 60).padStart(2, "0")}`;
 };
+
+function StrainRow({ s }: { s: NonNullable<Brief["strain"]> }) {
+  const b = s.band;
+  const top = Math.max(b ? b.high * 1.35 : 0, s.total * 1.1, 1);
+  const pct = (v: number) => `${Math.min(100, (v / top) * 100)}%`;
+  const color = s.status === "above" ? "#ffbe55" : s.status === "in" ? "#c8f560" : "#6cc7ff";
+  return (
+    <motion.section variants={rise} className="surface p-5">
+      <div className="flex items-baseline justify-between gap-3">
+        <p className="eyebrow">Strain today</p>
+        <p className="num text-2xl" style={{ color }}>{Math.round(s.total)}{b && <span className="text-sm text-dim"> / {b.low}–{b.high}</span>}</p>
+      </div>
+      <div className="relative mt-3 h-2.5 bg-slate" role="img" aria-label={b ? `Strain ${Math.round(s.total)}, target ${b.low} to ${b.high}` : `Strain ${Math.round(s.total)}`}>
+        {b && <div className="absolute inset-y-0 bg-lime/15 outline outline-1 outline-lime/40" style={{ left: pct(b.low), width: `calc(${pct(b.high)} - ${pct(b.low)})` }} />}
+        <motion.div className="absolute inset-y-0 left-0" style={{ background: color }} initial={{ width: 0 }} animate={{ width: pct(s.total) }} transition={{ duration: 0.9 }} />
+      </div>
+      <p className="mt-2 text-xs text-dim">
+        {Math.round(s.workout)} from workouts · {Math.round(s.everyday)} from everyday movement{s.message ? ` · ${s.message}` : ""}
+        {!s.calibrated && " (rough units until 10 workouts calibrate it)"}
+      </p>
+    </motion.section>
+  );
+}
 
 function TonightRow({ t }: { t: NonNullable<Brief["tonight"]> }) {
   const extras = [t.extra_load_min ? `+${t.extra_load_min} min for today's training` : null, t.repay_min ? `+${t.repay_min} min toward ${t.debt_h} h of debt` : null].filter(Boolean);

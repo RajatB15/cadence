@@ -201,6 +201,7 @@ export interface Brief {
   };
   streaks: { key: string; label: string; current: number; best: number; unit: string }[];
   tonight: Tonight | null;
+  strain: StrainToday | null;
   fix: Finding[];
   wins: Finding[];
 }
@@ -347,6 +348,16 @@ export interface WeekSummary {
   moderate_pct: number | null;
   hard_pct: number | null;
   complete: boolean;
+}
+
+export interface StrainToday {
+  total: number;
+  workout: number;
+  everyday: number;
+  band: { typical: number; low: number; high: number } | null;
+  status: "below" | "in" | "above" | null;
+  message: string | null;
+  calibrated: boolean;
 }
 
 export interface Tonight {
@@ -588,6 +599,7 @@ export type Insights =
       strength: StrengthSummary | null;
       habits: { effects: HabitEffect[]; progress: HabitProgress[] };
       strength_content: StrengthContent | null;
+      strain: { days: { day: string; total: number; workout: number; everyday: number }[]; scale: number; calibrated_on: number; hr_max: number } | null;
       hr_zones: { method: string | null; floors: number[]; max: number | null; threshold: number | null } | null;
       analysis_pending: number;
       analysis_running: boolean;

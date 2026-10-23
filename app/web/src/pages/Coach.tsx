@@ -616,6 +616,7 @@ function LoadChart({ d }: { d: Data }) {
   const [range, setRange] = useState(120);
   const rows = d.pmc.slice(-range);
   const last = d.pmc[d.pmc.length - 1];
+  const everyday = useMemo(() => new Map((d.strain?.days ?? []).map((x) => [x.day, x.everyday])), [d.strain]);
   const option = useMemo<ChartOption>(
     () => ({
       ...chartBase,
@@ -634,7 +635,10 @@ function LoadChart({ d }: { d: Data }) {
       axisPointer: { link: [{ xAxisIndex: "all" }] },
       tooltip: { ...chartBase.tooltip, trigger: "axis" },
       series: [
-        { name: "Daily load", type: "bar", data: rows.map((r) => [r.day, r.load]), itemStyle: { color: "rgba(217,178,106,0.25)" }, barMaxWidth: 6 },
+        { name: "Workout load", type: "bar", stack: "day", data: rows.map((r) => [r.day, r.load]), itemStyle: { color: "rgba(217,178,106,0.25)" }, barMaxWidth: 6 },
+        ...(everyday.size
+          ? [{ name: "Everyday strain", type: "bar", stack: "day", data: rows.map((r) => [r.day, everyday.get(r.day) ?? 0]), itemStyle: { color: "rgba(108,199,255,0.35)" }, barMaxWidth: 6 }]
+          : []),
         { name: "Fitness (42d)", type: "line", data: rows.map((r) => [r.day, r.fitness]), symbol: "none", lineStyle: { color: "#6cc7ff", width: 2.5 } },
         { name: "Fatigue (7d)", type: "line", data: rows.map((r) => [r.day, r.fatigue]), symbol: "none", lineStyle: { color: "#ff6a55", width: 1.5 } },
         {
@@ -654,13 +658,13 @@ function LoadChart({ d }: { d: Data }) {
         },
       ],
     }),
-    [rows],
+    [rows, everyday],
   );
   return (
     <Card
       id="load"
       title="Fitness, fatigue & form"
-      eyebrow="Banister model on Garmin training load"
+      eyebrow={d.strain ? "Banister model on Garmin training load · blue bars: strain outside workouts" : "Banister model on Garmin training load"}
       aside={<Segmented label="Range" options={[{ value: 60, label: "60D" }, { value: 120, label: "120D" }, { value: 365, label: "1Y" }]} value={range} onChange={setRange} />}
     >
       <div className="mb-6 grid grid-cols-2 gap-6 sm:grid-cols-4">

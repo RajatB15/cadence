@@ -101,6 +101,8 @@ class SyncEngine:
                 self._guard(self._recent, BY_KEY[key])
             for key in ranges:
                 self._guard(self._backfill, BY_KEY[key])
+            # Today's and yesterday's all-day heart rate change through the day: refreshed every sync for live strain.
+            self._guard(self._live_days, BY_KEY["hr_intraday"])
             self._refresh_derived()
             # Core history is in: dashboards switch to Garmin while the long deep archive continues.
             self._mark_synced()
@@ -174,6 +176,14 @@ class SyncEngine:
         if state.last_fetched_at and self.now() - state.last_fetched_at < timedelta(days=ds.refresh_days):
             return
         self._guard(lambda d: self._fetch(d, ds.key, *render(d), final=False), ds)
+
+    def _live_days(self, ds: Dataset) -> None:
+        state = self._state(ds.key)
+        if state.unsupported:
+            return
+        for day in (self.today() - timedelta(days=1), self.today()):
+            path, params = render(ds, day=day.isoformat())
+            self._fetch(ds, f"{ds.key}:{day.isoformat()}", path, params, final=False, window=(day, day))
 
     def _recent(self, ds: Dataset) -> None:
         state = self._state(ds.key)

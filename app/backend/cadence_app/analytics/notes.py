@@ -9,6 +9,7 @@ from cadence_app.analytics import athlete as A
 from cadence_app.analytics import habits as H
 from cadence_app.analytics import plan as training_plan
 from cadence_app.analytics import recovery as R
+from cadence_app.analytics import strain as S
 from cadence_app.analytics.insights import (
     SEVERITY_ORDER,
     coach,
@@ -860,6 +861,22 @@ def _suggest(c: dict, r: dict | None, week: dict, plan: dict | None, long_done_t
     return {"kind": "rest", "title": "Rest or walk", "detail": "This week's session targets are covered. A rest day banks the adaptation."}
 
 
+def strain_today(c: dict, morning: dict | None, today: dict) -> dict | None:
+    st = c.get("strain")
+    if not st:
+        return None
+    as_of = c["as_of"]
+    v = st["days"].get(as_of, {"total": 0.0, "workout": 0.0, "everyday": 0.0})
+    band = S.target({d: x["total"] for d, x in st["days"].items()}, as_of, morning["score"] if morning else None, today.get("kind"))
+    state = S.status(v["total"], band)
+    message = {
+        "below": f"Room for about {band['low'] - v['total']:.0f} more today." if band else None,
+        "in": "In today's target band: enough to progress, little enough to recover.",
+        "above": "Past today's target: keep the rest of the day easy and protect tonight's sleep.",
+    }.get(state or "", None)
+    return {**v, "band": band, "status": state, "message": message, "calibrated": st["calibrated_on"] >= S.MIN_CALIBRATION}
+
+
 def brief(c: dict) -> dict:
     as_of = c["as_of"]
     morning = readiness_on(c, as_of)
@@ -868,13 +885,15 @@ def brief(c: dict) -> dict:
     week = week_progress(c, plan)
     findings = sorted(coach(c), key=lambda f: SEVERITY_ORDER[f["severity"]])
     trend = [{"day": d, "score": x["score"]} for d in A.daterange(as_of - 13 * DAY, as_of) if (x := readiness_on(c, d))]
+    today = today_session(c, morning, week, plan)
     return {
         "as_of": as_of,
         "readiness": {k: r[k] for k in ("score", "label", "components", "morning_score", "changes", "live") if k in r} if r else None,
         "readiness_trend": trend,
         "call": recommend(r, c["pmc_by_day"].get(as_of), c["load"].get(as_of - DAY, 0), c.get("warnings"), c.get("hrv_guided")),
         # The day's plan is set by the morning score, not by how today's training has since lowered it.
-        "today": today_session(c, morning, week, plan),
+        "today": today,
+        "strain": strain_today(c, morning, today),
         "focus": plan["focus"] if plan else None,
         "phase": plan["phase"] if plan else None,
         "goal": plan["goal"] if plan else None,

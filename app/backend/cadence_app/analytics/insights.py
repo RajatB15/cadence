@@ -21,8 +21,9 @@ from cadence_app.analytics import habits as H
 from cadence_app.analytics import performance as P
 from cadence_app.analytics import plan as training_plan
 from cadence_app.analytics import recovery as R
+from cadence_app.analytics import strain as S
 from cadence_app.garmin import fit, vault
-from cadence_app.models import Activity, ActivityAnalysis, AppSetting, DailyMetric, WeightReading
+from cadence_app.models import Activity, ActivityAnalysis, AppSetting, DailyMetric, DayHeartHistogram, RawResponse, WeightReading
 from cadence_app.sync import utcnow
 
 log = logging.getLogger(__name__)
@@ -178,11 +179,100 @@ class AnalysisWorker:
     def _run(self) -> None:
         try:
             analyse_pending(self.factory, self.archive_dir, self._stop)
+            cache_strain(self.factory, self._stop)
         except Exception:  # pylint: disable=broad-exception-caught  # background job boundary
             log.exception("Activity analysis failed")
 
     def stop(self) -> None:
         self._stop.set()
+
+
+# ---- cached all-day heart-rate histograms (strain) ------------------------------------
+
+STRAIN_VERSION = 1
+LIVE_DAYS = 3  # the vault keeps re-fetching the last days; compute those fresh instead of caching
+
+
+def _windows(session: Session, day: date) -> list[tuple[int, int]]:
+    rows = session.execute(
+        select(Activity.start_time_utc, Activity.duration_s).where(
+            Activity.source_id == "garmin", Activity.local_date >= day - DAY, Activity.local_date <= day + DAY
+        )
+    ).all()
+    return [S.window(start, duration) for start, duration in rows]
+
+
+def _histogram(session: Session, day: date) -> tuple[dict, dict, int] | None:
+    raw, payload = vault.load(session, f"hr_intraday:{day.isoformat()}")
+    if raw is None or raw.status_code != 200:
+        return None
+    points = S.samples(payload)
+    outside, inside = S.histogram(points, _windows(session, day))
+    return outside, inside, len(points)
+
+
+def pending_strain_days(session: Session) -> list[date]:
+    stored = set(session.scalars(
+        select(RawResponse.window_start).where(
+            RawResponse.source_id == "garmin", RawResponse.dataset == "hr_intraday", RawResponse.final.is_(True),
+            RawResponse.status_code == 200,
+        )
+    ))
+    done = set(session.scalars(
+        select(DayHeartHistogram.day).where(DayHeartHistogram.source_id == "garmin", DayHeartHistogram.version == STRAIN_VERSION)
+    ))
+    return sorted((d for d in stored - done if d is not None), reverse=True)
+
+
+def cache_strain(factory: sessionmaker, stop: threading.Event | None = None) -> int:
+    with factory() as session:
+        pending = pending_strain_days(session)
+    done = 0
+    for day in pending:
+        if stop is not None and stop.is_set():
+            break
+        with factory() as session:
+            h = _histogram(session, day)
+        if h is None:
+            continue
+        with factory() as session, session.begin():
+            session.merge(DayHeartHistogram(source_id="garmin", day=day, version=STRAIN_VERSION, outside=json.dumps(h[0]),
+                                            inside=json.dumps(h[1]), samples=h[2], computed_at=utcnow()))
+        done += 1
+    return done
+
+
+def load_hr_histograms(session: Session, today: date) -> dict[date, tuple[dict, dict]]:
+    """Cached settled days plus the last few days computed live from the vault."""
+    out: dict[date, tuple[dict, dict]] = {}
+    for day, outside, inside in session.execute(
+        select(DayHeartHistogram.day, DayHeartHistogram.outside, DayHeartHistogram.inside).where(
+            DayHeartHistogram.source_id == "garmin", DayHeartHistogram.version == STRAIN_VERSION
+        )
+    ):
+        out[day] = ({int(k): v for k, v in json.loads(outside).items()}, {int(k): v for k, v in json.loads(inside).items()})
+    for day in (today - timedelta(days=i) for i in range(LIVE_DAYS)):
+        if (h := _histogram(session, day)) is not None and h[2]:
+            out[day] = (h[0], h[1])
+    return out
+
+
+def strain_days(c: dict, hists: dict[date, tuple[dict, dict]]) -> dict | None:
+    """Per-day strain in Garmin-load units: total, inside workouts and everyday (outside workouts)."""
+    if not hists:
+        return None
+    rhr = c["series"].get("resting_hr", {})
+    fallback = median(rhr.values()) if rhr else A.DEFAULT_RHR
+    zones = c.get("zones") or {}
+    observed = ((c.get("performance") or {}).get("zone_check") or {}).get("observed_max")
+    hr_max = float(zones.get("max") or observed or 190)
+    raw = {}
+    for day, (outside, inside) in hists.items():
+        rest = A.resting_hr_on(rhr, day, fallback)
+        raw[day] = (S.trimp_from_hist(outside, rest, hr_max), S.trimp_from_hist(inside, rest, hr_max))
+    scale, n = S.calibrate([(c["load"].get(d, 0.0), t_in) for d, (_, t_in) in raw.items()])
+    days = {d: {"total": round((o + i) * scale, 1), "workout": round(i * scale, 1), "everyday": round(o * scale, 1)} for d, (o, i) in raw.items()}
+    return {"days": days, "scale": round(scale, 3), "calibrated_on": n, "hr_max": hr_max}
 
 
 def load_analyses(session: Session) -> dict[int, dict]:
@@ -212,6 +302,7 @@ def context(session: Session, source_id: str, today: date) -> dict | None:
         journal={"behaviours": [journal_store.behaviour_dict(b) for b in journal_store.catalogue(session)],
                  "answers": journal_store.entries(session)},
         labels=strength_store.by_activity(session, source_id),
+        hr_hists=load_hr_histograms(session, today) if garmin else None,
     )
 
 
@@ -219,7 +310,7 @@ def assemble(
     source_id: str, series: dict[str, A.Series], acts: list[A.Act], today: date, *,
     analyses: dict[int, dict] | None = None, zones: dict | None = None, goal: dict | None = None,
     weights: list[tuple[date, float]] | None = None, strength: dict | None = None, journal: dict | None = None,
-    labels: dict[int, dict] | None = None,
+    labels: dict[int, dict] | None = None, hr_hists: dict[date, tuple[dict, dict]] | None = None,
 ) -> dict | None:
     """Pure assembly of the shared context from loaded data (tests build contexts with this directly)."""
     if not series and not acts:
@@ -284,6 +375,7 @@ def assemble(
     }
     c["underfuelling"] = R.underfuelling(weights, hrv, eff_trend, as_of)
     c["tonight"] = R.sleep_tonight(series, load, need["hours"], as_of)
+    c["strain"] = strain_days(c, hr_hists or {})
     c["journal"] = journal or {"behaviours": [], "answers": {}}
     c["labels"] = labels or {}
     c["strength_content"] = strength_overview(c)
@@ -398,7 +490,7 @@ def build(session: Session, source_id: str, today: date) -> dict:
     sleep_hours = series.get("sleep_hours", {})
     eff, eff_trend, durability, weeks = ctx["eff"], ctx["eff_trend"], ctx["durability"], ctx["weeks"]
     findings = sorted(coach(ctx), key=lambda f: SEVERITY_ORDER[f["severity"]])
-    pending = len(pending_analyses(session)) if source_id == "garmin" else 0
+    pending = (len(pending_analyses(session)) + len(pending_strain_days(session))) if source_id == "garmin" else 0
     ref_hr, rhr_ref = ctx["ref_hr"], eff_trend["rhr"] if eff_trend else None
 
     return {
@@ -441,6 +533,9 @@ def build(session: Session, source_id: str, today: date) -> dict:
         "strength": ctx["strength_labelled"],
         "habits": {"effects": [e.__dict__ for e in ctx["habits"]["effects"]], "progress": ctx["habits"]["progress"]},
         "strength_content": ctx["strength_content"],
+        "strain": ({"days": [{"day": d, **v} for d, v in sorted(ctx["strain"]["days"].items()) if d > as_of - timedelta(days=365)],
+                    "scale": ctx["strain"]["scale"], "calibrated_on": ctx["strain"]["calibrated_on"], "hr_max": ctx["strain"]["hr_max"]}
+                   if ctx["strain"] else None),
         "hr_zones": ctx["zones"],
         "analysis_pending": pending,
     }

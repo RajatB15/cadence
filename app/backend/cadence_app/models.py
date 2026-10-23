@@ -120,6 +120,20 @@ class StrengthLabel(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime)
 
 
+class DayHeartHistogram(Base):
+    """Cached minutes-per-bpm for one settled day of all-day heart rate (derived from the vault; safe to drop)."""
+
+    __tablename__ = "day_hr_histograms"
+
+    source_id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    day: Mapped[date] = mapped_column(Date, primary_key=True)
+    version: Mapped[int] = mapped_column(Integer)
+    outside: Mapped[str] = mapped_column(Text)  # JSON {bpm: minutes}
+    inside: Mapped[str] = mapped_column(Text)
+    samples: Mapped[int] = mapped_column(Integer)
+    computed_at: Mapped[datetime] = mapped_column(DateTime)
+
+
 class StrengthTemplate(Base):
     __tablename__ = "strength_templates"
 

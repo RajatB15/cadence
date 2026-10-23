@@ -154,8 +154,8 @@ Phase 3 — Nightly sleep need and bedtime
 - [x] Validate: does hitting the target precede better next-day HRV/readiness?
 
 Phase 4 — All-day strain
-- [ ] HRR-weighted TRIMP over all-day HR (641 of 643 days archived), calibrated to Garmin training load on workout windows.
-- [ ] Live strain gauge vs a target band from readiness, the week's plan and recovery cost; non-workout strain shown in the load chart.
+- [x] HRR-weighted TRIMP over all-day HR (641 of 643 days archived), from 35% of heart-rate reserve, calibrated to Garmin training load on workout windows (real data: 38 workout days, scale 1.74; everyday movement ≈ a third of strain). Settled days cached as minute-per-bpm histograms; today and yesterday refetched each sync (+2 requests).
+- [x] Live strain gauge vs a target band from readiness, the week's plan and recovery cost; non-workout strain shown in the load chart.
 
 Gate: each phase ships with synthetic-data tests, a counts-only check on the real vault, phone and desktop screenshots on demo data, and a commit.
 
