@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { clsx } from "clsx";
 import { ClipboardPaste, Dumbbell } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../lib/api";
 import { formatDate } from "../lib/format";
@@ -124,11 +124,18 @@ function LabelForm({ id, initial, templates, onDone, canCancel }: {
       onDone();
     },
   });
+  const box = useRef<HTMLTextAreaElement>(null);
+  const [pasteError, setPasteError] = useState(false);
+  // Safari only exposes clipboard reading on secure (HTTPS) pages: over home Wi-Fi (plain HTTP) it doesn't exist.
+  const canRead = typeof window !== "undefined" && window.isSecureContext && Boolean(navigator.clipboard?.readText);
   const paste = async () => {
     try {
-      setText(await navigator.clipboard.readText());
+      const clip = await navigator.clipboard.readText();
+      if (clip.trim()) setText(clip);
+      setPasteError(!clip.trim());
     } catch {
-      /* clipboard blocked: the textarea still accepts a normal paste */
+      setPasteError(true);
+      box.current?.focus();
     }
   };
   return (
@@ -138,14 +145,21 @@ function LabelForm({ id, initial, templates, onDone, canCancel }: {
         Cadence finds the blocks and exercises; warm-up and cool-down are added from your heart rate.
       </p>
       <div className="flex flex-wrap gap-2">
-        <button type="button" className="pop pop-ghost" onClick={paste}><ClipboardPaste size={16} /> Paste</button>
+        {canRead && <button type="button" className="pop pop-ghost" onClick={paste}><ClipboardPaste size={16} /> Paste</button>}
         {templates.map((t) => (
           <button key={t.id} type="button" className="chip pointer-coarse:py-2" onClick={() => setText(t.text)}>{t.name}</button>
         ))}
       </div>
-      <textarea value={text} onChange={(e) => setText(e.target.value)} rows={8} maxLength={4000} aria-label="Class text"
-        placeholder={"Get Stronger\nBarbell Front Squats\nGlute Bridges\n\nCore\nBeast Hold drag"}
-        className="w-full border border-line-strong bg-ink/40 p-3 font-mono text-sm text-paper outline-none focus:border-gold" />
+      {(!canRead || pasteError) && !text && (
+        <p className="text-sm text-gold">
+          {pasteError ? "Your browser didn't share the clipboard. " : ""}Tap the box below, then tap again (or hold) and choose <b>Paste</b>.
+        </p>
+      )}
+      <textarea ref={box} value={text} onChange={(e) => setText(e.target.value)} rows={8} maxLength={4000} aria-label="Class text"
+        placeholder={"Tap here, then hold and choose Paste\n\nGet Stronger\nBarbell Front Squats\nGlute Bridges"}
+        autoCapitalize="off" autoCorrect="off" spellCheck={false}
+        className="w-full border border-line-strong bg-ink/40 p-3 font-mono text-base text-paper outline-none focus:border-gold sm:text-sm" />
+      {preview.isError && <p className="text-xs text-coral">Couldn't read the text: {(preview.error as Error).message}</p>}
       {preview.data && preview.data.blocks.length > 0 ? (
         <div>
           <p className="eyebrow mb-2">Preview</p>

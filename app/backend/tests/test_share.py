@@ -114,3 +114,13 @@ def test_paired_phone_can_write_the_journal_but_nothing_else(api, web):
     assert r.status_code == 200 and r.json()["answers"]["alcohol"] == 2
     assert c.post("/api/sync/demo", headers=MUTATE).status_code == 405
     assert c.put("/api/settings/goal", json={}, headers=MUTATE).status_code == 405
+
+
+def test_paired_phone_can_name_a_strength_class(api, web):
+    c = phone(api, web)
+    c.get("/pair?key=tok", follow_redirects=False)
+    text = "Get Stronger\nBarbell Front Squats\nGlute Bridges\nCore\nBeast Hold drag"
+    assert c.post("/api/strength/parse", json={"text": text}, headers=MUTATE).json()["summary"]["heavy_lower"]
+    aid = c.get("/api/activities?family=strength&limit=1").json()["items"][0]["id"]
+    r = c.put(f"/api/strength/{aid}", json={"text": text}, headers=MUTATE)
+    assert r.status_code == 200 and len(r.json()["blocks"]) == 2
