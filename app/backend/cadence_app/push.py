@@ -25,7 +25,8 @@ from py_vapid import Vapid02
 from sqlalchemy import delete, select
 from sqlalchemy.orm import sessionmaker
 
-from cadence_app import journal
+from cadence_app import journal, planner_store
+from cadence_app.analytics import review as reviews
 from cadence_app.analytics import insights, notes
 from cadence_app.credentials import CredentialStatus
 from cadence_app.models import AppSetting, NotificationLog, PushSubscription, SyncRun
@@ -37,6 +38,7 @@ PREFS = {
     "session": "Verdict after each session",
     "bedtime": "Bedtime nudge at 22:30",
     "reminders": "Garmin key renewal reminders",
+    "review": "Weekly review (Sunday 19:00) and monthly review (1st, 09:00)",
 }
 # Only real push services; the endpoint comes from the browser, so this also prevents request forgery.
 PUSH_HOSTS = ("push.apple.com", "fcm.googleapis.com", "push.services.mozilla.com", "notify.windows.com")
@@ -225,7 +227,29 @@ class Notifier:
             out.append({"key": f"bedtime:{today}", "kind": "bedtime", "url": "/metrics/sleep_hours",
                         "title": "Lights out by 23:30", "body": f"Wind down now: {need:g} h tonight lets today's training land."})
 
+        if prefs["review"]:
+            out += self._reviews(c, now_local)
         return [n for n in out if not self._logged(n["key"])]
+
+    def _reviews(self, c: dict, now_local: datetime) -> list[dict]:
+        today = now_local.date()
+        due = []
+        if today.weekday() == 6 and now_local.hour >= 19:
+            due.append(("week", today - timedelta(days=6), f"review-week:{today - timedelta(days=6)}", "Week in review"))
+        if today.day == 1 and now_local.hour >= 9:
+            first = (today - timedelta(days=1)).replace(day=1)
+            due.append(("month", first, f"review-month:{first:%Y-%m}", f"{first:%B} in review"))
+        out = []
+        for kind, start, key, label in due:
+            if self._logged(key):
+                continue
+            with self.factory() as session:
+                planned = planner_store.reconcile(session, self.source(), planner_store.listing(session, start - timedelta(days=62), today),
+                                                  today, datetime.now())
+            r = reviews.build(c, kind, start, planned, insights.readiness_on)
+            out.append({"key": key, "kind": "review", "url": f"/review?kind={kind}&start={start}",
+                        "title": f"{label}: {r['verdict']}", "body": reviews.headline(r)})
+        return out
 
     def tick(self, now_local: datetime, now_utc: datetime) -> list[str]:
         with self.factory() as session:

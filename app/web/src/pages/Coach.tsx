@@ -4,6 +4,7 @@ import { clsx } from "clsx";
 import { Flag, Sparkles, TrendingUp, X } from "lucide-react";
 import { motion } from "motion/react";
 import { useMemo, useState, type FormEvent, type ReactNode } from "react";
+import { Link } from "react-router-dom";
 import { Chart, chartBase, type ChartOption } from "../components/Chart";
 import { NoteGrid, SEVERITY, readyColor } from "../components/CoachNotes";
 import { HabitsPanel } from "../components/Journal";
@@ -98,6 +99,7 @@ function SectionNav() {
       aria-label="Coach sections"
       className="sticky top-0 z-30 -mx-5 mb-6 flex gap-2 overflow-x-auto border-b border-line bg-ink/90 px-5 py-3 backdrop-blur [scrollbar-width:none] sm:-mx-8 sm:px-8 lg:-mx-12 lg:px-12"
     >
+      <Link to="/review" className="chip shrink-0 whitespace-nowrap text-gold hover:text-paper pointer-coarse:py-2">Reviews →</Link>
       {SECTIONS.map(([id, label]) => (
         <a key={id} href={`#${id}`} className="chip shrink-0 whitespace-nowrap hover:text-paper pointer-coarse:py-2">
           {label}

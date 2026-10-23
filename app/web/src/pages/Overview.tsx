@@ -125,6 +125,8 @@ function Dashboard({ data }: { data: Extract<Overview, { has_data: true }> }) {
         </motion.section>
       )}
 
+      <ReviewPrompt />
+
       <PlannedToday plans={data.planned_today ?? []} />
 
       {coach && <TodayCall coach={coach} />}
@@ -411,6 +413,25 @@ const hhmm = (m: number) => {
   const v = ((Math.round(m) % 1440) + 1440) % 1440;
   return `${String(Math.floor(v / 60)).padStart(2, "0")}:${String(v % 60).padStart(2, "0")}`;
 };
+
+/** Early in a new week (or Sunday evening) and early in a month, point at the fresh review. */
+function ReviewPrompt() {
+  const now = new Date();
+  const day = now.getDay(); // 0 = Sunday
+  const weekly = (day === 0 && now.getHours() >= 18) || day === 1 || day === 2;
+  const monthly = now.getDate() <= 3;
+  if (!weekly && !monthly) return null;
+  const monday = new Date(now);
+  monday.setDate(now.getDate() - ((day + 6) % 7) - (day === 0 ? 0 : 7));
+  const to = monthly && !weekly ? "/review?kind=month" : day === 0 ? `/review?kind=week&start=${toDay(monday)}` : "/review";
+  return (
+    <motion.section variants={rise}>
+      <Link to={to} className="chip text-mute hover:text-paper pointer-coarse:py-2">
+        <TrendingUp size={12} className="text-gold" /> {monthly && !weekly ? "Your month in review" : "Your week in review"}
+      </Link>
+    </motion.section>
+  );
+}
 
 function PlannedToday({ plans }: { plans: NonNullable<Extract<Overview, { has_data: true }>["planned_today"]> }) {
   if (!plans.length) {

@@ -3,6 +3,7 @@ import type {
   Behaviour,
   JournalView,
   PlanOption,
+  Review,
   PlannedSessionView,
   PlannerWeek,
   Sport,
@@ -125,6 +126,8 @@ export const api = {
   saveStrength: (id: number, text: string, template: string | null) =>
     request<StrengthLabel>(`/api/strength/${id}`, { method: "PUT", body: JSON.stringify({ text, template }) }),
   deleteStrength: (id: number) => request<{ deleted: boolean }>(`/api/strength/${id}`, { method: "DELETE" }),
+  review: (kind: "week" | "month", start?: string) =>
+    request<Review | { has_data: false }>(`/api/reviews/${kind}${start ? `?start=${start}` : ""}`),
   plannerWeek: () => request<PlannerWeek>("/api/planner"),
   plannerOptions: (day: string, sport: Sport, strengthText?: string) => {
     const q = new URLSearchParams({ day, sport });

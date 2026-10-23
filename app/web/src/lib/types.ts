@@ -351,6 +351,34 @@ export interface WeekSummary {
   complete: boolean;
 }
 
+export interface Review {
+  has_data: true;
+  first: string;
+  today: string;
+  kind: "week" | "month";
+  complete: boolean;
+  start: string;
+  end: string;
+  days: number;
+  verdict: string;
+  focus: { title: string; detail: string };
+  training: {
+    sessions: number; by_sport: Record<string, number>; hours: number; run_km: number; ride_km: number; load: number; quality: number;
+    long_run_min: number; easy_pct: number | null; hard_sessions_pct: number | null; strain: number | null; everyday_strain: number | null; rest_days: number;
+  };
+  plan: { planned: number; done: number; missed: number; predicted_load: number | null; actual_load: number | null };
+  fitness: { start: number | null; end: number | null; form: number | null; acwr: number | null };
+  recovery: { readiness: number | null; hrv: number | null; hrv_base: number | null; rhr: number | null; rhr_base: number | null; warning_days: number };
+  sleep: { avg_hours: number | null; need: number; nights_at_need: number; nights: number; avg_bedtime_min: number | null; regularity: number | null };
+  habits: { logged_days: number; items: { key: string; label: string; days: number; logged: number; total: number | null; unit: string }[] };
+  strength: { sessions: number; heavy_lower: number; patterns: Record<string, number> };
+  highlights: { id: number; name: string; day: string; value: string }[];
+  hot_sessions: number;
+  vs_previous: { load: number | null; sessions: number | null; hours: number | null; run_km: number | null; readiness: number | null; sleep: number | null; fitness_change: number | null };
+  previous: { start: string; end: string };
+  trends?: { critical_speed_pace: (number | null)[]; efficiency_pct: number | null; vo2max: (number | null)[]; weight: (number | null)[] };
+}
+
 export type Sport = "run" | "ride" | "swim" | "strength";
 
 export interface Prediction {

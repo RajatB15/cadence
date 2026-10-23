@@ -20,6 +20,7 @@ from cadence_app import days, journal, ocr, planner_store, push, strength
 from cadence_app.analytics import exercises
 from cadence_app.analytics import plan as training_plan
 from cadence_app.analytics import planner as session_planner
+from cadence_app.analytics import review as reviews
 from cadence_app.activity_types import activity_family
 from cadence_app.analytics import insights as insights_service
 from cadence_app.analytics import notes as coach_notes
@@ -701,6 +702,23 @@ def create_app(
         if not today <= day < today + timedelta(days=planner_store.HORIZON_DAYS):
             raise HTTPException(400, f"Plan today or up to {planner_store.HORIZON_DAYS - 1} days ahead")
 
+    @app.get("/api/reviews/{kind}")
+    def review(kind: Literal["week", "month"], start: date | None = None, session: Session = Depends(get_session)) -> dict:
+        source_id = _active_source(session)
+        today = clock.today()
+        ctx = insights_service.context(session, source_id, today)
+        if ctx is None:
+            return {"has_data": False}
+        if start is None:
+            start = coach_week_start(today) - timedelta(days=7) if kind == "week" else (today.replace(day=1) - timedelta(days=1)).replace(day=1)
+        if start > today or start < ctx["first"] - timedelta(days=31):
+            raise HTTPException(400, "No data for that period")
+        planned = planner_store.reconcile(
+            session, source_id, planner_store.listing(session, start - timedelta(days=62), start + timedelta(days=31)), today, clock.now()
+        )
+        return {"has_data": True, "first": ctx["first"], "today": today,
+                **reviews.build(ctx, kind, start, planned, insights_service.readiness_on)}
+
     @app.get("/api/planner")
     def planner_week(session: Session = Depends(get_session)) -> dict:
         source_id = _active_source(session)
@@ -982,6 +1000,10 @@ def create_app(
         return FileResponse(root / "index.html", headers={"Cache-Control": "no-cache"})
 
     return app
+
+
+def coach_week_start(d: date) -> date:
+    return d - timedelta(days=d.weekday())
 
 
 def _goal(session: Session) -> float | None:

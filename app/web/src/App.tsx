@@ -5,6 +5,7 @@ import { LoadingBlock, Shell } from "./components/Shell";
 import { ActivitiesPage } from "./pages/Activities";
 import { OverviewPage } from "./pages/Overview";
 import { PlanPage } from "./pages/Plan";
+import { ReviewPage } from "./pages/Review";
 import { SettingsPage } from "./pages/Settings";
 import { VaultPage } from "./pages/Vault";
 
@@ -51,6 +52,7 @@ export function App() {
               }
             />
             <Route path="plan" element={<PlanPage />} />
+            <Route path="review" element={<ReviewPage />} />
             <Route path="activities" element={<ActivitiesPage />} />
             <Route
               path="activities/:id"

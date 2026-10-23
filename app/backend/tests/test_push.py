@@ -137,3 +137,19 @@ def test_backend_serves_the_built_site(app_env):
     _, client, _ = app_env
     assert "cadence" in client.get("/coach").text
     assert client.get("/api/does-not-exist").status_code == 404
+
+
+def test_weekly_and_monthly_reviews_are_pushed_once(app_env):
+    app, client, _ = app_env
+    _, _, keys = receiver()
+    client.post("/api/push/subscribe", headers=MUTATE, json={"endpoint": APPLE, "keys": keys})
+    notifier = app.state.notifier
+    notifier.sender.post = FakePost(201)
+    sunday = datetime(2026, 10, 18, 19, 5)
+    assert "review" not in {n["kind"] for n in notifier.due(datetime(2026, 10, 18, 18, 0))}
+    review = next(n for n in notifier.due(sunday) if n["kind"] == "review")
+    assert review["title"].startswith("Week in review: ") and "Next:" in review["body"] and "start=2026-10-12" in review["url"]
+    assert any(k == "review-week:2026-10-12" for k in notifier.tick(sunday, sunday))
+    assert "review" not in {n["kind"] for n in notifier.due(sunday)}
+    first = datetime(2026, 10, 1, 9, 30)
+    assert next(n for n in notifier.due(first) if n["kind"] == "review")["title"].startswith("September in review")
