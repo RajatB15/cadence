@@ -98,12 +98,13 @@ def test_refresh_sends_only_rounded_coordinates_and_fetches_history_once(tmp_pat
         for i, d in enumerate((date(2026, 5, 1), date(2026, 5, 3), date(2026, 10, 21))):
             s.add(Activity(source_id="garmin", source_record_id=str(i), start_time_utc=datetime.combine(d, datetime.min.time()).replace(hour=7),
                            timezone="UTC", local_date=d, activity_type="running", name="Run", duration_s=3600, imported_at=now))
-    summaries = {str(i): {"startLatitude": 12.97194, "startLongitude": 77.59369} for i in range(3)}
+    # An arbitrary, non-identifying test location (middle of the continental US); rounding must still work.
+    summaries = {str(i): {"startLatitude": 40.04123, "startLongitude": -100.04876} for i in range(3)}
     monkeypatch.setattr(WX.vault, "activity_summaries", lambda session: summaries)
     seen: list = []
     calls = WX.refresh(factory, date(2026, 10, 22), now, fake_open_meteo(seen))
     assert calls == 3  # one archive (May), one recent forecast for the 21 Oct run, one home forecast
-    assert all(q["latitude"] == "13.0" and q["longitude"] == "77.6" for _, q in seen)
+    assert all(q["latitude"] == "40.0" and q["longitude"] == "-100.0" for _, q in seen)
     assert {k for _, q in seen for k in q} <= {"latitude", "longitude", "start_date", "end_date", "past_days", "forecast_days", "hourly", "timezone"}
     with factory() as s:
         rows = {r.source_record_id: r for r in s.query(ActivityWeather)}

@@ -17,6 +17,9 @@ __pycache__/
 
 # Local app database and raw source archive contain personal health data.
 data/
+
+# Working notes that may reference real account numbers/history; never meant to be shared.
+notes/
 node_modules/
 dist/
 *.tsbuildinfo
