@@ -170,6 +170,20 @@ Plan any of the next 7 days by sport. Strength: upload the class screenshot up f
 - [x] Storage: planned sessions (migration 0008); matched to the day's actual session of the same sport; a planned strength class labels the matched session automatically; plan-vs-actual on the session page (load and intensity vs prediction).
 - [x] UI: Plan page (7-day strip → sport → options with predictions → plan it), today's planned session leads Home, phone tab bar swaps Vault for Plan (Vault stays in Settings); paired phones may write `/api/planner*`.
 
+### Stage 5d: Reviews and Weather (2026-10-23)
+
+Weekly/monthly reviews (part of Idea 13) and heat/weather context (part of Idea 11).
+
+Reviews
+- [ ] Weekly review (Mon–Sun) and monthly review, each vs the previous period: a one-line verdict; training (sessions by sport, hours, km, load vs the plan's band, quality sessions, long run, intensity split, all-day strain); plan adherence (planned vs done, predicted vs actual load); fitness (fitness/form/acute:chronic at the end; monthly: critical speed, efficiency, VO₂max, weight trend); recovery (readiness, HRV vs normal range, resting HR, warning days); sleep (hours vs need, nights at need, regularity, bedtime); habits logged; strength patterns; highlights (biggest, longest, fastest, records); hot sessions; one focus for next week.
+- [ ] Reviews page (week/month toggle, step through history), Home card early in a new week/month, Coach link.
+- [ ] Push: weekly review Sunday 19:00, monthly on the 1st at 09:00 (toggleable).
+
+Weather (Open-Meteo, free, no account; only coordinates rounded to 0.1° (~10 km) and dates are sent; switch in Settings, on by default per the user's go-ahead)
+- [ ] Hourly temperature, humidity, dew point, apparent temperature and wind cached locally per rounded location: history from the archive API for every outdoor session (Garmin start coordinates), recent and next 7 days from the forecast API.
+- [ ] Personal heat cost: robust regression of run efficiency vs dew point above 10 °C on your own runs; if it's clear, efficiency and the efficiency trend are heat-adjusted, and hot runs are labelled on drift/durability.
+- [ ] Session notes ("28 °C, dew point 21 °C: most of the slower efficiency is heat"), and forecasts on planned runs/rides (conditions at your usual start time, expected slowdown, "go early" when it pays).
+
 ### Stage 6: Context and Actions (Ideas 11-12)
 
 - [ ] Idea 11: weather, calendar summaries, and optional caffeine/meal context with explicit permissions.
