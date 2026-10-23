@@ -292,3 +292,64 @@ def readiness_validation(c: dict, readiness_fn, days: int = 365) -> dict | None:
         suggested = {k: round(0.5 * A.READINESS_WEIGHTS[k] + 0.5 * useful.get(k, 0) / total, 2) for k in A.READINESS_WEIGHTS}
     return {"n": len(rows), "enough": True, "rho": round(float(rho), 2), "p": round(float(pval), 3),
             "predictive": bool(rho > 0.1 and pval < 0.05), "components": components, "suggested_weights": suggested}
+
+
+# ---- tonight's sleep need and bedtime -------------------------------------------------------------
+
+LATENCY_MIN = 15  # time to fall asleep; Garmin's sleep start is sleep onset, not lights out
+MAX_LOAD_EXTRA_MIN = 45
+MAX_REPAY_MIN = 60
+MAX_SHIFT_MIN = 60  # body clocks move about an hour a night; a bigger jump just means lying awake
+
+
+def sleep_tonight(series: dict[str, A.Series], load: A.Series, need: float, day: date) -> dict | None:
+    """Tonight's sleep target and bedtime (the night after `day`, ending on the morning of `day` + 1).
+
+    need tonight = your plateau + extra for a heavier-than-usual training day (20 min per multiple of your median
+    day's load above 1×, ≤ 45 min) + half your 7-night debt (≤ 60 min). Bedtime counts back from your usual wake
+    time on that kind of day (weekday vs weekend, last 4 weeks) and a 15-minute sleep latency.
+    """
+    hours = series.get("sleep_hours", {})
+    wake = series.get("wake_time", {})
+    tomorrow = day + DAY
+    weekendish = tomorrow.weekday() >= 5
+    recent = [wake[d] for d in A.daterange(day - timedelta(days=27), day) if d in wake]
+    same_kind = [wake[d] for d in A.daterange(day - timedelta(days=27), day) if d in wake and (d.weekday() >= 5) == weekendish]
+    wakes = same_kind if len(same_kind) >= 3 else recent
+    if len(wakes) < 3:
+        return None
+    wake_min = median(wakes)
+    positive = [v for d, v in load.items() if v > 0 and day - timedelta(days=90) <= d <= day]
+    typical = median(positive) if len(positive) >= 10 else None
+    today_load = load.get(day, 0.0)
+    extra = max(0.0, min(MAX_LOAD_EXTRA_MIN, 20 * (today_load / typical - 1))) if typical and today_load > 0 else 0.0
+    nights = [hours[d] for d in A.daterange(day - 6 * DAY, day) if d in hours]
+    debt = sum(max(0.0, need - h) for h in nights)
+    repay = min(MAX_REPAY_MIN, debt * 60 / 2)
+    ideal = need + (extra + repay) / 60
+    lights_out = wake_min - ideal * 60
+    beds = [series.get("bedtime", {})[d] for d in A.daterange(day - 13 * DAY, day) if d in series.get("bedtime", {})]
+    capped = len(beds) >= 5 and lights_out < fmean(beds) - MAX_SHIFT_MIN
+    if capped:
+        lights_out = fmean(beds) - MAX_SHIFT_MIN
+    tonight = (wake_min - lights_out) / 60
+    return {
+        "day": day, "need_h": need, "tonight_h": round(tonight, 2), "ideal_h": round(ideal, 2), "capped": capped,
+        "extra_load_min": round(extra), "repay_min": round(repay),
+        "debt_h": round(debt, 1), "wake_min": round(wake_min), "lights_out_min": round(lights_out),
+        "bed_min": round(lights_out - LATENCY_MIN), "weekend": weekendish,
+    }
+
+
+def sleep_target_check(series: dict[str, A.Series], load: A.Series, need: float, end: date, days: int = 180) -> A.Effect | None:
+    """Do nights that reach the target precede better next-morning HRV? (Same adjusted comparison as other effects.)"""
+    hours, hrv = series.get("sleep_hours", {}), series.get("hrv", {})
+    met, missed = set(), set()
+    for d in A.daterange(end - timedelta(days=days), end - DAY):
+        t = sleep_tonight(series, load, need, d)
+        h = hours.get(d + DAY)
+        if t is None or h is None:
+            continue
+        (met if h >= t["tonight_h"] - 0.25 else missed).add(d)
+    return A.compare("sleep_target", "Sleep target", "Overnight HRV", "Nights at target", "Nights short of it", met, missed, hrv, 1, "ms", True,
+                     {"training load": load})

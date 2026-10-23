@@ -126,6 +126,8 @@ function Dashboard({ data }: { data: Extract<Overview, { has_data: true }> }) {
 
       {coach && <TodayCall coach={coach} />}
 
+      {coach?.tonight && <TonightRow t={coach.tonight} />}
+
       {coach && coach.recent.items.length > 0 && <RecentSessions recent={coach.recent} />}
 
       {coach && coach.week.items.length > 0 && <WeekStrip coach={coach} onOpen={() => setSheet("week")} />}
@@ -396,6 +398,34 @@ function WeekStrip({ coach, onOpen }: { coach: Brief; onOpen: () => void }) {
           ))}
         </div>
       </button>
+    </motion.section>
+  );
+}
+
+const hhmm = (m: number) => {
+  const v = ((Math.round(m) % 1440) + 1440) % 1440;
+  return `${String(Math.floor(v / 60)).padStart(2, "0")}:${String(v % 60).padStart(2, "0")}`;
+};
+
+function TonightRow({ t }: { t: NonNullable<Brief["tonight"]> }) {
+  const extras = [t.extra_load_min ? `+${t.extra_load_min} min for today's training` : null, t.repay_min ? `+${t.repay_min} min toward ${t.debt_h} h of debt` : null].filter(Boolean);
+  return (
+    <motion.section variants={rise}>
+      <Link to="/coach#sleep" className="surface surface-hover group flex items-center gap-4 p-5" style={{ borderLeft: "3px solid #6cc7ff" }}>
+        <BedDouble size={20} className="shrink-0 text-sky" />
+        <div className="min-w-0 flex-1">
+          <p className="eyebrow mb-0.5">Tonight</p>
+          <p className="text-paper">
+            In bed by <span className="num text-sky">{hhmm(t.bed_min)}</span> · {t.tonight_h.toFixed(1)} h to wake at {hhmm(t.wake_min)}
+          </p>
+          {t.capped ? (
+            <p className="text-xs text-dim">An hour earlier than usual; keep stepping toward {t.ideal_h.toFixed(1)} h over the week.</p>
+          ) : (
+            extras.length > 0 && <p className="text-xs text-dim">Your {t.need_h} h need {extras.join(", ")}</p>
+          )}
+        </div>
+        <ChevronRight size={16} className="shrink-0 text-dim transition-transform group-hover:translate-x-0.5" />
+      </Link>
     </motion.section>
   );
 }

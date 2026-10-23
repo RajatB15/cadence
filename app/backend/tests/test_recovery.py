@@ -195,3 +195,41 @@ def test_efficiency_uses_heart_rate_above_rest():
     pace_150 = A.pace_at_hr(eff[0]["ef"], 150, 50)
     assert pace_150 == pytest.approx(1000 / 3.5, abs=0.5)
     assert A.efficiency([act(9, D0, HARD)]) == []
+
+
+def test_tonight_adds_training_and_debt_and_counts_back_from_wake():
+    ds = days(40)
+    day = ds[-1]  # 2026-02-13, a Friday: tomorrow is a weekend morning
+    series = {"sleep_hours": {d: 8.0 for d in ds}, "wake_time": {d: (480.0 if d.weekday() >= 5 else 390.0) for d in ds}}
+    load = {d: 100.0 for d in ds[:-1]}
+    base = R.sleep_tonight(series, load | {day: 0.0}, 8.0, day)
+    assert base["tonight_h"] == 8.0 and base["wake_min"] == 480 and base["bed_min"] == 480 - 480 - 15 and base["weekend"]
+    hard = R.sleep_tonight(series, load | {day: 250.0}, 8.0, day)
+    assert hard["extra_load_min"] == 30 and hard["tonight_h"] == 8.5
+    short = {**series, "sleep_hours": series["sleep_hours"] | {d: 6.5 for d in ds[-4:]}}
+    tired = R.sleep_tonight(short, load | {day: 0.0}, 8.0, day)
+    assert tired["debt_h"] == 6.0 and tired["repay_min"] == 60 and tired["bed_min"] == base["bed_min"] - 60
+    assert R.sleep_tonight({"sleep_hours": {}, "wake_time": {}}, load, 8.0, day) is None
+    late = {**short, "bedtime": {d: 30.0 for d in ds}}  # usually asleep at 00:30
+    shifted = R.sleep_tonight(late, load | {day: 0.0}, 8.0, day)
+    assert shifted["capped"] and shifted["lights_out_min"] == -30 and shifted["ideal_h"] == 9.0 and shifted["tonight_h"] == 8.5
+
+
+def test_bedtime_push_moves_with_tonight():
+    from cadence_app.push import bedtime_due
+    at = lambda h, m: datetime(2026, 2, 13, h, m)  # noqa: E731
+    tonight = {"bed_min": -60}  # in bed by 23:00 → nudge at 22:15
+    assert not bedtime_due(at(22, 0), tonight) and bedtime_due(at(22, 15), tonight)
+    assert bedtime_due(at(23, 35), {"bed_min": 20}) and not bedtime_due(at(23, 30), {"bed_min": 20})  # 00:20 → 23:35
+    assert bedtime_due(at(23, 30), {"bed_min": 60}) and not bedtime_due(at(23, 0), {"bed_min": 60})  # after 00:45 → 23:30
+    assert not bedtime_due(at(18, 30), {"bed_min": -400}) and bedtime_due(at(19, 0), {"bed_min": -400})
+    assert not bedtime_due(at(23, 0), None)
+
+
+def test_sleep_target_check_compares_nights_at_target():
+    rng = random.Random(5)
+    ds = days(200)
+    hours = {d: rng.choice([6.0, 7.0, 8.2, 8.5]) for d in ds}
+    series = {"sleep_hours": hours, "wake_time": {d: 420.0 for d in ds}, "hrv": {d: 50 + 4 * (hours[d] - 6) + rng.gauss(0, 1.5) for d in ds}}
+    e = R.sleep_target_check(series, {}, 8.0, ds[-1])
+    assert e is not None and e.significant and e.diff > 3

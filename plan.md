@@ -149,9 +149,9 @@ Phase 2 — Strength content from class screenshots
 - [x] Coach: weekly pattern totals, heavy-legs-before-key-session and missing-pattern notes; plan strength target becomes 1 heavy lower + 1 full body.
 
 Phase 3 — Nightly sleep need and bedtime
-- [ ] Tonight's need = personal plateau + strain-scaled extra + half of 7-day debt (≤ 60 min) − naps.
-- [ ] Bedtime = weekday-specific usual wake − need − personal sleep latency; on Home, plan and a moving bedtime push (45 min before).
-- [ ] Validate: does hitting the target precede better next-day HRV/readiness?
+- [x] Tonight's need = personal plateau + strain-scaled extra + half of 7-day debt (≤ 60 min) − naps (naps aren't in the Garmin data yet, so not subtracted); capped at 1 h earlier than your recent lights-out so it's achievable.
+- [x] Bedtime = weekday-specific usual wake − need − personal sleep latency; on Home, plan and a moving bedtime push (45 min before).
+- [x] Validate: does hitting the target precede better next-day HRV/readiness?
 
 Phase 4 — All-day strain
 - [ ] HRR-weighted TRIMP over all-day HR (641 of 643 days archived), calibrated to Garmin training load on workout windows.

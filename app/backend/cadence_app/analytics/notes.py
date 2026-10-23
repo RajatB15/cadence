@@ -881,6 +881,7 @@ def brief(c: dict) -> dict:
         "recent": recent_sessions(c),
         "week": week,
         "streaks": streaks(c),
+        "tonight": c.get("tonight"),
         "fix": [f for f in findings if f["severity"] in ("alert", "warn")][:3],
         "wins": [f for f in findings if f["severity"] == "good"][:2],
     }

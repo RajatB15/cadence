@@ -283,6 +283,7 @@ def assemble(
         "spikes": distance_spikes(acts, as_of - timedelta(days=13), as_of),
     }
     c["underfuelling"] = R.underfuelling(weights, hrv, eff_trend, as_of)
+    c["tonight"] = R.sleep_tonight(series, load, need["hours"], as_of)
     c["journal"] = journal or {"behaviours": [], "answers": {}}
     c["labels"] = labels or {}
     c["strength_content"] = strength_overview(c)
@@ -421,6 +422,8 @@ def build(session: Session, source_id: str, today: date) -> dict:
         "sleep": {
             "pattern_14d": ctx["sleep_14"],
             "need": ctx["sleep_need"],
+            "tonight": ctx["tonight"],
+            "target_check": (e.__dict__ if (e := R.sleep_target_check(series, load, ctx["sleep_need"]["hours"], as_of)) else None),
             "regularity": ctx["sleep_regularity"],
             "nights": [
                 {"day": d, "bedtime": series.get("bedtime", {}).get(d), "wake": series.get("wake_time", {}).get(d), "hours": sleep_hours.get(d)}

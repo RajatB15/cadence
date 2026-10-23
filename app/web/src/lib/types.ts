@@ -200,6 +200,7 @@ export interface Brief {
     items: { key: string; label: string; done: number; target: number; low?: number }[];
   };
   streaks: { key: string; label: string; current: number; best: number; unit: string }[];
+  tonight: Tonight | null;
   fix: Finding[];
   wins: Finding[];
 }
@@ -346,6 +347,21 @@ export interface WeekSummary {
   moderate_pct: number | null;
   hard_pct: number | null;
   complete: boolean;
+}
+
+export interface Tonight {
+  day: string;
+  need_h: number;
+  tonight_h: number;
+  ideal_h: number;
+  capped: boolean;
+  extra_load_min: number;
+  repay_min: number;
+  debt_h: number;
+  wake_min: number;
+  lights_out_min: number;
+  bed_min: number;
+  weekend: boolean;
 }
 
 export interface Behaviour {
@@ -556,6 +572,8 @@ export type Insights =
           wake_sd_min: number | null;
         } | null;
         need: SleepNeed;
+        tonight: Tonight | null;
+        target_check: Effect | null;
         regularity: { sri: number; pairs: number; midpoint_min: number; midpoint_sd_min: number } | null;
         nights: { day: string; bedtime: number | null; wake: number | null; hours: number | null }[];
       };

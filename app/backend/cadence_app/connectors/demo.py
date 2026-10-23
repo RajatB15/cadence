@@ -69,6 +69,11 @@ def generate(start: date, end: date) -> Batch:
                 "steps": (max(steps, 800), "steps"),
                 "training_load": (load, "load"),
             }
+            # Separate stream so adding sleep timing leaves every other demo value unchanged.
+            clock = _rng(day, "sleep-time")
+            wake = (465 if day.weekday() >= 5 else 405) + clock.gauss(0, 15)
+            values["wake_time"] = (wake, "min")
+            values["bedtime"] = (wake - sleep * 60, "min")
             for metric, (value, unit) in values.items():
                 batch.metrics.append(MetricRecord(day, metric, round(value, 2), unit))
             batch.activities.extend(activities)

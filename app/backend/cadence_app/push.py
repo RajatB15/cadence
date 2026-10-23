@@ -130,6 +130,21 @@ def set_prefs(factory: sessionmaker, prefs: dict[str, bool]) -> dict[str, bool]:
     return clean
 
 
+def _clock(minutes: float) -> str:
+    m = round(minutes) % 1440
+    return f"{m // 60:02d}:{m % 60:02d}"
+
+
+def bedtime_due(now_local: datetime, tonight: dict | None) -> bool:
+    """45 minutes before tonight's bedtime (never before 19:00; a bedtime after midnight is nudged at 23:30)."""
+    if not tonight:
+        return False
+    trigger = tonight["bed_min"] - 45  # minutes from tomorrow's midnight; negative = this evening
+    trigger = 1440 + trigger if trigger < 0 else 23 * 60 + 30
+    trigger = max(trigger, 19 * 60)
+    return now_local.hour * 60 + now_local.minute >= trigger
+
+
 def _first_sentence(text: str, limit: int = 160) -> str:
     cut = text.split(". ")[0].rstrip(".") + "."
     return cut if len(cut) <= limit else cut[: limit - 1].rstrip() + "…"
@@ -196,18 +211,19 @@ class Notifier:
                             "title": f"{v['label']} · {a.name}" if v else a.name,
                             "body": f"{top['title']}. {_first_sentence(top['detail'])}" if top else "Session analysed."})
 
-        if prefs["bedtime"] and (now_local.hour, now_local.minute) >= (22, 30):
-            effect = next((e for e in c["effects"] if e.id == "bed_score" and e.significant and e.diff < 0), None)
-            week = [v for d, v in c["series"].get("sleep_hours", {}).items() if today - timedelta(days=6) <= d <= today]
-            need = notes.need(c)
-            debt = sum(max(0, need - h) for h in week)
-            parts = []
-            if effect:
-                parts.append(f"Your nights after 00:30 score {effect.exposed_mean:.0f} vs {effect.reference_mean:.0f} before 23:30.")
-            if len(week) >= 4 and debt >= 3:
-                parts.append(f"You're carrying {debt:.1f} h of sleep debt this week.")
+        tonight = c.get("tonight") if c["as_of"] == today else None
+        if prefs["bedtime"] and bedtime_due(now_local, tonight):
+            parts = [f"{tonight['tonight_h']:.1f} h tonight to wake at {_clock(tonight['wake_min'])}"]
+            if tonight["extra_load_min"]:
+                parts.append(f"+{tonight['extra_load_min']} min for today's training")
+            if tonight["repay_min"]:
+                parts.append(f"+{tonight['repay_min']} min toward this week's {tonight['debt_h']:.1f} h debt")
             out.append({"key": f"bedtime:{today}", "kind": "bedtime", "url": "/metrics/sleep_hours",
-                        "title": "Lights out by 23:30", "body": " ".join(parts) or f"Wind down now: {need:g} h tonight lets today's training land."})
+                        "title": f"In bed by {_clock(tonight['bed_min'])}", "body": "; ".join(parts) + ". Start winding down now."})
+        elif prefs["bedtime"] and tonight is None and (now_local.hour, now_local.minute) >= (22, 30):
+            need = notes.need(c)
+            out.append({"key": f"bedtime:{today}", "kind": "bedtime", "url": "/metrics/sleep_hours",
+                        "title": "Lights out by 23:30", "body": f"Wind down now: {need:g} h tonight lets today's training land."})
 
         return [n for n in out if not self._logged(n["key"])]
 

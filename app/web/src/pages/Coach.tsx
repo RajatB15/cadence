@@ -893,6 +893,27 @@ function Sleep({ d }: { d: Data }) {
       <p className="mb-6 max-w-3xl text-sm text-mute">
         <b className="text-paper">Your need: {need} h.</b> {d.sleep.need.detail}
       </p>
+      {d.sleep.tonight && (
+        <div className="mb-6 border border-line bg-ink/40 p-5">
+          <p className="eyebrow mb-1">Tonight</p>
+          <p className="text-lg text-paper">
+            In bed by <span className="num text-sky">{clock(d.sleep.tonight.bed_min)}</span>, asleep by {clock(d.sleep.tonight.lights_out_min)}, up at {clock(d.sleep.tonight.wake_min)}
+            <span className="text-mute"> · {d.sleep.tonight.tonight_h.toFixed(1)} h</span>
+          </p>
+          <p className="mt-1 text-xs text-dim">
+            {need} h need{d.sleep.tonight.extra_load_min ? ` + ${d.sleep.tonight.extra_load_min} min for today's training` : ""}
+            {d.sleep.tonight.repay_min ? ` + ${d.sleep.tonight.repay_min} min toward ${d.sleep.tonight.debt_h} h of debt` : ""} · wake time is your usual for {d.sleep.tonight.weekend ? "weekends" : "weekdays"}, 15 min to fall asleep.
+            {d.sleep.tonight.capped && ` The full ${d.sleep.tonight.ideal_h.toFixed(1)} h would mean going to bed far earlier than you're used to, so tonight is capped at an hour earlier than usual: shift a little more each night.`}
+          </p>
+          {d.sleep.target_check && (
+            <p className="mt-2 text-xs text-mute">
+              {d.sleep.target_check.significant
+                ? `On your history, nights that reach the target are followed by ${d.sleep.target_check.diff > 0 ? "+" : ""}${d.sleep.target_check.diff.toFixed(1)} ms HRV (${d.sleep.target_check.n_exposed} vs ${d.sleep.target_check.n_reference} nights, allowing for training load).`
+                : `Nights at target vs short of it don't differ clearly in HRV yet (${d.sleep.target_check.n_exposed} vs ${d.sleep.target_check.n_reference} nights).`}
+            </p>
+          )}
+        </div>
+      )}
       {p && (
         <div className="mb-6 grid grid-cols-2 gap-6 sm:grid-cols-5">
           <Big label="Avg sleep · 14d" value={p.avg_hours} color={p.avg_hours >= need - 0.25 ? "#6cc7ff" : "#ffbe55"} digits={1} hint="hours" />

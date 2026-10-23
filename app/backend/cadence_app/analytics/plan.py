@@ -256,7 +256,9 @@ def weekly_plan(c: dict) -> dict | None:
     need = (c.get("sleep_need") or {}).get("hours", 8.0)
     late_effect = next((e for e in c.get("effects", []) if e.id == "bed_score" and e.significant), None)
     if c.get("sleep_14"):
-        items.append({"label": "Sleep", "value": f"≥ {need:g} h", "why": (c.get("sleep_need") or {}).get("detail") or "Your sleep target."})
+        tonight = c.get("tonight")
+        extra = f" Tonight {tonight['tonight_h']:.1f} h, in bed by {_clock(tonight['bed_min'])}." if tonight else ""
+        items.append({"label": "Sleep", "value": f"≥ {need:g} h", "why": ((c.get("sleep_need") or {}).get("detail") or "Your sleep target.") + extra})
         items.append({"label": "Lights out", "value": "≤ 23:30" if late_effect else "Consistent ±30 min",
                       "why": (f"Your sleep score averages {late_effect.reference_mean:.0f} when asleep before 23:30 vs "
                               f"{late_effect.exposed_mean:.0f} after 00:30." if late_effect else "Regular timing supports sleep quality.")})
@@ -273,6 +275,11 @@ def weekly_plan(c: dict) -> dict | None:
             "lights_out_min": -30, "hard_spacing": _spacing(c),
         },
     }
+
+
+def _clock(minutes: float) -> str:
+    m = round(minutes) % 1440
+    return f"{m // 60:02d}:{m % 60:02d}"
 
 
 def _spacing(c: dict) -> int:

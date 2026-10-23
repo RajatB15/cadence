@@ -96,8 +96,10 @@ def test_notifier_sends_each_notification_once(app_env):
     sent = notifier.tick(morning, morning)
     assert any(k.startswith("morning:2026-10-21") for k in sent)
     assert notifier.tick(morning, morning) == []
-    assert "bedtime" not in {n["kind"] for n in notifier.due(datetime(2026, 10, 21, 21, 0))}
-    assert "bedtime" in {n["kind"] for n in notifier.due(datetime(2026, 10, 21, 22, 40))}
+    # The nudge follows tonight's bedtime (exact timing is covered by test_bedtime_push_moves_with_tonight).
+    assert "bedtime" not in {n["kind"] for n in notifier.due(datetime(2026, 10, 21, 18, 30))}
+    bedtime = next(n for n in notifier.due(datetime(2026, 10, 21, 23, 50)) if n["kind"] == "bedtime")
+    assert bedtime["title"].startswith("In bed by")
 
     client.put("/api/push/prefs", headers=MUTATE, json={"bedtime": False})
     assert "bedtime" not in {n["kind"] for n in notifier.due(datetime(2026, 10, 22, 22, 40))}
