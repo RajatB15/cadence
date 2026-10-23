@@ -131,6 +131,34 @@ Gate: reproducible calculations, uncertainty, minimum-data rules, and no causal 
 
 Gate: test on controlled fixtures and representative activities; unsuitable activities get explicit exclusions.
 
+### Stage 5b: Behaviour, Strength Content, Adaptive Sleep, All-Day Strain (2026-10-23)
+
+Closes the software gaps against WHOOP that matter for training (journal insights, adaptive sleep need, all-day strain), plus strength-session content. Hardware/medical features (skin temperature, ECG, clinician visits) are out of scope.
+
+Phase 1 — Journal and behaviour insights
+- [ ] Migration: behaviour catalogue (key, label, question, kind yes/no · count, active, sort) and daily answers (day, behaviour, value, answered_at); fold in the unused `tags` table.
+- [ ] Default behaviours asked each morning about yesterday: alcohol (drinks), caffeine after 14:00, late big meal, screens in bed, sauna/heat, stressful day, travel/time zone, felt ill, mobility, nap; custom behaviours allowed.
+- [ ] API: catalogue CRUD, answers for a day, check-in status. Paired phones may write only `/api/journal/*` (and later `/api/strength/*`); everything else stays read-only.
+- [ ] Morning check-in sheet on Home (offered until answered), journal history page section, morning push mentions it.
+- [ ] Insights: behaviours with ≥ 8 yes and ≥ 8 no days feed the effects engine (overnight HRV, resting HR, sleep score, readiness, next-day run efficiency), adjusted for load and weekends, FDR across all tests; "What your habits cost you" section and coach notes.
+
+Phase 2 — Strength content from class screenshots
+- [ ] Paste text (iPhone Live Text) into "Name this class" on a strength/HIIT session; parse blocks and exercises; save as reusable template.
+- [ ] Exercise dictionary → movement pattern (squat, hinge, lunge, push, pull, carry, core, plyometric) and primary muscles; unknown names asked once.
+- [ ] HR segmentation: warm-up / ordered blocks / cool-down by changepoint fitting on the HR trace (watch records one set per session, ~0.5 Hz HR: block-level only, never per-exercise). Per-block time, zones and load.
+- [ ] Coach: weekly pattern totals, heavy-legs-before-key-session and missing-pattern notes; plan strength target becomes 1 heavy lower + 1 full body.
+
+Phase 3 — Nightly sleep need and bedtime
+- [ ] Tonight's need = personal plateau + strain-scaled extra + half of 7-day debt (≤ 60 min) − naps.
+- [ ] Bedtime = weekday-specific usual wake − need − personal sleep latency; on Home, plan and a moving bedtime push (45 min before).
+- [ ] Validate: does hitting the target precede better next-day HRV/readiness?
+
+Phase 4 — All-day strain
+- [ ] HRR-weighted TRIMP over all-day HR (641 of 643 days archived), calibrated to Garmin training load on workout windows.
+- [ ] Live strain gauge vs a target band from readiness, the week's plan and recovery cost; non-workout strain shown in the load chart.
+
+Gate: each phase ships with synthetic-data tests, a counts-only check on the real vault, phone and desktop screenshots on demo data, and a commit.
+
 ### Stage 6: Context and Actions (Ideas 11-12)
 
 - [ ] Idea 11: weather, calendar summaries, and optional caffeine/meal context with explicit permissions.
