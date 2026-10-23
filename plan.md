@@ -159,6 +159,17 @@ Phase 4 — All-day strain
 
 Gate: each phase ships with synthetic-data tests, a counts-only check on the real vault, phone and desktop screenshots on demo data, and a commit.
 
+### Stage 5c: Planning (2026-10-23)
+
+Plan any of the next 7 days by sport. Strength: upload the class screenshot up front. Run, ride, swim: Cadence recommends sessions for that day and predicts what each will do before you commit.
+
+- [ ] Personal load model: Garmin training load ≈ non-negative weights per heart-rate-zone minute (fitted on every session with zones), with a per-sport factor once a sport has ≥ 5 sessions; strength classes predicted from your past classes (heavy lower vs not).
+- [ ] Session library: run (recovery, easy, long, the plan's progressive key sessions: threshold, VO₂max, hills/strides, race-specific), ride (recovery spin, endurance, tempo, threshold, VO₂; HR targets ~5 bpm below running zones, no power data), swim (technique, aerobic, threshold set, sprints; effort by feel because wrist HR in water is unreliable), each as a zone-minute profile.
+- [ ] Ranking for the chosen day: readiness (today) or a normal day (future), HRV-guided status, early-warning signals, personal hard-session spacing including other planned sessions, week targets still open (quality, long run, load band), no heavy legs before a planned key run. One recommended, the rest with reasons or cautions.
+- [ ] Predicted outcomes per option: training load (with similar past sessions), day strain vs today's band, fitness/fatigue/form and acute:chronic the next morning, the training-load part of tomorrow's readiness, days for HRV to recover (personal), what it builds, expected Garmin aerobic TE from similar sessions, week-target progress, and a 4-week fitness projection if the plan is followed.
+- [ ] Storage: planned sessions (migration 0008); matched to the day's actual session of the same sport; a planned strength class labels the matched session automatically; plan-vs-actual on the session page (load and intensity vs prediction).
+- [ ] UI: Plan page (7-day strip → sport → options with predictions → plan it), today's planned session leads Home, phone tab bar swaps Vault for Plan (Vault stays in Settings); paired phones may write `/api/planner*`.
+
 ### Stage 6: Context and Actions (Ideas 11-12)
 
 - [ ] Idea 11: weather, calendar summaries, and optional caffeine/meal context with explicit permissions.
