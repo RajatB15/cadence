@@ -111,9 +111,9 @@ Gate: connect or import, backfill, browse, tag, and export work end to end. Miss
 - [x] Establish whether Garmin writes are supported: no (Personal API is "Pull only"; 26 published
   endpoints, all reads, no weight-upload endpoint). Garmin upload is permanently out of scope for this
   credential, not just deferred; readings live only in Cadence's own vault.
-- [x] Persist readings locally with duplicate protection and source provenance (not verified against real
-  hardware yet — covered by unit/integration tests on synthetic readings; next: confirm a real accepted
-  weigh-in writes a row and shows up in the weight trend):
+- [x] Persist readings locally with duplicate protection and source provenance. Verified end-to-end on
+  2026-10-23: enabled in Settings, a real weigh-in connected, locked, debounced and landed in the weight
+  trend on the first attempt — no manual intervention beyond stepping on the scale.
   - `cadence_app/scale.py`: platform/opt-in-gated (`available()` checks `cadence_ble` is importable;
     `enabled()` is a Settings toggle, off by default — this needs real hardware present, unlike weather).
     A background thread with its own asyncio loop (bleak is async-native; this mirrors the existing

@@ -163,9 +163,9 @@ capture shows the scale actually transmitting them — right now the evidence po
 **In the app.** The weight formula above is live in `app/backend/cadence_app/scale.py` — an opt-in background
 listener (Settings → Bluetooth scale) that imports `decode_weight_packet` directly from this package rather
 than reimplementing it, debounces a stream of packets down to one accepted reading per weigh-in, and stores
-it in the local vault. See that module's docstring for the debounce policy. It has not yet been run against
-real hardware end-to-end (only unit/integration-tested on synthetic readings) — that's the next thing to
-verify interactively, the same way the decode itself was verified above.
+it in the local vault. See that module's docstring for the debounce policy. Verified end-to-end against real
+hardware on 2026-10-23: enabled in Settings, a real weigh-in connected, locked, debounced and appeared in
+the weight trend with no manual steps beyond standing on the scale.
 
 **Next useful captures**, in order of value:
 1. Step on holding (or not holding) a known small weight, to test for an offset in the weight formula.
