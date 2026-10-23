@@ -152,6 +152,39 @@ class PlannedSession(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime)
 
 
+class WeatherHour(Base):
+    """Hourly conditions from Open-Meteo for a rounded location (0.1°, ~10 km); UTC hour."""
+
+    __tablename__ = "weather_hours"
+
+    lat: Mapped[float] = mapped_column(Float, primary_key=True)
+    lon: Mapped[float] = mapped_column(Float, primary_key=True)
+    ts: Mapped[datetime] = mapped_column(DateTime, primary_key=True)
+    temperature: Mapped[float | None] = mapped_column(Float)
+    humidity: Mapped[float | None] = mapped_column(Float)
+    dew_point: Mapped[float | None] = mapped_column(Float)
+    apparent: Mapped[float | None] = mapped_column(Float)
+    wind: Mapped[float | None] = mapped_column(Float)
+    source: Mapped[str] = mapped_column(String(16))  # archive | forecast
+    fetched_at: Mapped[datetime] = mapped_column(DateTime)
+
+
+class ActivityWeather(Base):
+    """Conditions during one outdoor session, averaged over its hours. Keyed by the source's activity id."""
+
+    __tablename__ = "activity_weather"
+
+    source_id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    source_record_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    temperature: Mapped[float | None] = mapped_column(Float)
+    humidity: Mapped[float | None] = mapped_column(Float)
+    dew_point: Mapped[float | None] = mapped_column(Float)
+    apparent: Mapped[float | None] = mapped_column(Float)
+    wind: Mapped[float | None] = mapped_column(Float)
+    final: Mapped[bool] = mapped_column(Boolean)  # archive (settled) vs forecast-model values
+    computed_at: Mapped[datetime] = mapped_column(DateTime)
+
+
 class StrengthTemplate(Base):
     __tablename__ = "strength_templates"
 

@@ -210,10 +210,22 @@ function Outcomes({ p }: { p: Prediction }) {
           </div>
         ))}
       </dl>
+      {p.weather && <WeatherLine w={p.weather} />}
       <p className="mt-3 text-xs leading-relaxed text-mute"><span className="text-gold">Builds:</span> {p.builds}</p>
       {p.confidence === "general" && <p className="mt-1 text-xs text-dim">General estimate: not enough similar sessions of yours yet.</p>}
       {p.basis === "other sports" && <p className="mt-1 text-xs text-dim">Estimated from your other sports at this effort.</p>}
     </div>
+  );
+}
+
+export function WeatherLine({ w }: { w: NonNullable<Prediction["weather"]> }) {
+  const h = (n: number) => `${String(n).padStart(2, "0")}:00`;
+  return (
+    <p className={clsx("mt-3 text-xs leading-relaxed", w.hot ? "text-amber" : "text-mute")}>
+      <span className="text-gold">Weather at {h(w.hour)}:</span> {w.temperature?.toFixed(0)} °C, dew point {w.dew_point?.toFixed(0)} °C
+      {w.cost_pct >= 0.5 ? ` · about ${w.cost_pct.toFixed(0)}% slower at the same effort${w.basis === "personal" ? " (your heat cost)" : ""}` : " · no heat cost"}
+      {w.better_hour != null && ` · at ${h(w.better_hour)} it's ~${w.better_cost_pct!.toFixed(0)}%`}
+    </p>
   );
 }
 

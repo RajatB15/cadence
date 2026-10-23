@@ -15,9 +15,11 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from cadence_app import journal as journal_store
 from cadence_app import strength as strength_store
+from cadence_app import weather as weather_store
 from cadence_app.activity_types import activity_family
 from cadence_app.analytics import athlete as A
 from cadence_app.analytics import habits as H
+from cadence_app.analytics import heat as W
 from cadence_app.analytics import performance as P
 from cadence_app.analytics import plan as training_plan
 from cadence_app.analytics import recovery as R
@@ -159,8 +161,9 @@ def analyse_pending(factory: sessionmaker, archive_dir: Path, stop: threading.Ev
 
 
 class AnalysisWorker:
-    def __init__(self, factory: sessionmaker, archive_dir: Path):
+    def __init__(self, factory: sessionmaker, archive_dir: Path, weather_refresh=None):
         self.factory, self.archive_dir = factory, archive_dir
+        self.weather_refresh = weather_refresh
         self._thread: threading.Thread | None = None
         self._stop = threading.Event()
         self._lock = threading.Lock()
@@ -180,6 +183,8 @@ class AnalysisWorker:
         try:
             analyse_pending(self.factory, self.archive_dir, self._stop)
             cache_strain(self.factory, self._stop)
+            if self.weather_refresh:
+                self.weather_refresh()
         except Exception:  # pylint: disable=broad-exception-caught  # background job boundary
             log.exception("Activity analysis failed")
 
@@ -289,9 +294,10 @@ def load_analyses(session: Session) -> dict[int, dict]:
 # ---- assembly ---------------------------------------------------------------------
 
 
-def context(session: Session, source_id: str, today: date) -> dict | None:
+def context(session: Session, source_id: str, today: date, now: datetime | None = None) -> dict | None:
     """Everything the coach rules need, computed once per request and shared by every page."""
     garmin = source_id == "garmin"
+    weather_on = garmin and weather_store.enabled(session)
     return assemble(
         source_id, load_series(session, source_id), load_acts(session, source_id), today,
         analyses=load_analyses(session) if garmin else {},
@@ -303,6 +309,8 @@ def context(session: Session, source_id: str, today: date) -> dict | None:
                  "answers": journal_store.entries(session)},
         labels=strength_store.by_activity(session, source_id),
         hr_hists=load_hr_histograms(session, today) if garmin else None,
+        weather=weather_store.by_activity(session, source_id) if weather_on else None,
+        forecast=weather_store.forecast(session, now or utcnow()) if weather_on else None,
     )
 
 
@@ -311,6 +319,7 @@ def assemble(
     analyses: dict[int, dict] | None = None, zones: dict | None = None, goal: dict | None = None,
     weights: list[tuple[date, float]] | None = None, strength: dict | None = None, journal: dict | None = None,
     labels: dict[int, dict] | None = None, hr_hists: dict[date, tuple[dict, dict]] | None = None,
+    weather: dict[int, dict] | None = None, forecast: list[dict] | None = None,
 ) -> dict | None:
     """Pure assembly of the shared context from loaded data (tests build contexts with this directly)."""
     if not series and not acts:
@@ -324,6 +333,9 @@ def assemble(
     hrv, sleep_hours = series.get("hrv", {}), series.get("sleep_hours", {})
 
     eff = A.efficiency(acts, series.get("resting_hr", {}))
+    weather = weather or {}
+    heat_model = W.model(eff, weather) if weather else None
+    eff = W.adjust(eff, weather, heat_model)  # heat-adjusted once your personal heat cost is clear
     ref_hr = round(median(p["hr"] for p in eff) / 5) * 5 if eff else 150
     eff_trend = A.efficiency_trend(eff, ref_hr, as_of)
     act_by_id = {a.id: a for a in acts}
@@ -375,6 +387,11 @@ def assemble(
     }
     c["underfuelling"] = R.underfuelling(weights, hrv, eff_trend, as_of)
     c["tonight"] = R.sleep_tonight(series, load, need["hours"], as_of)
+    c["heat"] = heat_model
+    c["weather_runs"] = {aid: {**w, "hot": W.hot(w), "cost_pct": W.cost_pct(heat_model, w)[0]} for aid, w in weather.items()}
+    c["forecast"] = forecast or []
+    c["utc_offset"] = datetime.now().astimezone().utcoffset() or timedelta(0)
+    c["start_hour"] = W.usual_start_hour([a.start_local for a in acts if a.family == "run" and a.start_local and a.day > as_of - timedelta(days=90)])
     c["strain"] = strain_days(c, hr_hists or {})
     c["journal"] = journal or {"behaviours": [], "answers": {}}
     c["labels"] = labels or {}
@@ -533,6 +550,7 @@ def build(session: Session, source_id: str, today: date) -> dict:
         "strength": ctx["strength_labelled"],
         "habits": {"effects": [e.__dict__ for e in ctx["habits"]["effects"]], "progress": ctx["habits"]["progress"]},
         "strength_content": ctx["strength_content"],
+        "heat": ctx["heat"],
         "strain": ({"days": [{"day": d, **v} for d, v in sorted(ctx["strain"]["days"].items()) if d > as_of - timedelta(days=365)],
                     "scale": ctx["strain"]["scale"], "calibrated_on": ctx["strain"]["calibrated_on"], "hr_max": ctx["strain"]["hr_max"]}
                    if ctx["strain"] else None),
@@ -855,6 +873,12 @@ def coach(c: dict) -> list[dict]:  # noqa: C901 - a flat list of independent rul
                            f"Your recent runs don't include {cs.get('missing', 'maximal efforts')}, so critical speed and race predictions can't be fitted.",
                            "After a good warm-up, run 3 minutes all-out, recover 30 minutes easy, then 12 minutes all-out. Or race a 5 km.",
                            link="#performance"))
+    hm = c.get("heat")
+    if hm and hm.get("significant"):
+        out.append(finding("heat_cost", "info", "Performance", f"Heat costs you {abs(hm['slope_pct_per_c']):.1f}% per °C of dew point",
+                           f"Across {hm['n']} runs ({hm['warm']} warm), each °C of dew point above 10 °C lowered your efficiency by about "
+                           f"{abs(hm['slope_pct_per_c']):.1f}%. Your efficiency trend is now heat-adjusted, so summer won't look like lost fitness.",
+                           "On hot days, run early or slow down by that much at the same effort.", link="#aerobic"))
     zc = perf.get("zone_check")
     if zc and zc["status"] == "stale":
         out.append(finding("zones", "warn", "Performance", "Your heart-rate zones look out of date",

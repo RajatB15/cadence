@@ -137,6 +137,9 @@ export const api = {
   createPlan: (day: string, sport: Sport, optionKey: string, strengthText?: string) =>
     request<PlannedSessionView>("/api/planner", { method: "POST", body: JSON.stringify({ day, sport, option_key: optionKey, strength_text: strengthText ?? null }) }),
   deletePlan: (id: number) => request<{ deleted: boolean }>(`/api/planner/${id}`, { method: "DELETE" }),
+  weatherSetting: () => request<{ enabled: boolean; available: boolean }>("/api/settings/weather"),
+  setWeather: (enabled: boolean) =>
+    request<{ enabled: boolean; available: boolean }>("/api/settings/weather", { method: "PUT", body: JSON.stringify({ enabled }) }),
   setGoal: (goal: { distance: GoalDistance; date: string; target_s: number | null } | null) =>
     request<{ goal: TrainingGoal | null }>("/api/settings/goal", { method: "PUT", body: JSON.stringify(goal ?? {}) }),
   sources: () => request<SourceInfo[]>("/api/sources"),

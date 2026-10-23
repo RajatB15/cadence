@@ -203,6 +203,7 @@ export interface Brief {
   streaks: { key: string; label: string; current: number; best: number; unit: string }[];
   tonight: Tonight | null;
   strain: StrainToday | null;
+  weather: WeatherOutlook | null;
   fix: Finding[];
   wins: Finding[];
 }
@@ -381,7 +382,21 @@ export interface Review {
 
 export type Sport = "run" | "ride" | "swim" | "strength";
 
+export interface WeatherOutlook {
+  hour: number;
+  temperature: number | null;
+  dew_point: number | null;
+  apparent: number | null;
+  wind: number | null;
+  cost_pct: number;
+  basis: "personal" | "general";
+  hot: boolean;
+  better_hour: number | null;
+  better_cost_pct: number | null;
+}
+
 export interface Prediction {
+  weather?: WeatherOutlook | null;
   load: number;
   load_range: [number, number] | null;
   similar_n: number;
@@ -685,6 +700,7 @@ export type Insights =
       strength: StrengthSummary | null;
       habits: { effects: HabitEffect[]; progress: HabitProgress[] };
       strength_content: StrengthContent | null;
+      heat: { n: number; warm: number; significant: boolean; slope_pct_per_c: number | null; ci?: [number, number] } | null;
       strain: { days: { day: string; total: number; workout: number; everyday: number }[]; scale: number; calibrated_on: number; hr_max: number } | null;
       hr_zones: { method: string | null; floors: number[]; max: number | null; threshold: number | null } | null;
       analysis_pending: number;

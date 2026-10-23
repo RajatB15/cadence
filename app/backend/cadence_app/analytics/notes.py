@@ -7,6 +7,7 @@ from statistics import fmean, median
 
 from cadence_app.analytics import athlete as A
 from cadence_app.analytics import habits as H
+from cadence_app.analytics import heat as W
 from cadence_app.analytics import plan as training_plan
 from cadence_app.analytics import recovery as R
 from cadence_app.analytics import strain as S
@@ -232,6 +233,21 @@ def session(c: dict, activity_id: int, streams: dict | None = None, summary: dic
             else:
                 notes.append(note("efficiency", "info", "Aerobic", "Typical efficiency",
                                   "Speed per heartbeat matched your similar-HR runs from the prior 90 days.", None, ev))
+
+    w = (c.get("weather_runs") or {}).get(a.id)
+    if w and a.family in ("run", "ride", "walk") and w.get("temperature") is not None:
+        cond = f"{w['temperature']:.0f} °C, dew point {w['dew_point']:.0f} °C" if w.get("dew_point") is not None else f"{w['temperature']:.0f} °C"
+        personal = bool((c.get("heat") or {}).get("significant"))
+        if w["hot"]:
+            notes.append(note("weather", "info", "Conditions", f"Hot: {cond}",
+                              f"Conditions like these cost about {w['cost_pct']:.0f}% of pace at the same effort"
+                              + (" on your own runs." if personal else " (general heat table).")
+                              + " Slower splits or a higher heart rate today are mostly the weather, not lost fitness.",
+                              "On days like this, run early or set the effort, not the pace."))
+        elif w["temperature"] <= 0:
+            notes.append(note("weather", "info", "Conditions", f"Cold: {cond}", "Cold air raises effort early on; warm up longer before anything fast."))
+        elif (w.get("wind") or 0) >= 30:
+            notes.append(note("weather", "info", "Conditions", f"Windy: {w['wind']:.0f} km/h", "Headwind sections cost pace at the same effort: judge this one by heart rate."))
 
     dec = c["dec"].get(a.id)
     if dec is None and streams and a.family == "run" and (a.moving_s or 0) >= 45 * 60:
@@ -861,6 +877,12 @@ def _suggest(c: dict, r: dict | None, week: dict, plan: dict | None, long_done_t
     return {"kind": "rest", "title": "Rest or walk", "detail": "This week's session targets are covered. A rest day banks the adaptation."}
 
 
+def weather_today(c: dict) -> dict | None:
+    if not c.get("forecast"):
+        return None
+    return W.outlook(c["forecast"], c["as_of"], c.get("start_hour", 7), c["utc_offset"], c.get("heat"))
+
+
 def strain_today(c: dict, morning: dict | None, today: dict) -> dict | None:
     st = c.get("strain")
     if not st:
@@ -894,6 +916,7 @@ def brief(c: dict) -> dict:
         # The day's plan is set by the morning score, not by how today's training has since lowered it.
         "today": today,
         "strain": strain_today(c, morning, today),
+        "weather": weather_today(c),
         "focus": plan["focus"] if plan else None,
         "phase": plan["phase"] if plan else None,
         "goal": plan["goal"] if plan else None,

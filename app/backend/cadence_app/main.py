@@ -16,7 +16,7 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from cadence_app import days, journal, ocr, planner_store, push, strength
+from cadence_app import days, journal, ocr, planner_store, push, strength, weather
 from cadence_app.analytics import exercises
 from cadence_app.analytics import plan as training_plan
 from cadence_app.analytics import planner as session_planner
@@ -135,6 +135,10 @@ class PlanRequest(BaseModel):
     strength_text: str | None = Field(default=None, max_length=4000)
 
 
+class WeatherSetting(BaseModel):
+    enabled: bool
+
+
 class StrengthText(BaseModel):
     text: str = Field(min_length=1, max_length=4000)
     template: str | None = Field(default=None, max_length=80)
@@ -181,7 +185,9 @@ def create_app(
         lambda: make_client(read_env_file(settings.secrets_file).get("GARMIN_API_KEY", "")),
     )
     garmin_jobs.recover_interrupted()
-    analysis = insights_service.AnalysisWorker(factory, settings.archive_dir)
+    analysis = insights_service.AnalysisWorker(
+        factory, settings.archive_dir, (lambda: weather.refresh(factory, clock.today(), clock.now())) if settings.weather else None
+    )
 
     def current_credential():
         return credential_status(read_env_file(settings.secrets_file), clock.today())
@@ -529,8 +535,8 @@ def create_app(
         ).all()
         ctx = insights_service.context(session, source_id, clock.today())
         verdicts = coach_notes.verdicts(ctx)
-        if source_id == "garmin" and insights_service.pending_strain_days(session):
-            analysis.kick()  # cache all-day heart rate in the background so strain targets have history
+        if source_id == "garmin" and (insights_service.pending_strain_days(session) or (settings.weather and weather.pending(session, clock.now()))):
+            analysis.kick()  # strain history and weather are cached in the background
 
         weight = _weight_summary(session, clock.today())
         journal.ensure_catalogue(session, clock.now())
@@ -975,6 +981,17 @@ def create_app(
         if b is None:
             raise HTTPException(404, "Unknown habit")
         return journal.behaviour_dict(b)
+
+    @app.get("/api/settings/weather")
+    def weather_setting(session: Session = Depends(get_session)) -> dict:
+        return {"enabled": weather.enabled(session), "available": settings.weather}
+
+    @app.put("/api/settings/weather")
+    def set_weather_setting(body: WeatherSetting, session: Session = Depends(get_session)) -> dict:
+        weather.set_enabled(session, body.enabled)
+        if body.enabled and settings.weather:
+            analysis.kick()
+        return {"enabled": body.enabled, "available": settings.weather}
 
     @app.put("/api/settings/goal")
     def set_training_goal(body: TrainingGoalRequest, session: Session = Depends(get_session)) -> dict:

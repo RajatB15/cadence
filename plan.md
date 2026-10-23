@@ -179,10 +179,10 @@ Reviews
 - [x] Reviews page (week/month toggle, step through history), Home card early in a new week/month, Coach link.
 - [x] Push: weekly review Sunday 19:00, monthly on the 1st at 09:00 (toggleable).
 
-Weather (Open-Meteo, free, no account; only coordinates rounded to 0.1° (~10 km) and dates are sent; switch in Settings, on by default per the user's go-ahead)
-- [ ] Hourly temperature, humidity, dew point, apparent temperature and wind cached locally per rounded location: history from the archive API for every outdoor session (Garmin start coordinates), recent and next 7 days from the forecast API.
-- [ ] Personal heat cost: robust regression of run efficiency vs dew point above 10 °C on your own runs; if it's clear, efficiency and the efficiency trend are heat-adjusted, and hot runs are labelled on drift/durability.
-- [ ] Session notes ("28 °C, dew point 21 °C: most of the slower efficiency is heat"), and forecasts on planned runs/rides (conditions at your usual start time, expected slowdown, "go early" when it pays).
+Weather — live 2026-10-24: 204 outdoor sessions with conditions across 14 rounded locations; personal heat cost needs 20 qualifying runs (18 so far), general Hadley table until then. (Open-Meteo, free, no account; only coordinates rounded to 0.1° (~10 km) and dates are sent; switch in Settings, on by default per the user's go-ahead)
+- [x] Hourly temperature, humidity, dew point, apparent temperature and wind cached locally per rounded location: history from the archive API for every outdoor session (Garmin start coordinates), recent and next 7 days from the forecast API.
+- [x] Personal heat cost: robust regression of run efficiency vs dew point above 10 °C on your own runs; if it's clear, efficiency and the efficiency trend are heat-adjusted, and hot runs are labelled on drift/durability.
+- [x] Session notes ("28 °C, dew point 21 °C: most of the slower efficiency is heat"), and forecasts on planned runs/rides (conditions at your usual start time, expected slowdown, "go early" when it pays).
 
 ### Stage 6: Context and Actions (Ideas 11-12)
 

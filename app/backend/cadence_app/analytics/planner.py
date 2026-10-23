@@ -21,6 +21,7 @@ import numpy as np
 from scipy.optimize import nnls
 
 from cadence_app.analytics import athlete as A
+from cadence_app.analytics import heat as W
 from cadence_app.analytics import performance as P
 from cadence_app.analytics import plan as training_plan
 
@@ -61,7 +62,8 @@ def load_model(acts: list[A.Act], as_of: date) -> dict:
         d, _ = nnls(cumulative, y)
         w = np.cumsum(d)
         pred = X @ w
-        r2 = 1 - float(np.sum((y - pred) ** 2) / np.sum((y - y.mean()) ** 2)) if len(y) > 1 else 0.0
+        spread = float(np.sum((y - y.mean()) ** 2))
+        r2 = 1 - float(np.sum((y - pred) ** 2)) / spread if spread > 0 else 0.0  # identical loads explain nothing
         weights = [round(float(x), 3) for x in w] if r2 > 0.3 else FALLBACK_WEIGHTS
     else:
         weights, r2 = FALLBACK_WEIGHTS, 0.0
@@ -284,7 +286,10 @@ def predict(c: dict, model: dict, day: date, option: dict, planned: list[dict]) 
     strain = (c.get("strain") or {}).get("days", {})
     everyday = median([v["everyday"] for d, v in strain.items() if as_of - timedelta(days=28) <= d < as_of]) if strain else 0.0
     so_far = strain.get(as_of, {}).get("total", 0.0) if day == as_of else everyday
+    outlook = W.outlook(c["forecast"], day, c.get("start_hour", 7), c["utc_offset"], c.get("heat")) \
+        if sport in ("run", "ride") and c.get("forecast") else None
     return {
+        "weather": outlook,
         "load": round(load),
         "load_range": [round(min(hist)), round(max(hist))] if len(hist) >= 3 else None,
         "similar_n": len(similar),

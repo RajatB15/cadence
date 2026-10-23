@@ -301,3 +301,10 @@ def test_training_goal_drives_the_plan(env):
     assert body["sleep"]["need"]["hours"] >= 7
     assert client.put("/api/settings/goal", json={}, headers=MUTATE).json() == {"goal": None}
     assert client.get("/api/insights").json()["goal"] is None
+
+
+def test_weather_setting_round_trip(env):
+    client, _ = env
+    assert client.get("/api/settings/weather").json() == {"enabled": True, "available": False}
+    assert client.put("/api/settings/weather", json={"enabled": False}, headers=MUTATE).json()["enabled"] is False
+    assert client.get("/api/settings/weather").json()["enabled"] is False

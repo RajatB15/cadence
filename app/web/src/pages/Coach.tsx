@@ -815,7 +815,7 @@ function Aerobic({ d }: { d: Data }) {
     [d.vo2max],
   );
   return (
-    <Card id="aerobic" title="Aerobic engine" eyebrow="Are you getting fitter at the same effort?">
+    <Card id="aerobic" title="Aerobic engine" eyebrow={d.heat?.significant ? `Are you getting fitter at the same effort? · heat-adjusted (${Math.abs(d.heat.slope_pct_per_c!).toFixed(1)}% per °C dew point)` : "Are you getting fitter at the same effort?"}>
       <div className="mb-8 grid grid-cols-2 gap-6 lg:grid-cols-3">
         <div>
           <p className="eyebrow mb-1">Pace @ {ref} bpm</p>

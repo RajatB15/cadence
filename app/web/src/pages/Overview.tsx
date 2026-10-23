@@ -12,6 +12,7 @@ import {
   Flame,
   Mountain,
   Scale,
+  Sun,
   TrendingUp,
   Wind,
 } from "lucide-react";
@@ -132,6 +133,8 @@ function Dashboard({ data }: { data: Extract<Overview, { has_data: true }> }) {
       {coach && <TodayCall coach={coach} />}
 
       {coach?.strain && <StrainRow s={coach.strain} />}
+
+      {coach?.weather && (coach.weather.hot || coach.weather.better_hour != null) && <WeatherRow w={coach.weather} />}
 
       {coach?.tonight && <TonightRow t={coach.tonight} />}
 
@@ -483,6 +486,22 @@ function StrainRow({ s }: { s: NonNullable<Brief["strain"]> }) {
         {Math.round(s.workout)} from workouts · {Math.round(s.everyday)} from everyday movement{s.message ? ` · ${s.message}` : ""}
         {!s.calibrated && " (rough units until 10 workouts calibrate it)"}
       </p>
+    </motion.section>
+  );
+}
+
+function WeatherRow({ w }: { w: NonNullable<Brief["weather"]> }) {
+  const h = (n: number) => `${String(n).padStart(2, "0")}:00`;
+  return (
+    <motion.section variants={rise} className="surface flex items-center gap-4 p-5" style={{ borderLeft: "3px solid #ffbe55" }}>
+      <Sun size={20} className="shrink-0 text-amber" />
+      <div className="min-w-0 flex-1">
+        <p className="eyebrow mb-0.5">Heat today</p>
+        <p className="text-paper">
+          {w.temperature?.toFixed(0)} °C, dew point {w.dew_point?.toFixed(0)} °C at {h(w.hour)}: about {w.cost_pct.toFixed(0)}% slower at the same effort
+        </p>
+        {w.better_hour != null && <p className="text-xs text-dim">At {h(w.better_hour)} it's about {w.better_cost_pct!.toFixed(0)}%: go then if you can, or run by effort.</p>}
+      </div>
     </motion.section>
   );
 }

@@ -42,10 +42,41 @@ export function SettingsPage() {
           </div>
         )}
         <div className="lg:col-span-5">
+          <WeatherCard />
+        </div>
+        <div className="lg:col-span-5">
           <SourcesCard />
         </div>
       </div>
     </>
+  );
+}
+
+function WeatherCard() {
+  const client = useQueryClient();
+  const q = useQuery({ queryKey: ["weather-setting"], queryFn: api.weatherSetting });
+  const toggle = useMutation({
+    mutationFn: (on: boolean) => api.setWeather(on),
+    onSuccess: () => ["weather-setting", "insights", "overview", "planner-options"].forEach((k) => client.invalidateQueries({ queryKey: [k] })),
+  });
+  if (q.isPending) return <LoadingBlock height={160} />;
+  if (q.isError) return <ErrorBlock error={q.error} retry={() => q.refetch()} />;
+  return (
+    <section className="surface flex flex-wrap items-start justify-between gap-6 p-8">
+      <div className="max-w-2xl">
+        <h2 className="font-display text-3xl text-cream">Weather context</h2>
+        <p className="mt-3 text-sm leading-relaxed text-mute">
+          Heat makes the same effort slower, so Cadence learns your personal heat cost and adjusts efficiency trends, labels hot sessions and
+          forecasts conditions for planned runs and rides. Weather comes from Open-Meteo (free, no account). Only your location rounded to
+          about 10 km and the dates are sent: never routes, times of day or any health data.
+        </p>
+        {!q.data.available && <p className="mt-2 text-xs text-dim">Weather requests are turned off for this server.</p>}
+      </div>
+      <button type="button" role="switch" aria-checked={q.data.enabled} disabled={READ_ONLY || toggle.isPending}
+        onClick={() => toggle.mutate(!q.data.enabled)} className={q.data.enabled ? "pop pop-lime" : "pop pop-ghost"}>
+        {q.data.enabled ? "On" : "Off"}
+      </button>
+    </section>
   );
 }
 
