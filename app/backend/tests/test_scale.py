@@ -92,7 +92,7 @@ def test_scale_setting_round_trip_when_unavailable(env, monkeypatch):  # noqa: F
     client, _ = env
     monkeypatch.setattr(scale, "available", lambda: False)
     status = client.get("/api/scale/status").json()
-    assert status == {"available": False, "enabled": False, "running": False, "connected": False, "last_error": None, "last_reading": None}
+    assert status == {"available": False, "enabled": False, "running": False, "connected": False, "last_error": None, "last_reading": None, "live": None}
     r = client.put("/api/settings/scale", json={"enabled": True}, headers=MUTATE)
     assert r.json() == {"enabled": True, "available": False}
     # Enabling doesn't start anything when the feature isn't available.
@@ -128,3 +128,16 @@ def test_weight_endpoint_blends_scale_readings_with_the_active_source(env, tmp_p
 
     points = client.get("/api/weight?days=3650").json()["points"]
     assert any(p["day"] == "2026-10-20" and p["weight_kg"] == 68.2 for p in points)
+
+
+def test_status_reports_the_live_in_progress_reading(env):  # noqa: F811
+    from cadence_app.scale import LiveReading
+
+    client, _ = env
+    listener = client.app.state.scale_listener
+    assert client.get("/api/scale/status").json()["live"] is None
+    listener.live = LiveReading(weight_kg=68.4, stable=False, seen_at="2026-10-24T07:00:00+05:30")
+    status = client.get("/api/scale/status").json()
+    assert status["live"] == {"weight_kg": 68.4, "stable": False, "seen_at": "2026-10-24T07:00:00+05:30"}
+    listener.live = LiveReading(weight_kg=68.2, stable=True, seen_at="2026-10-24T07:00:03+05:30")
+    assert client.get("/api/scale/status").json()["live"]["stable"] is True

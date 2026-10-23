@@ -738,11 +738,27 @@ export interface Projection {
   latest: string | null;
 }
 
+export interface BodyEstimate {
+  bmi: number;
+  bmi_category: "underweight" | "normal" | "overweight" | "obese";
+  body_fat_pct: number;
+  fat_mass_kg: number;
+  lean_mass_kg: number;
+  bmr_kcal: number;
+}
+
+export interface BodyProfile {
+  height_cm: number;
+  birth_date: string;
+  sex: "male" | "female";
+}
+
 export interface TrendPoint {
   day: string;
   weight_kg: number;
   trend_kg: number;
   band_kg: number;
+  body: BodyEstimate | null;
 }
 
 export type Overview =
@@ -819,6 +835,7 @@ export interface PushStatus {
 
 export interface WeightResponse {
   points: TrendPoint[];
+  body_profile: BodyProfile | null;
   latest_trend_kg: number | null;
   rate_kg_per_week: number | null;
   rate_se_kg_per_week: number | null;
@@ -844,6 +861,7 @@ export interface ScaleStatus {
   connected: boolean;
   last_error: string | null;
   last_reading: { weight_kg: number; local_date: string; accepted_at: string } | null;
+  live: { weight_kg: number; stable: boolean; seen_at: string } | null;
 }
 
 export interface SourceInfo {

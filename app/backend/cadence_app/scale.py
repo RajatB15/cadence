@@ -128,6 +128,15 @@ class LastReading:
     accepted_at: str
 
 
+@dataclass
+class LiveReading:
+    """Every decoded packet, not just accepted ones — for a UI that shows the number settling in real time."""
+
+    weight_kg: float
+    stable: bool
+    seen_at: str
+
+
 # ---- the background listener ------------------------------------------------------------------------
 
 
@@ -138,6 +147,7 @@ class ScaleListener:
         self._stop = threading.Event()
         self.connected = False
         self.last_reading: LastReading | None = None
+        self.live: LiveReading | None = None
         self.last_error: str | None = None
 
     @property
@@ -206,6 +216,7 @@ class ScaleListener:
             reading = ssw526.decode_weight_packet(bytes(data))
             if reading is None:
                 return
+            self.live = LiveReading(reading.weight_kg, reading.stable, self.now_local().isoformat())
             accepted = debouncer.offer(reading, loop.time())
             if accepted is not None:
                 self._accept(accepted)
@@ -216,6 +227,7 @@ class ScaleListener:
             while not self._stop.is_set():
                 found.clear()
                 locked["device"] = None
+                self.live = None
                 try:
                     await asyncio.wait_for(found.wait(), timeout=SCAN_RETRY_S)
                 except asyncio.TimeoutError:

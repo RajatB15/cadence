@@ -4,6 +4,7 @@ import type {
   JournalView,
   PlanOption,
   Review,
+  BodyProfile,
   ScaleStatus,
   PlannedSessionView,
   PlannerWeek,
@@ -142,6 +143,9 @@ export const api = {
   setWeather: (enabled: boolean) =>
     request<{ enabled: boolean; available: boolean }>("/api/settings/weather", { method: "PUT", body: JSON.stringify({ enabled }) }),
   scaleStatus: () => request<ScaleStatus>("/api/scale/status"),
+  bodyProfile: () => request<{ profile: BodyProfile | null }>("/api/settings/profile"),
+  setBodyProfile: (profile: { height_cm: number; birth_date: string; sex: "male" | "female" }) =>
+    request<{ profile: BodyProfile }>("/api/settings/profile", { method: "PUT", body: JSON.stringify(profile) }),
   setScale: (enabled: boolean) =>
     request<{ enabled: boolean; available: boolean }>("/api/settings/scale", { method: "PUT", body: JSON.stringify({ enabled }) }),
   setGoal: (goal: { distance: GoalDistance; date: string; target_s: number | null } | null) =>

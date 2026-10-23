@@ -16,8 +16,9 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from cadence_app import days, journal, ocr, planner_store, push, scale, strength, weather
+from cadence_app import days, journal, ocr, planner_store, profile as profile_store, push, scale, strength, weather
 from cadence_app.analytics import exercises
+from cadence_app.analytics import body as body_analytics
 from cadence_app.analytics import plan as training_plan
 from cadence_app.analytics import planner as session_planner
 from cadence_app.analytics import review as reviews
@@ -143,6 +144,12 @@ class ScaleSetting(BaseModel):
     enabled: bool
 
 
+class ProfileRequest(BaseModel):
+    height_cm: float = Field(ge=profile_store.MIN_HEIGHT_CM, le=profile_store.MAX_HEIGHT_CM)
+    birth_date: RaceDate
+    sex: Literal["male", "female"]
+
+
 class StrengthText(BaseModel):
     text: str = Field(min_length=1, max_length=4000)
     template: str | None = Field(default=None, max_length=80)
@@ -227,7 +234,7 @@ def create_app(
     app = FastAPI(title="Cadence", lifespan=lifespan, docs_url=None, redoc_url=None)
     share = ShareServer(app, factory, settings.web_dist, settings.share_port)
     app.state.share = share
-    app.state.notifier, app.state.scheduler = notifier, scheduler
+    app.state.notifier, app.state.scheduler, app.state.scale_listener = notifier, scheduler, scale_listener
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=ALLOWED_HOSTS)
 
     @app.middleware("http")
@@ -929,8 +936,10 @@ def create_app(
     def weight(
         days: int = Query(180, ge=14, le=3650), session: Session = Depends(get_session)
     ) -> dict:
-        summary = _weight_summary(session, clock.today())
+        today = clock.today()
+        summary = _weight_summary(session, today)
         cutoff = summary.points[-1].day - timedelta(days=days) if summary.points else None
+        body_profile = profile_store.load(session)
         latest_fat = session.scalar(
             select(WeightReading.body_fat_pct)
             .where(WeightReading.source_id.in_((_active_source(session), scale.SOURCE_ID)), WeightReading.body_fat_pct.is_not(None))
@@ -938,7 +947,9 @@ def create_app(
             .limit(1)
         )
         return {
-            "points": [asdict(p) for p in summary.points if cutoff is None or p.day > cutoff],
+            "points": [{**asdict(p), "body": _body_dict(p.trend_kg, body_profile, today)}
+                       for p in summary.points if cutoff is None or p.day > cutoff],
+            "body_profile": body_profile,
             "latest_trend_kg": summary.latest_trend_kg,
             "rate_kg_per_week": summary.rate_kg_per_week,
             "rate_se_kg_per_week": summary.rate_se_kg_per_week,
@@ -1000,7 +1011,7 @@ def create_app(
 
     @app.get("/api/scale/status")
     def scale_status(session: Session = Depends(get_session)) -> dict:
-        lr = scale_listener.last_reading
+        lr, live = scale_listener.last_reading, scale_listener.live
         return {
             "available": scale.available(),
             "enabled": scale.enabled(session),
@@ -1008,7 +1019,20 @@ def create_app(
             "connected": scale_listener.connected,
             "last_error": scale_listener.last_error,
             "last_reading": {"weight_kg": lr.weight_kg, "local_date": lr.local_date, "accepted_at": lr.accepted_at} if lr else None,
+            "live": {"weight_kg": live.weight_kg, "stable": live.stable, "seen_at": live.seen_at} if live else None,
         }
+
+    @app.get("/api/settings/profile")
+    def get_profile(session: Session = Depends(get_session)) -> dict:
+        return {"profile": profile_store.load(session)}
+
+    @app.put("/api/settings/profile")
+    def set_profile(body: ProfileRequest, session: Session = Depends(get_session)) -> dict:
+        try:
+            p = profile_store.save(session, body.height_cm, body.birth_date, body.sex)
+        except ValueError as exc:
+            raise HTTPException(400, str(exc)) from None
+        return {"profile": p}
 
     @app.put("/api/settings/scale")
     def set_scale_setting(body: ScaleSetting, session: Session = Depends(get_session)) -> dict:
@@ -1058,6 +1082,13 @@ def create_app(
 
 def coach_week_start(d: date) -> date:
     return d - timedelta(days=d.weekday())
+
+
+def _body_dict(weight_kg: float, prof: dict | None, today: date) -> dict | None:
+    if prof is None:
+        return None
+    e = body_analytics.estimate(weight_kg, prof, today)
+    return asdict(e) if e else None
 
 
 def _goal(session: Session) -> float | None:

@@ -57,7 +57,8 @@ rather their health data stayed on their own machine.
 | **Weather** | Hot/cold/windy session notes, a personal heat cost on efficiency, forecasts with a cooler-hour suggestion for planned sessions. |
 | **Reviews** | Weekly and monthly reviews — training, plan adherence, fitness, recovery, sleep, habits, highlights — each with one focus for next period. |
 | **All-day strain** | Banister TRIMP from all-day heart rate, split into workout vs everyday movement, against a daily target band. |
-| **BLE scale bridge** | Weight from a reverse-engineered Dr Trust USA 526 Legend, read locally over Bluetooth (opt-in, macOS) and blended into your weight trend — no cloud, no official app. |
+| **BLE scale bridge** | Weight from a reverse-engineered Dr Trust USA 526 Legend, read locally over Bluetooth (opt-in, macOS) and blended into your weight trend — no cloud, no official app. A live **Weigh in** view shows the reading settle in real time. |
+| **Body composition (estimated)** | BMI, estimated body fat %, fat/lean mass and BMR from your weight and a stored profile — published, cited formulas, always labelled as estimates, never presented as a scale measurement. |
 | **Vault** | Every Garmin response is kept, compressed, forever. Dashboards rebuild from the vault with zero API calls. |
 | **Your iPhone** | A read-only (apart from its own check-ins) share server with QR pairing, installable as a Home Screen app, with Web Push notifications. |
 
@@ -219,7 +220,16 @@ cd app/backend && .venv/bin/pip install -e '.[test]' -e ../../research
 
 Then enable it from **Settings → Bluetooth scale** in the app. Without that extra install, the backend runs
 and tests exactly as before — this is entirely optional, and the feature reports itself as unavailable
-rather than failing.
+rather than failing. **Weigh in** from the Weight page or Home opens a live, mobile-friendly view of the
+same background listener — connecting, settling, locked and saved — the whole reason to still open the
+official app.
+
+**Body composition** stays separate from weight on purpose: this scale hasn't been shown to transmit it at
+all, so Cadence computes BMI (exact) plus body-fat %, fat/lean mass and BMR as published-formula *estimates*
+from a body profile (height, birth date, biological sex — Settings → Body profile), clearly labelled as such
+on the Weight page along with their sources and error margins. Muscle %, bone mass, visceral fat, water %
+and metabolic age aren't shown — no credible formula derives them from weight and profile alone, and this
+project doesn't fabricate values it can't stand behind.
 
 ## Privacy
 

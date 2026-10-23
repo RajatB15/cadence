@@ -5,7 +5,7 @@ import { Archive, Bell, Bluetooth, Database, KeyRound, RefreshCw, ShieldCheck, S
 import { motion } from "motion/react";
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { ErrorBlock, LoadingBlock, PageHeader } from "../components/Shell";
+import { ErrorBlock, LoadingBlock, PageHeader, Segmented } from "../components/Shell";
 import { READ_ONLY, api } from "../lib/api";
 import { formatDate, parseDay } from "../lib/format";
 import { currentSubscription, disablePush, enablePush, pushSupport } from "../lib/push";
@@ -46,6 +46,9 @@ export function SettingsPage() {
         </div>
         <div className="lg:col-span-5">
           <ScaleCard />
+        </div>
+        <div className="lg:col-span-5">
+          <BodyProfileCard />
         </div>
         <div className="lg:col-span-5">
           <SourcesCard />
@@ -116,6 +119,58 @@ function ScaleCard() {
         onClick={() => toggle.mutate(!s.enabled)} className={s.enabled ? "pop pop-lime" : "pop pop-ghost"}>
         {s.enabled ? "On" : "Off"}
       </button>
+    </section>
+  );
+}
+
+function BodyProfileCard() {
+  const client = useQueryClient();
+  const q = useQuery({ queryKey: ["body-profile"], queryFn: api.bodyProfile });
+  const [height, setHeight] = useState("");
+  const [birth, setBirth] = useState("");
+  const [sex, setSex] = useState<"male" | "female">("male");
+  const save = useMutation({
+    mutationFn: () => api.setBodyProfile({ height_cm: Number(height), birth_date: birth, sex }),
+    onSuccess: () => ["body-profile", "weight"].forEach((k) => client.invalidateQueries({ queryKey: [k] })),
+  });
+  if (q.isPending) return <LoadingBlock height={160} />;
+  if (q.isError) return <ErrorBlock error={q.error} retry={() => q.refetch()} />;
+  const p = q.data.profile;
+  const h = Number(height || p?.height_cm || 0);
+  const validHeight = h >= 100 && h <= 250;
+  const validBirth = Boolean(birth || p?.birth_date);
+  return (
+    <section className="surface p-8">
+      <h2 className="font-display text-3xl text-cream">Body profile</h2>
+      <p className="mt-3 max-w-2xl text-sm leading-relaxed text-mute">
+        Height, birth date and biological sex — used only by the estimated body-composition formulas on the Weight page (BMI, estimated body
+        fat, BMR). Nothing else in Cadence uses this. Stored locally; never sent anywhere.
+      </p>
+      <form onSubmit={(e) => { e.preventDefault(); if (validHeight && validBirth) save.mutate(); }} className="mt-6 grid gap-5 sm:grid-cols-3">
+        <label className="block">
+          <span className="eyebrow">Height (cm)</span>
+          <input inputMode="decimal" value={height} onChange={(e) => setHeight(e.target.value)} placeholder={p ? String(p.height_cm) : "175"}
+            className="num mt-2 w-full border-b-2 border-line-strong bg-transparent py-2 text-2xl text-paper outline-none focus:border-gold" />
+        </label>
+        <label className="block">
+          <span className="eyebrow">Birth date</span>
+          <input type="date" value={birth} onChange={(e) => setBirth(e.target.value)} max={new Date().toISOString().slice(0, 10)}
+            placeholder={p?.birth_date}
+            className="num mt-2 w-full border-b-2 border-line-strong bg-transparent py-2 text-xl text-paper outline-none focus:border-gold" />
+        </label>
+        <label className="block">
+          <span className="eyebrow">Biological sex</span>
+          <p className="mt-1 text-[11px] text-dim">For the formula only</p>
+          <Segmented label="Sex" options={[{ value: "male", label: "Male" }, { value: "female", label: "Female" }]} value={sex} onChange={setSex} />
+        </label>
+        <div className="sm:col-span-3">
+          <button type="submit" className="pop pop-lime" disabled={READ_ONLY || !validHeight || !validBirth || save.isPending}>
+            {p ? "Update" : "Save"}
+          </button>
+          {save.isError && <p className="mt-2 text-xs text-coral">{(save.error as Error).message}</p>}
+          {p && <p className="mt-3 text-xs text-dim">Currently: {p.height_cm} cm · born {p.birth_date} · {p.sex}</p>}
+        </div>
+      </form>
     </section>
   );
 }

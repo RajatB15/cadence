@@ -139,6 +139,38 @@ Gate: no silent overwrites (upsert, never duplicate on reconnect/repeat notifica
 transmitted measurements (weight) from calculated estimates (body composition, never stored from this
 scale).
 
+### Stage 3b: Body Composition Estimates and a Live Weigh-In Flow (2026-10-24)
+
+The user wants to stop using the Dr Trust app entirely. Weight is a real transmitted measurement; body
+composition is not (confirmed — two full captures show nothing but zeros where it would be). Whether the
+scale *measures* impedance and just doesn't send it, or doesn't measure it at all, is still open — one more
+capture (staying connected through the full auto-cycle) would settle it. Until/unless that's confirmed:
+
+- [x] Body profile (`cadence_app/profile.py`, `AppSetting`-backed like the training goal): height (cm),
+  birth date, biological sex (used only for the formulas below, not a general identity field) — Settings
+  form.
+- [x] `analytics/body.py`: BMI (exact arithmetic, not an estimate) + Deurenberg (1991) body-fat-%
+  estimate from BMI/age/sex + derived fat/lean mass + Mifflin-St Jeor (1990) BMR estimate. Every value
+  labeled "estimated" in the UI, with the formula and its known error margin in "how this is calculated" —
+  the same transparency standard as every other Cadence score. Muscle %, bone mass, visceral fat, water %
+  and metabolic age are **not** computed: no credible formula derives them from weight/height/age/sex alone,
+  and fabricating them would violate the project's own measured-vs-calculated rule. They stay unavailable
+  until/unless the scale is shown to transmit real impedance data.
+- [x] Weight page: estimated BMI/body-fat/lean-mass/BMR shown alongside the weight trend, computed for every
+  historical point using the *current* profile (explicitly labeled as a simplification — height/age drift
+  over years isn't modelled).
+- [x] Live "Weigh-in" page/flow: a button that shows the background listener's real-time state (searching →
+  connected → settling, with the live raw value → locked and saved), not just the passive background
+  behaviour already verified. `ScaleListener` gains a `live` field (latest decoded reading, debounced or
+  not) alongside `last_reading` (accepted only) for this.
+- [ ] Investigate whether impedance is transmitted: one more guided capture, staying connected through the
+  scale's full display cycle without early disconnect (see docs/protocol-investigation.md "Next useful
+  captures"). If found and decoded with the same evidence standard as weight, upgrade the relevant fields
+  from estimated to measured.
+
+Gate: nothing presented as measured that isn't; every formula cited with its source and limitations; no
+fabricated fields.
+
 ### Stage 4: Personal Analytics (Ideas 3-6)
 
 - [x] Idea 3: lagged associations across metrics (load, sleep, bedtime, workout timing, stress, steps) with sample sizes and significance; tags not yet included.

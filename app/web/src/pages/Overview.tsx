@@ -128,6 +128,12 @@ function Dashboard({ data }: { data: Extract<Overview, { has_data: true }> }) {
 
       <ReviewPrompt />
 
+      <motion.section variants={rise}>
+        <Link to="/weigh-in" className="chip text-mute hover:text-paper pointer-coarse:py-2">
+          <Scale size={12} className="text-gold" /> Weigh in
+        </Link>
+      </motion.section>
+
       <PlannedToday plans={data.planned_today ?? []} />
 
       {coach && <TodayCall coach={coach} />}
