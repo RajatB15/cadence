@@ -108,3 +108,61 @@ Do not label a field as decoded until it matches the display across several capt
    (error codes, lost connection, measurement aborted).
 3. The scale's unit setting and whether you were barefoot.
 4. Whether the official app had ever been paired with this scale.
+
+## Confirmed decodes (SSW526 / Dr Trust USA 526 Legend)
+
+Evidence as of the captures from 2026-10-23. Update this section only when a new capture confirms or
+revises something — see the rule at the top of Step 4.
+
+**GATT layout.** One vendor-specific service, `0xffb0`. `0xffb2` is notify-only and streams continuously
+once connected, with nothing written. `0xffb1` is writable; its purpose is untested — `cadence capture`
+never writes to it, and weight streams fine without doing so. No standard SIG Weight Scale (`0x181D`) or
+Body Composition (`0x181B`) service is present.
+
+**Packet shape.** Every notification on `0xffb2` is 20 bytes:
+
+```
+ac 27 00 [B3] [B4 B5] 00 00 00 00 00 00 00 00 00 00 00 03 d5 [B19]
+```
+
+- `ac 27 00` / `03 d5` — fixed header/trailer, unchanged across every capture so far.
+- `B3` — a one-byte flag: `0x68` while the reading is settling, `0x69` once it locks. Confirmed
+  independently in two captures (the value flips exactly when `B4 B5` stops moving).
+- `B4 B5` (big-endian uint16) — the weight field. Settles with visible overshoot/damping (classic
+  load-cell ADC settling), matching the "locked" state of `B3`.
+- Bytes 6–16 — zero in every packet captured so far, in both idle and locked states.
+- `B19` — changes only when `B4 B5`/`B3` do; almost certainly a checksum over the payload. Not reverse
+  engineered.
+
+**Weight formula — confirmed:**
+
+```
+weight_kg = uint16_be(B4, B5) / 120
+```
+
+Verified against the official Dr Trust app's displayed weight for one capture session: the raw value
+divided by 120 matched the app's reading exactly (to the app's own two decimal places). A second,
+independent capture session landed on a different but equally plausible weight using the same formula —
+consistent with two real, separate weigh-ins rather than a coincidence.
+
+Not yet established:
+- Whether there's a small additive offset the single confirmed data point can't rule out (the "hold a
+  known object" variation in Step 3c would settle this — a known weight added should shift the raw value
+  by exactly `object_kg × 120`, from the same baseline).
+- Behaviour across a wider weight range; only one person's weight has been confirmed so far.
+- What, if anything, `B19` encodes, and what `0xffb1` is for.
+
+**Body composition — not observed on the wire.** Bytes 6–16 never populated with anything beyond zero
+across two full capture sessions, including a ~26 s silent window before the scale disconnected on its
+own — the point at which the display would be cycling through body-fat/BMI/etc. The official app's own UI
+for these values is headed "based on your initial info" (the stored age/height/sex profile), consistent
+with the app computing them client-side from weight plus profile rather than reading them from the scale.
+Per the project's own rule, Cadence will not present body-composition values as *measured* unless a future
+capture shows the scale actually transmitting them — right now the evidence points the other way.
+
+**Next useful captures**, in order of value:
+1. Step on holding (or not holding) a known small weight, to test for an offset in the weight formula.
+2. A capture that stays connected through the scale's full auto-cycle and display sequence without
+   stepping off early, to settle whether body-comp data ever crosses `0xffb2` under any circumstance.
+3. If a packet sniffer (nRF Connect on iPhone, or Apple PacketLogger) is available, observing what the
+   *official* app does with `0xffb1` — without replicating any write here until it's understood.
