@@ -165,7 +165,7 @@ export function Segmented<T extends string | number>({
             aria-checked={active}
             onClick={() => onChange(o.value)}
             className={clsx(
-              "relative px-3.5 py-1.5 text-xs font-semibold tracking-widest uppercase transition-colors",
+              "relative px-3.5 py-1.5 text-xs font-semibold tracking-widest uppercase transition-colors pointer-coarse:py-2.5",
               active ? "text-ink" : "text-mute hover:text-paper",
             )}
           >

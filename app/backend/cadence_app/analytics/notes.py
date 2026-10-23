@@ -669,7 +669,7 @@ def streaks(c: dict) -> list[dict]:
     if hours:
         target = need(c)
         cur, best = _streak({d: R.sleep_ok(v, target) for d, v in hours.items()}, as_of)
-        out.append({"key": "sleep", "label": f"Nights with {target - 0.25:g} h+ sleep", "current": cur, "best": best, "unit": "nights"})
+        out.append({"key": "sleep", "label": f"Nights at your {target:g} h need", "current": cur, "best": best, "unit": "nights"})
     bed = s.get("bedtime", {})
     if bed:
         cur, best = _streak({d: v <= -30 for d, v in bed.items()}, as_of)
@@ -702,7 +702,7 @@ def week_progress(c: dict, plan: dict | None) -> dict:
     nights = _window(s.get("sleep_hours", {}), ws, as_of)
     if nights:
         target = need(c)
-        items.append({"key": "sleep", "label": f"Nights ≥ {target - 0.25:g} h", "done": sum(1 for h in nights if R.sleep_ok(h, target)), "target": len(nights)})
+        items.append({"key": "sleep", "label": f"Nights at {target:g} h", "done": sum(1 for h in nights if R.sleep_ok(h, target)), "target": len(nights)})
     beds = _window(s.get("bedtime", {}), ws, as_of)
     if beds:
         items.append({"key": "bed", "label": "Asleep by 23:30", "done": sum(1 for b in beds if b <= -30), "target": len(beds)})

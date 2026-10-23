@@ -128,8 +128,8 @@ def _target(kind: str, zones: dict | None, cs: dict | None, race_pace: float | N
     if hr:
         parts.append(f"{hr[0]}–{hr[1]} bpm")
     if not parts:
-        parts.append({"threshold": "comfortably hard (could speak a few words)", "vo2": "hard but even across reps",
-                      "specific": "goal race pace", "sharpener": "goal race pace", "opener": "race pace"}.get(kind, "controlled"))
+        parts.append({"threshold": "a comfortably hard effort (a few words at a time)", "vo2": "a hard effort you can hold evenly across reps",
+                      "specific": "goal race pace", "sharpener": "goal race pace", "opener": "race pace"}.get(kind, "a controlled effort"))
     return " · ".join(parts), hr, pace
 
 
@@ -224,8 +224,6 @@ def weekly_plan(c: dict) -> dict | None:
     easy_pace = _easy_pace(c, easy_cap, cs)
 
     items = [
-        {"label": "Phase", "value": ph["label"] + (f" · week {ph['week_in_block']}" if ph.get("week_in_block") and name not in ("race",) else ""),
-         "why": ph["blurb"] + (f" {ph['weeks_to_race']} weeks to race day." if ph.get("weeks_to_race") else "")},
         {"label": "Weekly load", "value": f"{load_band[0]}–{load_band[1]}", "why": why + f" (4-week average {round(avg_load)})."},
         {"label": "Sessions", "value": f"{sessions}: {hard} quality, {sessions - hard} easy",
          "why": f"At least {_spacing(c)} days between quality sessions; easy days genuinely easy."},

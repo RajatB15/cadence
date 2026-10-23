@@ -526,6 +526,21 @@ def _pace(s: float) -> str:
     return f"{m}:{sec:02d}"
 
 
+EFFECT_ACTIONS = {
+    "load": "Follow hard days with an easy day or rest.",
+    "sleep": "Protect full nights, especially before key sessions.",
+    "bed": "Be asleep before 23:30.",
+    "late": "Finish hard sessions before 18:00 when you can.",
+    "stress": "On high-stress days, wind down early and keep training easy.",
+    "steps": "Get more easy walking in on low-movement days.",
+}
+
+
+def _lc(text: str) -> str:
+    """Lower-case the first letter for use mid-sentence, leaving acronyms like HRV alone."""
+    return text if text[:2].isupper() else text[:1].lower() + text[1:]
+
+
 def _race_time(s: float) -> str:
     h, rem = divmod(round(s), 3600)
     m, sec = divmod(rem, 60)
@@ -776,10 +791,10 @@ def coach(c: dict) -> list[dict]:  # noqa: C901 - a flat list of independent rul
         if not worse:
             continue
         out.append(finding(
-            f"effect_{e.id}", "warn", "Your patterns", f"{e.exposed} cost you {abs(e.diff):.0f} {e.unit or 'points'} of {e.outcome.lower()}",
-            f"Across your history, {e.outcome.lower()} averages {e.exposed_mean:.0f} after {e.exposed.lower()} vs {e.reference_mean:.0f} after {e.reference.lower()} ({e.n_exposed} vs {e.n_reference} days)"
+            f"effect_{e.id}", "warn", "Your patterns", f"{e.exposed} cost you {abs(e.diff):.0f} {e.unit or 'points'} of {_lc(e.outcome)}",
+            f"Across your history, {_lc(e.outcome)} averages {e.exposed_mean:.0f} after {_lc(e.exposed)} vs {e.reference_mean:.0f} after {_lc(e.reference)} ({e.n_exposed} vs {e.n_reference} days)"
             + (f", still {abs(e.diff):.0f} after allowing for {' and '.join(e.adjusted_for)}." if e.adjusted_for else "."),
-            f"Aim for more '{e.reference.lower()}' days.", [{"label": "Effect size", "value": f"{abs(e.effect_size):.1f} SD"}], "#effects",
+            EFFECT_ACTIONS.get(e.id.split("_")[0], f"Aim for more {_lc(e.reference)}."), [{"label": "Effect size", "value": f"{abs(e.effect_size):.1f} SD"}], "#effects",
         ))
     return out
 

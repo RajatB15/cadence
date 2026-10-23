@@ -76,7 +76,8 @@ export function NoteCard({ f, index = 0, compact = false }: { f: Finding; index?
 
 function NoteLink({ link }: { link: string }) {
   const onCoach = useLocation().pathname === "/coach";
-  const cls = "eyebrow mt-3 inline-flex items-center gap-1 self-start hover:text-paper";
+  // Taller hit area on touch screens without changing the visual size.
+  const cls = "eyebrow mt-3 inline-flex items-center gap-1 self-start hover:text-paper pointer-coarse:-my-2 pointer-coarse:py-3";
   if (link.startsWith("#") && onCoach) {
     return <a href={link} className={cls}>See chart <ArrowUpRight size={11} /></a>;
   }

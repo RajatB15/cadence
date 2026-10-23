@@ -67,7 +67,7 @@ export function ActivityRow({ a, compact = false }: { a: ActivityItem; compact?:
       </div>
       <dl className="flex gap-5 text-right sm:gap-7">
         {stats.map((s, i) => (
-          <div key={s.label} className={clsx(i >= 2 && "hidden sm:block")}>
+          <div key={s.label} className={clsx(i >= 1 && "hidden sm:block", i >= 2 && "sm:hidden md:block")}>
             <dd className="num text-base text-paper sm:text-lg">{s.value}</dd>
             <dt className="text-[10px] tracking-widest text-dim uppercase">{s.label}</dt>
           </div>

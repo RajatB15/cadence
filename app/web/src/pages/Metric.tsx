@@ -111,7 +111,7 @@ function DayView({ metric, day, color, onSelect }: { metric: string; day: string
           <ChevronLeft size={18} />
         </button>
         <div className="min-w-0 flex-1">
-          <p className="eyebrow">Selected day · ← → to move</p>
+          <p className="eyebrow">Selected day<span className="pointer-coarse:hidden"> · ← → to move</span></p>
           <p className="font-display text-3xl text-cream sm:text-4xl">{longDate.format(parseDay(day))}</p>
         </div>
         <button
@@ -220,9 +220,9 @@ function Context({ m, metric, color }: { m: DayMetric; metric: string; color: st
         ))}
       </div>
       <div className="mt-8">
-        <div className="flex justify-between text-xs text-dim">
+        <div className="flex flex-wrap justify-between gap-x-3 gap-y-1 text-xs text-dim">
           <span>Lowest {fmt(m.all_min)}</span>
-          <span>
+          <span className="order-last w-full text-center sm:order-none sm:w-auto">
             {rankText} of {m.count.toLocaleString()} days
             {m.percentile != null && ` · ${m.percentile}th percentile`}
           </span>
@@ -318,7 +318,7 @@ function Trend({
     <section className="surface p-4 sm:p-6">
       <div className="mb-2 flex flex-wrap items-center justify-between gap-3 px-2">
         <p className="eyebrow">Trend · bars are days, line is the 7-day average</p>
-        <p className="text-xs text-dim">Click any day to open it</p>
+        <p className="text-xs text-dim"><span className="pointer-coarse:hidden">Click</span><span className="hidden pointer-coarse:inline">Tap</span> any day to open it</p>
       </div>
       <Chart option={option} height={300} label={`${data.label} trend`} onPickX={pick} />
     </section>

@@ -57,6 +57,7 @@ export function CoachPage() {
           </>
         }
       />
+      <SectionNav />
       <div className="space-y-6">
         <Readiness d={d} />
         <Plan d={d} />
@@ -77,9 +78,30 @@ export function CoachPage() {
   );
 }
 
+const SECTIONS = [
+  ["plan", "Plan"], ["findings", "Findings"], ["performance", "Performance"], ["recovery", "Recovery"], ["load", "Load"],
+  ["intensity", "Intensity"], ["aerobic", "Aerobic"], ["sleep", "Sleep"], ["effects", "Patterns"],
+] as const;
+
+/** Sticky jump links: the coach page is long, especially on a phone. */
+function SectionNav() {
+  return (
+    <nav
+      aria-label="Coach sections"
+      className="sticky top-0 z-30 -mx-5 mb-6 flex gap-2 overflow-x-auto border-b border-line bg-ink/90 px-5 py-3 backdrop-blur [scrollbar-width:none] sm:-mx-8 sm:px-8 lg:-mx-12 lg:px-12"
+    >
+      {SECTIONS.map(([id, label]) => (
+        <a key={id} href={`#${id}`} className="chip shrink-0 whitespace-nowrap hover:text-paper pointer-coarse:py-2">
+          {label}
+        </a>
+      ))}
+    </nav>
+  );
+}
+
 function Card({ id, title, eyebrow, aside, children }: { id?: string; title: string; eyebrow?: string; aside?: ReactNode; children: ReactNode }) {
   return (
-    <section id={id} className="surface scroll-mt-8 p-6 sm:p-8">
+    <section id={id} className="surface scroll-mt-20 p-5 sm:p-8">
       <div className="mb-6 flex flex-wrap items-end justify-between gap-3">
         <div>
           {eyebrow && <p className="eyebrow mb-2">{eyebrow}</p>}
@@ -185,7 +207,7 @@ function Plan({ d }: { d: Data }) {
   const plan = d.plan;
   if (!plan) {
     return (
-      <Card title="This week" eyebrow="Prescription" aside={<GoalDialog current={d.goal} />}>
+      <Card id="plan" title="This week" eyebrow="Prescription" aside={<GoalDialog current={d.goal} />}>
         <p className="text-sm text-mute">Needs two complete weeks of training before a plan can be built.</p>
       </Card>
     );
@@ -193,6 +215,7 @@ function Plan({ d }: { d: Data }) {
   const color = PHASE_COLOR[plan.phase.phase] ?? "#f2e8cf";
   return (
     <Card
+      id="plan"
       title="This week"
       eyebrow={plan.goal ? `${plan.goal.label} · ${formatDate(plan.goal.date)}${plan.goal.target_s ? ` · goal ${raceTime(plan.goal.target_s)}` : ""}` : "Prescription · no race goal set"}
       aside={<GoalDialog current={d.goal} />}
@@ -200,6 +223,7 @@ function Plan({ d }: { d: Data }) {
       <div className="mb-6 flex flex-wrap items-baseline gap-x-4 gap-y-1">
         <span className="chip" style={{ color, borderColor: `${color}66` }}>{plan.phase.label}{plan.phase.week_in_block && plan.phase.phase !== "race" ? ` · week ${plan.phase.week_in_block}` : ""}</span>
         {plan.phase.weeks_to_race != null && <span className="text-sm text-mute">{plan.phase.weeks_to_race} weeks to race day</span>}
+        <p className="w-full text-sm text-mute">{plan.phase.blurb}</p>
       </div>
       {plan.sessions.length > 0 && (
         <div className="mb-6 grid gap-3 md:grid-cols-2">
@@ -219,10 +243,10 @@ function Plan({ d }: { d: Data }) {
             initial={{ opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: i * 0.04 }}
-            className="border border-line bg-ink/40 p-5"
+            className="border border-line bg-ink/40 p-4 sm:p-5"
           >
             <p className="eyebrow mb-2">{item.label}</p>
-            <p className="num text-2xl text-cream">{item.value}</p>
+            <p className="num text-xl text-cream sm:text-2xl">{item.value}</p>
             <p className="mt-2 text-xs leading-relaxed text-mute">{item.why}</p>
           </motion.div>
         ))}
@@ -456,6 +480,9 @@ function Performance({ d }: { d: Data }) {
 
 // ---- recovery ---------------------------------------------------------------------
 
+const COMPONENT_NAMES: Record<string, string> = {
+  sleep: "sleep", sleep_history: "sleep history", hrv: "HRV", rhr: "resting HR", load: "load", battery: "Body Battery",
+};
 const KIND_LABEL = { hard: "Hard sessions", long: "Long sessions", easy: "Easy sessions" } as const;
 
 function Recovery({ d }: { d: Data }) {
@@ -494,7 +521,7 @@ function Recovery({ d }: { d: Data }) {
                   <p className="font-display text-4xl" style={{ color: statusColor }}>{g.green_light ? "Green light" : "Keep it easy"}</p>
                   <p className="text-xs text-dim">7-day {g.mean7_ms} ms · normal {g.range_ms[0]}–{g.range_ms[1]} ms</p>
                 </div>
-                <Big label="Day-to-day swing" value={g.cv7} color={g.cv7 > g.cv_base * 1.25 ? "#ffbe55" : "#f2e8cf"} hint={`usual ${g.cv_base}%`} digits={1} />
+                <Big label="Day-to-day swing" value={g.cv7} unit="%" color={g.cv7 > g.cv_base * 1.25 ? "#ffbe55" : "#f2e8cf"} hint={`usual ${g.cv_base.toFixed(1)}%`} digits={1} />
               </div>
               <Chart option={option} height={220} label="7-day HRV against normal range" />
             </>
@@ -530,7 +557,7 @@ function Recovery({ d }: { d: Data }) {
                   </p>
                   {v.suggested_weights && (
                     <p className="mt-2">
-                      Weights your data would favour: {Object.entries(v.suggested_weights).map(([k, w]) => `${k.replace("_", " ")} ${Math.round(w * 100)}%`).join(", ")}.
+                      Weights your data would favour: {Object.entries(v.suggested_weights).map(([k, w]) => `${COMPONENT_NAMES[k] ?? k} ${Math.round(w * 100)}%`).join(", ")}.
                     </p>
                   )}
                 </>
@@ -546,9 +573,13 @@ function Recovery({ d }: { d: Data }) {
 // ---- findings -----------------------------------------------------------------
 
 function Findings({ findings }: { findings: Finding[] }) {
+  const [all, setAll] = useState(false);
+  const urgent = findings.filter((f) => f.severity === "alert" || f.severity === "warn");
+  const shown = all ? findings : urgent.length ? urgent : findings.slice(0, 4);
   const counts = findings.reduce<Record<string, number>>((acc, f) => ({ ...acc, [f.severity]: (acc[f.severity] ?? 0) + 1 }), {});
   return (
     <Card
+      id="findings"
       title="What you're missing"
       eyebrow={`${findings.length} findings from your data`}
       aside={
@@ -561,7 +592,12 @@ function Findings({ findings }: { findings: Finding[] }) {
         </div>
       }
     >
-      <NoteGrid notes={findings} />
+      <NoteGrid notes={shown} />
+      {shown.length < findings.length && (
+        <button type="button" onClick={() => setAll(true)} className="pop pop-ghost mt-6">
+          Show {findings.length - shown.length} more ({findings.length - shown.length === 1 ? "an insight" : "insights"} and what's working)
+        </button>
+      )}
     </Card>
   );
 }
@@ -630,12 +666,13 @@ function LoadChart({ d }: { d: Data }) {
   );
 }
 
-function Big({ label, value, color, hint, signed, digits = 0 }: { label: string; value: number | null | undefined; color: string; hint?: string; signed?: boolean; digits?: number }) {
+function Big({ label, value, color, hint, signed, digits = 0, unit }: { label: string; value: number | null | undefined; color: string; hint?: string; signed?: boolean; digits?: number; unit?: string }) {
   return (
     <div>
       <p className="eyebrow mb-1">{label}</p>
       <p className="num text-4xl" style={{ color }}>
         {value == null ? "—" : `${signed && value > 0 ? "+" : ""}${value.toFixed(digits)}`}
+        {value != null && unit && <span className="ml-1 text-sm text-mute">{unit}</span>}
       </p>
       {hint && <p className="text-xs text-dim">{hint}</p>}
     </div>

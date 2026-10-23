@@ -249,7 +249,7 @@ def readiness(day: date, series: dict[str, Series], pmc_by_day: dict[date, dict]
 
     sleep_score, sleep_hours = g("sleep_score"), g("sleep_hours")
     if day in sleep_score:
-        parts["sleep"] = {"score": clamp(sleep_score[day]), "value": sleep_score[day], "hours": sleep_hours.get(day)}
+        parts["sleep"] = {"score": clamp(sleep_score[day]), "value": round(sleep_score[day]), "hours": sleep_hours.get(day)}
     elif day in sleep_hours:
         parts["sleep"] = {"score": clamp(100 - max(0, sleep_need - sleep_hours[day]) * 25), "value": None, "hours": sleep_hours[day]}
 
@@ -266,15 +266,15 @@ def readiness(day: date, series: dict[str, Series], pmc_by_day: dict[date, dict]
         if lo and hi and hi > lo:
             # Inside Garmin's personal balanced range is normal; each 10% below its floor costs 25 points.
             score = 75 + 20 * (v - lo) / (hi - lo) if lo <= v <= hi else 85 if v > hi else 75 - (lo - v) / (0.1 * lo) * 25
-            parts["hrv"] = {"score": clamp(score), "value": v, "baseline": None, "range": [lo, hi]}
+            parts["hrv"] = {"score": clamp(score), "value": round(v), "baseline": None, "range": [round(lo), round(hi)]}
         elif (z := baseline_z(hrv, day)) is not None:
-            parts["hrv"] = {"score": clamp(80 + (10 if z[0] >= 0 else 25) * z[0]), "value": v, "baseline": round(z[1], 1)}
+            parts["hrv"] = {"score": clamp(80 + (10 if z[0] >= 0 else 25) * z[0]), "value": round(v), "baseline": round(z[1])}
 
     rhr = g("resting_hr")
     if (z := baseline_z(rhr, day)) is not None:
         delta = rhr[day] - z[1]
         # Absolute bpm, not z: a very stable resting HR would otherwise turn 1 bpm into a big swing.
-        parts["rhr"] = {"score": clamp(85 - 8 * delta if delta > 0 else 85 + 4 * -delta), "value": rhr[day],
+        parts["rhr"] = {"score": clamp(85 - 8 * delta if delta > 0 else 85 + 4 * -delta), "value": round(rhr[day]),
                         "baseline": round(z[1], 1), "delta": round(delta, 1)}
 
     p = pmc_by_day.get(day)
@@ -287,7 +287,7 @@ def readiness(day: date, series: dict[str, Series], pmc_by_day: dict[date, dict]
 
     battery = g("body_battery")
     if day in battery:
-        parts["battery"] = {"score": clamp(battery[day]), "value": battery[day]}
+        parts["battery"] = {"score": clamp(battery[day]), "value": round(battery[day])}
 
     if "hrv" not in parts and "rhr" not in parts and "sleep" not in parts:
         return None

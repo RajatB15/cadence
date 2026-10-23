@@ -340,7 +340,7 @@ function TodayCall({ coach }: { coach: Brief }) {
 // ---- week at a glance -------------------------------------------------------------------
 
 const WEEK_SHORT: Record<string, string> = {
-  load: "Load", sessions: "Sessions", hard: "Quality", long: "Long run", easy: "Kept easy", sleep: "7.5 h nights", bed: "By 23:30",
+  load: "Load", sessions: "Sessions", hard: "Quality", long: "Long run", easy: "Kept easy", sleep: "Full nights", strength: "Strength", bed: "By 23:30",
 };
 
 function MiniRing({ done, target, low }: { done: number; target: number; low?: number }) {
@@ -373,14 +373,14 @@ function WeekStrip({ coach, onOpen }: { coach: Brief; onOpen: () => void }) {
     <motion.section variants={rise}>
       <button type="button" onClick={onOpen} className="surface surface-hover group block w-full p-5 text-left sm:p-6">
         <div className="mb-4 flex items-baseline justify-between gap-3">
-          <p className="eyebrow">This week · {hit} of {w.items.length} on target</p>
+          <p className="eyebrow">This week · {hit}/{w.items.length} on target</p>
           <span className="eyebrow flex items-center gap-1 text-gold group-hover:text-paper">
             {w.days_left === 0 ? "Last day" : `${w.days_left} day${w.days_left === 1 ? "" : "s"} left`} <ChevronRight size={11} />
           </span>
         </div>
-        <div className="flex gap-4 overflow-x-auto pb-1 sm:gap-6">
+        <div className="grid grid-cols-3 gap-x-2 gap-y-4 sm:flex sm:gap-6 sm:overflow-x-auto sm:pb-1">
           {w.items.map((item) => (
-            <div key={item.key} className="flex w-16 shrink-0 flex-col items-center text-center">
+            <div key={item.key} className="flex flex-col items-center text-center sm:w-16 sm:shrink-0">
               <MiniRing done={item.done} target={item.target} low={item.low} />
               <p className="mt-2 text-[10px] leading-tight tracking-wide text-mute uppercase">{WEEK_SHORT[item.key] ?? item.label}</p>
               <p className="num text-[11px] text-dim">{item.done}/{item.low ?? item.target}</p>
@@ -399,7 +399,7 @@ function BiggestGain({ gap }: { gap: ScoreSummary["top_gaps"][number] }) {
         <TrendingUp size={20} className="shrink-0 text-amber" />
         <div className="min-w-0 flex-1">
           <p className="eyebrow mb-0.5">Biggest gain available</p>
-          <p className="truncate text-paper">
+          <p className="line-clamp-2 text-paper">
             {gap.label} <span className="text-mute">· {gap.value} → {gap.target}</span>
           </p>
         </div>

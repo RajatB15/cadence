@@ -284,7 +284,8 @@ def readiness_validation(c: dict, readiness_fn, days: int = 365) -> dict | None:
             cr, cp = stats.spearmanr([p[0] for p in pairs], [p[1] for p in pairs])
             components[key] = {"rho": round(float(cr), 2), "p": round(float(cp), 3), "n": len(pairs)}
     suggested = None
-    useful = {k: v["rho"] for k, v in components.items() if v["rho"] > 0}
+    # Only components that clearly track performance earn weight; noise shouldn't reshape the score.
+    useful = {k: v["rho"] for k, v in components.items() if v["rho"] > 0 and v["p"] < 0.05}
     if len(rows) >= 40 and useful:
         total = sum(useful.values())
         # Half evidence, half prior: a year of runs is still a small sample for six weights.
