@@ -45,20 +45,3 @@ jobs:
       - name: Build
         working-directory: app/web
         run: npm run build
-
-  research:
-    name: BLE research tools (pytest)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-      - name: Install
-        working-directory: research
-        run: |
-          python3 -m venv .venv
-          .venv/bin/pip install -e '.[test]'
-      - name: Test
-        working-directory: research
-        run: .venv/bin/pytest

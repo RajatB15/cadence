@@ -8,13 +8,12 @@ Build a single-user, local-first health and training web app, then package the v
 
 Differentiate through transparent analytics, cross-source context, customizable workflows, and data ownership. Garmin already provides overlapping trends, readiness, training load, and summaries; verify current product capabilities before claiming a feature is unique.
 
-The existing Python BLE scale research remains intact. The web-first roadmap supersedes the earlier iOS-first roadmap. No cloud account or hosted backend is required initially.
+The web-first roadmap supersedes the earlier iOS-first roadmap. No cloud account or hosted backend is required initially.
 
 **Store everything, surface what matters:** every imported response stays in the vault; product pages show curated views and derived insights, and raw records remain inspectable in the Vault data explorer.
 
 ## Current State
 
-- Existing: BLE capture and analysis tools and synthetic tests under research/.
 - Built (2026-10-22): local FastAPI backend and SQLite schema under app/backend; React web app under app/web; deterministic demo connector; weight trend analytics; credential expiry status, banner, and settings timeline. Verified with backend/frontend tests and in-browser checks at desktop and mobile widths.
 - Verified on 2026-10-22: official Garmin Personal API key exchange and authenticated reads, with a full-history core backfill (activities, daily summaries, sleep, HRV, Body Battery, weigh-ins) completed against a real account back to its history start, in well under 200 API calls. Deep archive (FIT files, activity details/workouts, intraday HR/HRV, SpO₂, fitness age) runs in the background.
 - Garmin vault: every response is stored compressed in SQLite (`raw_responses`), FIT ZIPs under `data/archive/garmin/fit/` (0600). Dashboards are derived from the vault and can be rebuilt offline with zero API calls. Days older than 3 days are fetched once and never re-requested; each later sync makes about one request per dataset.
@@ -23,9 +22,9 @@ The existing Python BLE scale research remains intact. The web-first roadmap sup
 - Not built: export/backup, tags, deeper analytics, app packaging, OS notifications. Remaining datasets without purpose-built views (auto-detected moves, food logs) are viewable via the day "Everything recorded" panel and the Vault data explorer.
 - Coach / analytics (2026-10-22): `/coach` page backed by `analytics/athlete.py` (pure algorithms) and `analytics/insights.py` (assembly, rules, plan). Readiness score (HRV/RHR z-scores vs 60-day baseline, sleep score, form), Banister fitness/fatigue/form and EWMA acute:chronic ratio, weekly monotony/strain/rest days, 80/20 intensity distribution from HR-zone time, aerobic efficiency (grade-adjusted pace per heartbeat, Theil–Sen trend), Pa:HR decoupling from FIT streams (cached per run in `activity_analyses`), sleep timing regularity, lagged personal effects (Welch t-tests, n ≥ 8 per group), a rule-based "what you're missing" list, and a 7-day prescription using Garmin lactate-threshold HR zones. Raw-dump panels were removed from product pages; the Vault data explorer remains for inspection.
 - Coach everywhere (2026-10-22): `analytics/notes.py` builds on a shared per-request insights context (~0.1 s). Home leads with today's call (readiness ring + concrete session from the weekly plan, HR targets from Garmin zones), this week vs plan (load band, sessions, quality sessions, long run, easy-kept-easy, sleep, lights-out), an athlete score with five pillars and week-over-week deltas (fitness vs 1-year peak, 7-day readiness, sleep, consistency, intensity balance), streaks with personal bests, and the top issues to fix. Every session gets a verdict (Easy, Long & easy, Key session, Grey zone, Hard again, Long & hard, High intensity) and notes: intensity mix vs readiness and recent hard days, load percentile, efficiency vs similar-HR runs, HR drift, pacing split, next-morning HRV response, late-finish sleep cost, distance/pace milestones, unlabelled strength sets. Every day gets metric-tagged notes (sleep duration with a bedtime from the wake time, sleep quality with likely contributors, deep/REM lows, HRV and RHR vs baseline, stress, Body Battery, steps, SpO₂, respiration, load/ACWR, weekly intensity minutes), and weigh-ins get frequency, rate-vs-goal and goal-path notes.
-- Renamed WeighIn → Cadence (2026-10-22): packages `cadence_app` / `cadence_ble`, CLI `cadence`, header `X-Cadence-Request`, env `CADENCE_*`, database `data/cadence.sqlite3`. Captures written as `weighin-capture` still load.
+- Renamed WeighIn → Cadence (2026-10-22): package `cadence_app`, header `X-Cadence-Request`, env `CADENCE_*`, database `data/cadence.sqlite3`.
 - iPhone access (2026-10-22): opt-in, read-only share server (`cadence_app/share.py`, port 8766, all interfaces) started from Settings. QR pairing key → HttpOnly cookie; GET/HEAD only; `/api/share` blocked from phones; serves the built `app/web/dist` with a read-only marker so the UI skips on-demand fetches; resumes on restart. Home-screen install via web manifest + apple-touch-icon. Plain HTTP on the LAN; use Tailscale for remote access. Rebuild `dist` after frontend changes.
-- Direction (2026-10-22): one always-on Cadence service + the web app on every device, joined by Tailscale. A native iOS app is only worth it for HealthKit, phone-side BLE or background sync; the standalone macOS app (Stage 8) is deferred in favour of the login service. Raspberry Pi / Mac mini hosting to be evaluated so the phone doesn't depend on the laptop being awake.
+- Direction (2026-10-22): one always-on Cadence service + the web app on every device, joined by Tailscale. A native iOS app is only worth it for HealthKit, or background sync; the standalone macOS app (Stage 8) is deferred in favour of the login service. Raspberry Pi / Mac mini hosting to be evaluated so the phone doesn't depend on the laptop being awake.
 - Login service + notifications (2026-10-22): `scripts/cadence-service.sh` installs a LaunchAgent (RunAtLoad, KeepAlive; logs in ~/Library/Logs/Cadence). The backend now serves the built site on :8765. `cadence_app/push.py`: VAPID + RFC 8291 Web Push (py-vapid, http-ece, httpx), subscriptions restricted to known push services, `notification_log` makes each notification fire once; scheduler syncs Garmin every 3 h (45 min on mornings) and sends the morning readiness brief, session verdicts, 22:30 bedtime nudge and key reminders, each toggleable. Paired phones may only write to `/api/push/*`. Share card detects `tailscale serve` and pairs to the https://…ts.net address. iOS push requires the Home Screen app over HTTPS (Tailscale).
 - Readiness v2 + Cadence Score (2026-10-23): Garmin's Training Readiness isn't exposed by the personal API, so readiness was rebuilt on its factors: sleep score 25%, 3-night sleep 10%, HRV vs Garmin's balanced range 20%, resting HR in bpm vs 60-day normal 10%, load (ACWR + form) 20%, Body Battery 15%; a normal day scores ~80, matching the comparable Garmin figure on real test data. After a session, Home compares it with what the day called for (matched / open / harder / extra) and only suggests an optional easy second session before 19:00 with readiness ≥ 70. Home shows today's (or the latest) sessions with verdict and headline note. `analytics/score.py` computes a daily Cadence Score from 15 factors in Train 30% / Recover 30% / Sleep 25% / Move 15%, recomputable for any past day, with points lost per factor; `/score` shows rings, a radar of every factor, the 100-point bar, ranked gaps with fixes, 30/90/365-day history and per-area factor cards.
 - Live readiness + minimal Home (2026-10-23): new `body_battery_now` metric (Garmin's `bodyBattery.latestValue`). Today's readiness starts from the morning score and moves through the day: Body Battery drain (half-weighted, so normal evening decline isn't punished) and a per-session strain cost (up to 35 load points, scaled by load vs fitness, recovering with a 7 h half-life), with a "since this morning" breakdown. The day's plan still uses the morning score. Scheduler syncs hourly 11:00–23:00 (45 min mornings, 3 h overnight); Home refetches every 5 min. Home is now two dials (live Readiness, Cadence score) with detail sheets, a compact Today card with expandable "why", today's sessions, a week strip of mini rings (sheet for the full list), a "biggest gain" line, a swipeable vitals strip and streak chips. Motion: rings rotate in and count up, sparklines draw themselves, bars grow and ECharts animate as each scrolls into view.
@@ -47,21 +46,20 @@ The existing Python BLE scale research remains intact. The web-first roadmap sup
 | Analytics | NumPy, pandas, SciPy; statsmodels when justified |
 | Jobs | One local worker with persisted job state; no Redis initially |
 | Tests | pytest, Vitest, Playwright |
-| macOS shell | Tauri provisionally; validate Python sidecar, signing, and Bluetooth permissions early |
+| macOS shell | Tauri provisionally; validate Python sidecar and signing early |
 | LLM | Provider-independent adapter added last |
 
 Avoid microservices, cloud databases, Kubernetes, and vector databases until a concrete need exists.
 
 ## Data Architecture
 
-Garmin API/exports, BLE scale, and optional external sources feed connectors. Preserve raw source data, normalize into SQLite, then compute versioned analytics exposed by the local API to the web UI.
+Garmin API/exports and optional external sources feed connectors. Preserve raw source data, normalize into SQLite, then compute versioned analytics exposed by the local API to the web UI.
 
 - Separate source records, normalized records, and derived results.
 - Retain source IDs, timestamps, units, provenance, calculation version, and freshness.
 - Normalize instants while preserving source timezone and local-day semantics.
 - Make imports idempotent, resumable, and rate-limit aware; persist checkpoints and retry state.
 - Core browsing must work offline after import. Provide portable export, backup, and deletion.
-- Keep BLE logic behind a connector boundary; reuse tested research parsing once verified.
 
 ## Roadmap
 
@@ -74,7 +72,7 @@ Estimate delivery dates after API verification and a representative data sample.
 - [x] Establish whether weight/body-composition writes are supported: no write endpoint is published.
 - [x] Verified documented authentication and daily-summary read on 2026-10-22 without printing the key, access token, or personal response body.
 - [x] Define capability flags: datasets returning 401/403, or probes returning no data, are marked unavailable; other datasets continue.
-- [ ] Spike Tauri/Python sidecar startup, lifecycle, signing, and Bluetooth permission requirements.
+- [ ] Spike Tauri/Python sidecar startup, lifecycle and signing requirements.
 
 Gate: document observed capabilities without inventing endpoints. Unsupported writes disable Garmin upload, not local scale storage or the rest of the app.
 
@@ -105,17 +103,10 @@ Gate: connect or import, backfill, browse, tag, and export work end to end. Miss
 
 ### Stage 3: Weight Logging and Body Stats (revised 2026-10-23)
 
-The Bluetooth scale bridge was built, run against real hardware, and **retired the same day**. Garmin has no
-weight-upload API (Personal API is "Pull only": 26 published endpoints, all reads), so readings could only
-live in Cadence's vault. The BLE weight decode (`uint16_be / 120`) matched one app reading but then read
-about 2 kg below the scale's own display in live use (72.0-72.4 vs 74.2 kg) and the cause was not found.
-Body composition was never transmitted (bytes 6-16 stayed zero through a full display cycle). Decision: log
-weight by hand or via the Garmin app; keep the capture tooling under `research/` as research only.
+Garmin has no weight-upload API (Personal API is "Pull only": 26 published endpoints, all reads), so weight
+is logged by hand in Cadence or comes from Garmin weigh-ins. A direct scale integration was tried and
+dropped because its readings did not match the scale's own display. Nothing in the app talks to a scale.
 
-- [x] Protocol research and findings recorded in docs/protocol-investigation.md (weight conversion marked
-  unreliable; body composition not on the wire).
-- [x] Removed `cadence_app/scale.py`, its API routes, Settings card, Weigh-in page and tests; deleted the six
-  uncalibrated scale readings from the local vault.
 - [x] Manual weight log (`cadence_app/weightlog.py`, source `manual`): one entry per day, re-logging a day
   corrects it, `GET/POST /api/weight/entries` and `DELETE /api/weight/entries/{day}`, blended with the active
   source in the trend. Paired phones may write `/api/weight/entries`. Log dialog on the Weight page and a
@@ -127,7 +118,6 @@ weight by hand or via the Garmin app; keep the capture tooling under `research/`
   area. Muscle %, bone mass, visceral fat, water % and metabolic age are not computed.
 - [x] Weight page "Body stats": BMI gauge, healthy-range bar with goal marker, fat vs lean bar, energy bars;
   empty, loading, no-profile and phone-width states.
-- [ ] Revisit a smart scale only if its data can be verified against its display or arrives through Garmin.
 
 Gate: nothing presented as measured that isn't; every formula cited with its source and limitations.
 
@@ -221,7 +211,7 @@ Gate: external integrations can be disconnected, provenance remains visible, and
 - [ ] Package validated web workflows with Tauri if the early spike succeeds.
 - [ ] Move credentials to macOS Keychain with a deliberate migration from the local development file.
 - [ ] Implement service lifecycle, app-data paths, installer/signing, and an update strategy.
-- [ ] Validate Bluetooth access, sync resume, backups, and expiry reminders in the packaged app.
+- [ ] Validate sync resume, backups, and expiry reminders in the packaged app.
 
 ### Stage 9: LLM Integration (Idea 14, Last)
 
@@ -256,5 +246,5 @@ Reminder acceptance criteria:
 - Never commit credentials, raw personal records, local databases, or logs containing health data.
 - Use synthetic fixtures or explicitly reviewed, redacted samples in tests.
 - Never claim local data is encrypted unless encryption is actually implemented; plan backup and deletion accordingly.
-- Keep BLE capture workflows working and run focused tests for every changed behavior.
+- Run focused tests for every changed behavior.
 - Maintain empty, missing-data, loading, failure, and unsupported-capability states throughout the UI.

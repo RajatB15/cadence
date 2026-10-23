@@ -62,10 +62,6 @@ rather their health data stayed on their own machine.
 | **Vault** | Every Garmin response is kept, compressed, forever. Dashboards rebuild from the vault with zero API calls. |
 | **Your iPhone** | A read-only (apart from its own check-ins) share server with QR pairing, installable as a Home Screen app, with Web Push notifications. |
 
-> **No Bluetooth scale in the app.** An experiment reading the Dr Trust USA 526 Legend over BLE was removed: the
-> decoded weight did not match the scale's display. Weight comes from Garmin or manual entry. The BLE capture
-> tools remain under [research/](research/) (see [BLE scale research](#ble-scale-research)).
-
 ## Quick start (try it with demo data)
 
 No Garmin account needed — Cadence ships with a deterministic demo dataset.
@@ -146,8 +142,6 @@ individually in Settings. The signing key is generated locally in `data/push-vap
 | [app/backend/cadence_app/](app/backend/cadence_app/) | FastAPI app: Garmin sync engine & vault, SQLite + Alembic migrations, journal, strength, planner, weather, push notifications |
 | [app/backend/cadence_app/analytics/](app/backend/cadence_app/analytics/) | Pure analytics: load/readiness, performance (critical speed), recovery, periodised plan, habits, strength parsing, all-day strain, score, weekly/monthly reviews |
 | [app/web/src/](app/web/src/) | React 19 + TypeScript + Vite + Tailwind + ECharts + MapLibre |
-| [research/](research/) | Python + Bleak BLE research tools (`cadence` CLI) for the body-composition scale |
-| [docs/protocol-investigation.md](docs/protocol-investigation.md) | Reproducible BLE capture workflow |
 | [plan.md](plan.md) | Product roadmap, architecture notes, acceptance criteria |
 
 **Technology:** Python/FastAPI/SQLAlchemy backend, React/TypeScript frontend, SQLite persistence, NumPy/SciPy
@@ -156,53 +150,6 @@ analytics, no required cloud backend. See [plan.md](plan.md) for the full stack 
 **Map tiles:** activity route maps use free, keyless providers — OpenFreeMap (OSM data), AWS/Mapzen terrain, and
 EOX Sentinel-2 satellite imagery, the last under CC BY-NC-SA 4.0 (**personal, non-commercial use only**, with
 attribution). If you deploy Cadence commercially, swap or remove the EOX satellite layer.
-
-## BLE scale research
-
-Cadence also includes research tools for the **Dr Trust USA 526 Legend** BLE body-composition scale,
-reverse-engineering its Bluetooth Low Energy traffic with no dependency on the official app.
-
-```sh
-cd research
-python3 -m venv .venv
-.venv/bin/pip install -e '.[test]'
-.venv/bin/pytest
-```
-
-The app running the tools (Terminal, VS Code, ...) needs Bluetooth access: System Settings → Privacy & Security →
-Bluetooth. Until it is granted, scanning silently waits. Run the CLI from the repository root so captures land in
-`captures/` (git-ignored — raw captures can contain nearby devices' identifiers and personal body data):
-
-```sh
-research/.venv/bin/cadence --help
-```
-
-| Command | What it does |
-|---|---|
-| `cadence scan` | Logs advertisements (name, address, RSSI, service UUIDs, manufacturer data, service data). `-i` marks the moment you wake the scale; devices that change afterwards are flagged as candidates. |
-| `cadence inspect` | Connects to a selected device, enumerates services/characteristics/descriptors, reads every readable value, and reports whether standard SIG Weight Scale (0x181D) / Body Composition (0x181B) services are present. |
-| `cadence capture` | Phase-guided session (idle → awake → measuring → weight done → body comp done → stepped off). Subscribes to every notify/indicate characteristic, timestamps every payload, and lets you type what the display shows. `--adv-only` never connects. |
-| `cadence analyze` | Offline: groups payloads per stream, lists distinct payloads with phases, prints byte masks showing which offsets vary, and a changes-only timeline interleaved with your notes. |
-
-Device selection (`--address`, `--name`, `--service-uuid`, `--company-id`, `--min-rssi`) is AND-ed. On macOS,
-`--address` is a CoreBluetooth UUID stable per Mac, not the scale's MAC address.
-
-Capture format: versioned JSON (`format: "cadence-capture"`, `schema_version: 1`), defined in
-[capture_format.py](research/cadence_ble/capture_format.py). Every event has `seq`, `t` (UTC ISO 8601), `t_rel`
-(monotonic seconds since start), `phase`, `type`; raw bytes are stored as lowercase hex, never decoded or altered.
-
-### Findings so far
-
-| Item | Status |
-|---|---|
-| Scale identity on BLE | **Confirmed.** Device named `SSW526` (service UUID `0xffb0`, manufacturer company ID `0x27ac`) connects live and its weight stream matches real weigh-ins (see below) — two independent sessions, two plausible weights. |
-| Standard Weight Scale / Body Composition service | **Confirmed absent.** `inspect-20261023-171705.json`: one vendor-specific service `0xffb0` only — `0xffb2` (notify) and `0xffb1` (write); no standard SIG `0x181D`/`0x181B`. Fully proprietary protocol. |
-| Measurement transport (notifications vs advertisements) | **Confirmed: notifications, no write needed.** `0xffb2` streams ~20-byte packets within ~2 s of connecting; nothing is ever written to `0xffb1` — `cadence capture` only subscribes. |
-| Weight decode | **Packet shape confirmed, kg conversion not.** 20-byte packet `ac 27 00 [B3] [B4 B5] 00×11 03 d5 [checksum]`; `B3` is a settling/locked flag (`0x68`/`0x69`). `uint16_be(B4,B5) / 120` matched one app reading but decoded about 2 kg below the scale's display in later live use (72.0–72.4 vs 74.2 kg), so it is **not reliable** and was not used. The cause (offset, divisor or layout) was not found. |
-| Which of the other 13 display metrics are transmitted vs app-calculated | **Likely all app-calculated, not yet proven.** Bytes 6–16 stayed zero across both full captures, including a 26 s silent window before the scale's own disconnect — right when the display would be cycling through them. The official app's own UI labels this screen "based on your initial info" (stored profile), consistent with client-side computation from weight + profile, not scale-transmitted data. Cadence will not present these as measured unless a future capture shows otherwise. |
-
-The tools never write to the scale; a write would only be added deliberately with captured justification. See
-[docs/protocol-investigation.md](docs/protocol-investigation.md) for the full capture workflow.
 
 ## Privacy
 
@@ -215,8 +162,8 @@ The tools never write to the scale; a write would only be added deliberately wit
 
 ## Contributing
 
-Issues and pull requests are welcome. `cd app/backend && .venv/bin/pytest`, `cd app/web && npm test && npm run
-typecheck`, and `cd research && .venv/bin/pytest` must all pass (CI runs all three on every PR). See
+Issues and pull requests are welcome. `cd app/backend && .venv/bin/pytest` and `cd app/web && npm test && npm run
+typecheck` must pass (CI runs both on every PR). See
 [plan.md](plan.md) for architecture conventions and the roadmap.
 
 ## License

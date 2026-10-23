@@ -3,7 +3,6 @@
     "allow": [
       "Bash(cd app/backend && .venv/bin/pytest:*)",
       "Bash(app/backend/.venv/bin/pytest:*)",
-      "Bash(research/.venv/bin/pytest:*)",
       "Bash(npm --prefix app/web test:*)",
       "Bash(npm --prefix app/web run typecheck:*)",
       "Bash(npm --prefix app/web run build:*)",

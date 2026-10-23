@@ -1,7 +1,5 @@
-# Raw captures can contain nearby devices' identifiers and personal body data.
-# Curated, reviewed fixtures belong in research/tests/fixtures instead.
-captures/*
-!captures/.gitkeep
+# Leftover local capture files may contain personal data; never commit them.
+captures/
 
 .venv/
 __pycache__/
