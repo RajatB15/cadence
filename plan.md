@@ -143,10 +143,10 @@ Phase 1 — Journal and behaviour insights
 - [x] Insights: behaviours with ≥ 8 yes and ≥ 8 no days feed the effects engine (overnight HRV, resting HR, sleep score, readiness, next-day run efficiency), adjusted for load and weekends, FDR across all tests; "What your habits cost you" section and coach notes.
 
 Phase 2 — Strength content from class screenshots
-- [ ] Paste text (iPhone Live Text) into "Name this class" on a strength/HIIT session; parse blocks and exercises; save as reusable template.
-- [ ] Exercise dictionary → movement pattern (squat, hinge, lunge, push, pull, carry, core, plyometric) and primary muscles; unknown names asked once.
-- [ ] HR segmentation: warm-up / ordered blocks / cool-down by changepoint fitting on the HR trace (watch records one set per session, ~0.5 Hz HR: block-level only, never per-exercise). Per-block time, zones and load.
-- [ ] Coach: weekly pattern totals, heavy-legs-before-key-session and missing-pattern notes; plan strength target becomes 1 heavy lower + 1 full body.
+- [x] Paste text (iPhone Live Text) into "Name this class" on a strength/HIIT session; parse blocks and exercises; save as reusable template.
+- [x] Exercise dictionary → movement pattern (squat, hinge, lunge, push, pull, carry, core, plyometric) and primary muscles; unknown names are kept and flagged. Labels are keyed by Garmin activity id so offline rebuilds keep them.
+- [x] HR segmentation: warm-up / ordered blocks / cool-down by changepoint fitting on the HR trace (watch records one set per session, ~0.5 Hz HR: block-level only, never per-exercise). Per-block time, zones and load.
+- [x] Coach: weekly pattern totals, heavy-legs-before-key-session and missing-pattern notes; plan strength target becomes 1 heavy lower + 1 full body.
 
 Phase 3 — Nightly sleep need and bedtime
 - [ ] Tonight's need = personal plateau + strain-scaled extra + half of 7-day debt (≤ 60 min) − naps.

@@ -14,6 +14,7 @@ from cadence_app.analytics.insights import (
     coach,
     finding,
     fmt_clock,
+    heavy_lower_days,
     readiness_now,
     readiness_on,
     recommend,
@@ -244,6 +245,12 @@ def session(c: dict, activity_id: int, streams: dict | None = None, summary: dic
             notes.append(note("drift", "warn", "Durability", f"Heart rate drifted {d:.1f}%",
                               "Efficiency fell between halves. Usually the opening pace was too ambitious for the duration; heat, hydration or fuelling also play in.",
                               "Start 10–15 s/km slower and aim for an even heart rate across both halves.", ev))
+
+    if a.family == "run" and (is_hard(a) or (a.moving_s or 0) >= LONG_MIN["run"] * 60):
+        if a.day - DAY in heavy_lower_days(c):
+            notes.append(note("heavy_legs", "info", "Strength", "Legs were loaded yesterday",
+                              "A heavy lower-body class the day before a quality or long run usually costs the run some pace and feel.",
+                              "Next time, move heavy legs to after a hard run, or 2+ days before it."))
 
     if streams and a.family == "run" and (i is None or i["kind"] != "hard"):
         pc = A.pacing(streams)
@@ -725,6 +732,9 @@ def week_progress(c: dict, plan: dict | None) -> dict:
             items.append({"key": "long", "label": f"Long run · {t['long_min']} min", "done": int(done), "target": 1})
         if t.get("strength"):
             items.append({"key": "strength", "label": "Strength", "done": strength, "target": t["strength"]})
+            sc = c.get("strength_content")
+            if sc and sc["labelled_28d"]:
+                items.append({"key": "heavy_lower", "label": "Heavy lower body", "done": sc["heavy_lower_this_week"], "target": 1})
     if easy:
         items.append({"key": "easy", "label": "Easy sessions kept easy", "done": sum(1 for k in easy if k["kind"] == "easy"), "target": len(easy)})
     nights = _window(s.get("sleep_hours", {}), ws, as_of)

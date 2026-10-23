@@ -107,6 +107,28 @@ class Behaviour(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime)
 
 
+class StrengthLabel(Base):
+    """What a strength/HIIT class contained, as you pasted it. Keyed by the source's activity id so an offline
+    rebuild (which recreates activity rows) never loses it."""
+
+    __tablename__ = "strength_labels"
+
+    source_id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    source_record_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    text: Mapped[str] = mapped_column(Text)
+    blocks: Mapped[str] = mapped_column(Text)  # JSON from analytics.exercises.parse
+    updated_at: Mapped[datetime] = mapped_column(DateTime)
+
+
+class StrengthTemplate(Base):
+    __tablename__ = "strength_templates"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(80), unique=True)
+    text: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime)
+
+
 class JournalEntry(Base):
     """One answer for one behaviour on the day it happened. A "no" is stored too: it is data, not a gap."""
 

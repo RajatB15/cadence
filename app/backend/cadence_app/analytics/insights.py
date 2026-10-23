@@ -14,6 +14,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
 
 from cadence_app import journal as journal_store
+from cadence_app import strength as strength_store
 from cadence_app.activity_types import activity_family
 from cadence_app.analytics import athlete as A
 from cadence_app.analytics import habits as H
@@ -210,6 +211,7 @@ def context(session: Session, source_id: str, today: date) -> dict | None:
         strength=strength_labelling(session, today) if garmin else None,
         journal={"behaviours": [journal_store.behaviour_dict(b) for b in journal_store.catalogue(session)],
                  "answers": journal_store.entries(session)},
+        labels=strength_store.by_activity(session, source_id),
     )
 
 
@@ -217,6 +219,7 @@ def assemble(
     source_id: str, series: dict[str, A.Series], acts: list[A.Act], today: date, *,
     analyses: dict[int, dict] | None = None, zones: dict | None = None, goal: dict | None = None,
     weights: list[tuple[date, float]] | None = None, strength: dict | None = None, journal: dict | None = None,
+    labels: dict[int, dict] | None = None,
 ) -> dict | None:
     """Pure assembly of the shared context from loaded data (tests build contexts with this directly)."""
     if not series and not acts:
@@ -281,8 +284,43 @@ def assemble(
     }
     c["underfuelling"] = R.underfuelling(weights, hrv, eff_trend, as_of)
     c["journal"] = journal or {"behaviours": [], "answers": {}}
+    c["labels"] = labels or {}
+    c["strength_content"] = strength_overview(c)
     c["habits"] = habit_insights(c)
     return c
+
+
+def heavy_lower_days(c: dict) -> set[date]:
+    return {c["act_by_id"][aid].day for aid, v in c.get("labels", {}).items() if aid in c["act_by_id"] and v["summary"]["heavy_lower"]}
+
+
+def strength_overview(c: dict) -> dict | None:
+    """What your strength sessions trained over the last 4 weeks, from the classes you've named."""
+    as_of = c["as_of"]
+    month = [a for a in c["acts"] if a.family == "strength" and a.day > as_of - timedelta(days=28)]
+    if not month:
+        return None
+    labels = c.get("labels", {})
+    last: dict[str, date] = {}
+    counts: dict[str, int] = {}
+    for a in c["acts"]:
+        v = labels.get(a.id)
+        if not v:
+            continue
+        for p in v["summary"]["patterns"]:
+            last[p] = max(last.get(p, a.day), a.day)
+            if a.day > as_of - timedelta(days=28):
+                counts[p] = counts.get(p, 0) + 1
+    week = A.week_start(as_of)
+    unlabelled = [a for a in sorted(month, key=lambda a: a.day, reverse=True) if a.id not in labels]
+    return {
+        "sessions_28d": len(month),
+        "labelled_28d": len(month) - len(unlabelled),
+        "patterns_28d": counts,
+        "last_trained": last,
+        "heavy_lower_this_week": sum(1 for d in heavy_lower_days(c) if d >= week),
+        "unlabelled": [{"id": a.id, "day": a.day, "name": a.name} for a in unlabelled[:6]],
+    }
 
 
 def habit_insights(c: dict) -> dict:
@@ -399,6 +437,7 @@ def build(session: Session, source_id: str, today: date) -> dict:
         "run_load": ctx["run_load"],
         "strength": ctx["strength_labelled"],
         "habits": {"effects": [e.__dict__ for e in ctx["habits"]["effects"]], "progress": ctx["habits"]["progress"]},
+        "strength_content": ctx["strength_content"],
         "hr_zones": ctx["zones"],
         "analysis_pending": pending,
     }
@@ -799,6 +838,28 @@ def coach(c: dict) -> list[dict]:  # noqa: C901 - a flat list of independent rul
             out.append(finding("strength_freq", "info", "Strength", "Add strength twice a week",
                                f"{strength:.1f} strength sessions a week over the last month. Heavy strength work improves running economy and lowers injury risk.",
                                "Two 30–40 minute sessions: squats or deadlifts, single-leg work, calf raises, hip and core.", link="#weeks"))
+
+    # Strength content from named classes
+    heavy = heavy_lower_days(c)
+    key_runs = {a.day for a in acts if a.family == "run" and (A.is_hard(a) or (a.moving_s or 0) >= A.LONG_MIN["run"] * 60)}
+    clashes = sorted(d for d in heavy if d + DAY in key_runs and d > as_of - timedelta(days=28))
+    if clashes:
+        out.append(finding("heavy_legs", "warn", "Strength", "Heavy legs the day before key runs",
+                           f"{len(clashes)} time{'s' if len(clashes) != 1 else ''} in 4 weeks a heavy lower-body class came the day before a quality "
+                           f"or long run (last on {clashes[-1]:%d %b}). Leg fatigue blunts the run, and the run delays the strength recovery.",
+                           "Put heavy leg work on a hard-run day (after the run) or 2+ days before the next one.", link="#strength"))
+    sc = c.get("strength_content")
+    if sc and runner and sc["labelled_28d"] >= 2:
+        for pattern, label, why in (("hinge", "No hip-hinge work in 2 weeks", "Deadlifts, RDLs, bridges and swings build the hamstrings and glutes that protect a runner's hips and knees."),
+                                    ("lunge", "No single-leg work in 3 weeks", "Lunges, split squats and step-ups train the one-leg stability running depends on.")):
+            last_day = sc["last_trained"].get(pattern)
+            limit = 14 if pattern == "hinge" else 21
+            if last_day is None or (as_of - last_day).days > limit:
+                out.append(finding(f"missing_{pattern}", "info", "Strength", label, why, "Ask for it in class or add one set after a session.", link="#strength"))
+    if sc and sc["sessions_28d"] >= 3 and sc["labelled_28d"] == 0:
+        out.append(finding("strength_names", "info", "Missing data", "Name your classes to unlock strength insights",
+                           f"{sc['sessions_28d']} strength sessions in 4 weeks, none named. Paste the class list from its screenshot (iPhone: long-press → Copy text) on the session page.",
+                           link="#strength"))
 
     # Data gaps that block insights
     if c["weigh_ins_60d"] is not None and c["weigh_ins_60d"] < 4:

@@ -2,6 +2,7 @@ import type {
   ActivityDetail,
   Behaviour,
   JournalView,
+  StrengthLabel,
   ActivityItem,
   ActivityLog,
   CredentialStatus,
@@ -34,7 +35,7 @@ export class ApiError extends Error {
 export const READ_ONLY =
   typeof document !== "undefined" &&
   document.querySelector('meta[name="cadence-mode"]')?.getAttribute("content") === "read-only";
-const PHONE_WRITES = ["/api/push/", "/api/garmin/sync", "/api/journal/"];
+const PHONE_WRITES = ["/api/push/", "/api/garmin/sync", "/api/journal/", "/api/strength/"];
 
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const method = init.method ?? "GET";
@@ -103,6 +104,10 @@ export const api = {
     request<Behaviour>("/api/journal/behaviours", { method: "POST", body: JSON.stringify(b) }),
   updateBehaviour: (key: string, patch: { active?: boolean }) =>
     request<Behaviour>(`/api/journal/behaviours/${encodeURIComponent(key)}`, { method: "PATCH", body: JSON.stringify(patch) }),
+  parseStrength: (text: string) => request<StrengthLabel>("/api/strength/parse", { method: "POST", body: JSON.stringify({ text }) }),
+  saveStrength: (id: number, text: string, template: string | null) =>
+    request<StrengthLabel>(`/api/strength/${id}`, { method: "PUT", body: JSON.stringify({ text, template }) }),
+  deleteStrength: (id: number) => request<{ deleted: boolean }>(`/api/strength/${id}`, { method: "DELETE" }),
   setGoal: (goal: { distance: GoalDistance; date: string; target_s: number | null } | null) =>
     request<{ goal: TrainingGoal | null }>("/api/settings/goal", { method: "PUT", body: JSON.stringify(goal ?? {}) }),
   sources: () => request<SourceInfo[]>("/api/sources"),

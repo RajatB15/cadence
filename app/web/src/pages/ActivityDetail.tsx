@@ -6,6 +6,7 @@ import { Suspense, lazy, useEffect, useMemo, useRef, useState, type ReactNode } 
 import { Link, useParams } from "react-router-dom";
 import { Chart, chartBase, type ChartOption } from "../components/Chart";
 import { NoteGrid, VerdictChip, readyColor } from "../components/CoachNotes";
+import { ClassContent } from "../components/StrengthClass";
 import { JsonTree, RecordTable, humanize } from "../components/DataViews";
 import { ErrorBlock, LoadingBlock, Segmented } from "../components/Shell";
 import { READ_ONLY, api } from "../lib/api";
@@ -74,6 +75,7 @@ export function ActivityPage() {
       )}
       <HeadlineStats d={d} />
       {d.coach && (d.coach.notes.length > 0 || d.coach.verdict) && <SessionCoach coach={d.coach} />}
+      <ClassContent d={d} />
       {d.fit?.error && <p className="text-sm text-coral">FIT file couldn't be decoded: {d.fit.error}</p>}
       <Zones d={d} />
       {d.fit && Object.keys(d.fit.streams).length > 1 && <Streams fit={d.fit} family={d.activity.family} />}

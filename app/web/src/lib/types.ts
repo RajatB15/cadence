@@ -87,6 +87,39 @@ export interface ActivityDetail {
   missing: string[];
   stored: Record<string, { fetched_at: string; status: number; bytes: number }>;
   coach: SessionCoach | null;
+  strength: { label: StrengthLabel | null; templates: { id: number; name: string; text: string }[] } | null;
+}
+
+export interface StrengthExercise {
+  name: string;
+  pattern: string | null;
+  muscles: string[];
+  loaded: boolean;
+}
+
+export interface StrengthBlock {
+  name: string;
+  kind: "strength" | "conditioning" | "core" | "mixed";
+  exercises: StrengthExercise[];
+}
+
+export interface StrengthLabel {
+  text: string;
+  blocks: StrengthBlock[];
+  summary: { patterns: Record<string, number>; heavy_lower: boolean; unknown: string[]; exercises: number };
+  segments?: {
+    segments: { name: string; kind: string; start_s: number; end_s: number; avg_hr: number; max_hr: number; hard_pct?: number }[];
+    fit: number;
+  } | null;
+}
+
+export interface StrengthContent {
+  sessions_28d: number;
+  labelled_28d: number;
+  patterns_28d: Record<string, number>;
+  last_trained: Record<string, string>;
+  heavy_lower_this_week: number;
+  unlabelled: { id: number; day: string; name: string }[];
 }
 
 export interface Verdict {
@@ -536,6 +569,7 @@ export type Insights =
       run_load: { acwr: number | null; km_7d: number; km_week_avg_28d: number } | null;
       strength: StrengthSummary | null;
       habits: { effects: HabitEffect[]; progress: HabitProgress[] };
+      strength_content: StrengthContent | null;
       hr_zones: { method: string | null; floors: number[]; max: number | null; threshold: number | null } | null;
       analysis_pending: number;
       analysis_running: boolean;

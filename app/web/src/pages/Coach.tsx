@@ -7,6 +7,7 @@ import { useMemo, useState, type FormEvent, type ReactNode } from "react";
 import { Chart, chartBase, type ChartOption } from "../components/Chart";
 import { NoteGrid, SEVERITY, readyColor } from "../components/CoachNotes";
 import { HabitsPanel } from "../components/Journal";
+import { StrengthPanel } from "../components/StrengthClass";
 import { DemoChip, ErrorBlock, LoadingBlock, PageHeader, Segmented } from "../components/Shell";
 import { Sparkline } from "../components/Sparkline";
 import { api } from "../lib/api";
@@ -68,6 +69,9 @@ export function CoachPage() {
         <Card id="habits" title="Habits" eyebrow="From your journal: what yesterday's choices do to today">
           <HabitsPanel effects={d.habits.effects} progress={d.habits.progress} />
         </Card>
+        <Card id="strength" title="Strength" eyebrow="What your named classes trained, last 4 weeks">
+          <StrengthPanel s={d.strength_content} />
+        </Card>
         <LoadChart d={d} />
         <div className="grid gap-6 xl:grid-cols-2">
           <Intensity d={d} />
@@ -84,7 +88,7 @@ export function CoachPage() {
 
 const SECTIONS = [
   ["plan", "Plan"], ["findings", "Findings"], ["performance", "Performance"], ["recovery", "Recovery"], ["load", "Load"],
-  ["habits", "Habits"], ["intensity", "Intensity"], ["aerobic", "Aerobic"], ["sleep", "Sleep"], ["effects", "Patterns"],
+  ["habits", "Habits"], ["strength", "Strength"], ["intensity", "Intensity"], ["aerobic", "Aerobic"], ["sleep", "Sleep"], ["effects", "Patterns"],
 ] as const;
 
 /** Sticky jump links: the coach page is long, especially on a phone. */

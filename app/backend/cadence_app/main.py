@@ -15,7 +15,8 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from cadence_app import days, journal, push
+from cadence_app import days, journal, push, strength
+from cadence_app.analytics import exercises
 from cadence_app.activity_types import activity_family
 from cadence_app.analytics import insights as insights_service
 from cadence_app.analytics import notes as coach_notes
@@ -121,6 +122,11 @@ class BehaviourUpdate(BaseModel):
     active: bool | None = None
     label: str | None = Field(default=None, min_length=1, max_length=60)
     question: str | None = Field(default=None, min_length=1, max_length=150)
+
+
+class StrengthText(BaseModel):
+    text: str = Field(min_length=1, max_length=4000)
+    template: str | None = Field(default=None, max_length=80)
 
 
 class GarminSyncRequest(BaseModel):
@@ -618,6 +624,7 @@ def create_app(
             "missing": [],
             "stored": {},
             "coach": None,
+            "strength": None,
         }
         if a.source_id == "garmin":
             rid = a.source_record_id
@@ -641,7 +648,33 @@ def create_app(
         if ctx:
             streams = out["fit"].get("streams") if out["fit"] else None
             out["coach"] = coach_notes.session(ctx, a.id, streams, out["garmin_summary"])
+        if activity_family(a.activity_type) == "strength":
+            label = strength.get(session, a)
+            if label and out["fit"] and out["fit"].get("streams"):
+                s = out["fit"]["streams"]
+                label["segments"] = exercises.segment(s.get("t") or [], s.get("heart_rate") or [], label["blocks"], ctx["zones"] if ctx else None)
+            out["strength"] = {"label": label, "templates": strength.templates(session)}
         return out
+
+    @app.post("/api/strength/parse")
+    def strength_parse(body: StrengthText) -> dict:
+        blocks = exercises.parse(body.text)
+        return strength.view(body.text, blocks)
+
+    @app.put("/api/strength/{activity_id}")
+    def strength_save(activity_id: int, body: StrengthText, session: Session = Depends(get_session)) -> dict:
+        a = _activity_for(session, activity_id)
+        if activity_family(a.activity_type) != "strength":
+            raise HTTPException(400, "Only strength and HIIT sessions can be named")
+        try:
+            return strength.save(session, a, body.text, clock.now(), body.template)
+        except ValueError as exc:
+            raise HTTPException(400, str(exc)) from None
+
+    @app.delete("/api/strength/{activity_id}")
+    def strength_delete(activity_id: int, session: Session = Depends(get_session)) -> dict:
+        strength.delete(session, _activity_for(session, activity_id))
+        return {"deleted": True}
 
     @app.post("/api/activities/{activity_id}/fetch")
     def activity_fetch(activity_id: int, session: Session = Depends(get_session)) -> dict:

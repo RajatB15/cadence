@@ -248,7 +248,8 @@ def weekly_plan(c: dict) -> dict | None:
                       "why": "Running km grow ≤ 10% a week: tendons and bones adapt slower than heart and lungs."})
     strength = {"race": 0, "taper": 1, "recovery": 1}.get(name, 2)
     if strength:
-        items.append({"label": "Strength", "value": f"{strength} × 30–40 min",
+        named = bool((c.get("strength_content") or {}).get("labelled_28d"))
+        items.append({"label": "Strength", "value": f"{strength} × 30–40 min" + (" · 1 heavy lower" if named and strength >= 2 else ""),
                       "why": "Heavy, low-rep lower-body work plus calves and hips improves running economy and cuts injury risk. "
                              "Keep it away from the day before a key session."})
     items.append({"label": "Rest", "value": "≥ 1 full day", "why": "Adaptation happens during recovery."})
