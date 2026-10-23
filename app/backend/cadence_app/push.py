@@ -33,10 +33,12 @@ from cadence_app.models import AppSetting, NotificationLog, PushSubscription, Sy
 
 log = logging.getLogger(__name__)
 PREFS_KEY = "push_prefs"
+MORNING_HOUR = 6  # the readiness brief is sent from 06:00, and a sync is forced then so it has fresh data
+BEDTIME_NUDGE_MIN = 21 * 60  # the bedtime nudge goes out at 21:00
 PREFS = {
-    "morning": "Morning readiness brief",
+    "morning": "Morning readiness brief at 06:00",
     "session": "Verdict after each session",
-    "bedtime": "Bedtime nudge at 22:30",
+    "bedtime": "Bedtime nudge at 21:00",
     "reminders": "Garmin key renewal reminders",
     "review": "Weekly review (Sunday 19:00) and monthly review (1st, 09:00)",
 }
@@ -138,13 +140,8 @@ def _clock(minutes: float) -> str:
 
 
 def bedtime_due(now_local: datetime, tonight: dict | None) -> bool:
-    """45 minutes before tonight's bedtime (never before 19:00; a bedtime after midnight is nudged at 23:30)."""
-    if not tonight:
-        return False
-    trigger = tonight["bed_min"] - 45  # minutes from tomorrow's midnight; negative = this evening
-    trigger = 1440 + trigger if trigger < 0 else 23 * 60 + 30
-    trigger = max(trigger, 19 * 60)
-    return now_local.hour * 60 + now_local.minute >= trigger
+    """True from 21:00 once tonight's bedtime is known."""
+    return bool(tonight) and now_local.hour * 60 + now_local.minute >= BEDTIME_NUDGE_MIN
 
 
 def _first_sentence(text: str, limit: int = 160) -> str:
@@ -187,7 +184,7 @@ class Notifier:
         if c is None:
             return [n for n in out if not self._logged(n["key"])]
 
-        if prefs["morning"] and 6 <= now_local.hour < 12:
+        if prefs["morning"] and MORNING_HOUR <= now_local.hour < 12:
             r = insights.readiness_on(c, today)
             if r is not None and c["as_of"] == today:
                 b = notes.brief(c)
@@ -222,7 +219,7 @@ class Notifier:
                 parts.append(f"+{tonight['repay_min']} min toward this week's {tonight['debt_h']:.1f} h debt")
             out.append({"key": f"bedtime:{today}", "kind": "bedtime", "url": "/metrics/sleep_hours",
                         "title": f"In bed by {_clock(tonight['bed_min'])}", "body": "; ".join(parts) + ". Start winding down now."})
-        elif prefs["bedtime"] and tonight is None and (now_local.hour, now_local.minute) >= (22, 30):
+        elif prefs["bedtime"] and tonight is None and now_local.hour * 60 + now_local.minute >= BEDTIME_NUDGE_MIN:
             need = notes.need(c)
             out.append({"key": f"bedtime:{today}", "kind": "bedtime", "url": "/metrics/sleep_hours",
                         "title": "Lights out by 23:30", "body": f"Wind down now: {need:g} h tonight lets today's training land."})
@@ -327,8 +324,11 @@ class Scheduler:
         last = self.last_sync()
         every = timedelta(hours=self.sync_every_h)
         # Mornings refresh fastest for the readiness brief; waking hours hourly so live readiness tracks the day.
-        if 6 <= now_local.hour < 11:
+        if MORNING_HOUR <= now_local.hour < 11:
             every = min(every, timedelta(minutes=45))
+            morning_start = now_utc - (now_local - now_local.replace(hour=MORNING_HOUR, minute=0, second=0, microsecond=0))
+            if last is None or last < morning_start:
+                return True  # first sync of the day lands at 06:00 so the brief isn't built from yesterday's data
         elif 11 <= now_local.hour < 23:
             every = min(every, timedelta(hours=1))
         return last is None or now_utc - last >= every

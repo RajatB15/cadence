@@ -219,11 +219,9 @@ def test_bedtime_push_moves_with_tonight():
     from cadence_app.push import bedtime_due
     at = lambda h, m: datetime(2026, 2, 13, h, m)  # noqa: E731
     tonight = {"bed_min": -60}  # in bed by 23:00 → nudge at 22:15
-    assert not bedtime_due(at(22, 0), tonight) and bedtime_due(at(22, 15), tonight)
-    assert bedtime_due(at(23, 35), {"bed_min": 20}) and not bedtime_due(at(23, 30), {"bed_min": 20})  # 00:20 → 23:35
-    assert bedtime_due(at(23, 30), {"bed_min": 60}) and not bedtime_due(at(23, 0), {"bed_min": 60})  # after 00:45 → 23:30
-    assert not bedtime_due(at(18, 30), {"bed_min": -400}) and bedtime_due(at(19, 0), {"bed_min": -400})
-    assert not bedtime_due(at(23, 0), None)
+    assert not bedtime_due(at(20, 59), tonight) and bedtime_due(at(21, 0), tonight)  # fixed 21:00, whatever the bedtime
+    assert bedtime_due(at(21, 0), {"bed_min": 20}) and bedtime_due(at(23, 59), {"bed_min": 60})
+    assert not bedtime_due(at(21, 0), None)
 
 
 def test_sleep_target_check_compares_nights_at_target():

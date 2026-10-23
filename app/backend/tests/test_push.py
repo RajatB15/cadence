@@ -118,6 +118,12 @@ def test_scheduler_syncs_on_interval_and_faster_in_the_morning(app_env):
     assert s.sync_due(datetime(2026, 10, 22, 7, 0), datetime(2026, 10, 22, 6, 50))
     s.run_once(datetime(2026, 10, 22, 7, 0), datetime(2026, 10, 22, 6, 50))
     assert started == ["quick"]
+    # First sync of the day is forced at 06:00 even though the last one was only a few hours ago.
+    s.last_sync = lambda: datetime(2026, 10, 22, 4, 30)
+    assert s.sync_due(datetime(2026, 10, 22, 6, 0), datetime(2026, 10, 22, 6, 0))
+    assert not s.sync_due(datetime(2026, 10, 22, 5, 59), datetime(2026, 10, 22, 5, 59))
+    s.last_sync = lambda: datetime(2026, 10, 22, 6, 5)
+    assert not s.sync_due(datetime(2026, 10, 22, 6, 30), datetime(2026, 10, 22, 6, 30))
 
 
 def test_paired_phone_can_manage_notifications_only(app_env):
