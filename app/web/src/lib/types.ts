@@ -837,6 +837,15 @@ export interface MetricSeries {
   points: Point[];
 }
 
+export interface ScaleStatus {
+  available: boolean;
+  enabled: boolean;
+  running: boolean;
+  connected: boolean;
+  last_error: string | null;
+  last_reading: { weight_kg: number; local_date: string; accepted_at: string } | null;
+}
+
 export interface SourceInfo {
   id: string;
   name: string;

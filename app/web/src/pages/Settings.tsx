@@ -45,6 +45,9 @@ export function SettingsPage() {
           <WeatherCard />
         </div>
         <div className="lg:col-span-5">
+          <ScaleCard />
+        </div>
+        <div className="lg:col-span-5">
           <SourcesCard />
         </div>
       </div>
@@ -75,6 +78,43 @@ function WeatherCard() {
       <button type="button" role="switch" aria-checked={q.data.enabled} disabled={READ_ONLY || toggle.isPending}
         onClick={() => toggle.mutate(!q.data.enabled)} className={q.data.enabled ? "pop pop-lime" : "pop pop-ghost"}>
         {q.data.enabled ? "On" : "Off"}
+      </button>
+    </section>
+  );
+}
+
+function ScaleCard() {
+  const client = useQueryClient();
+  const q = useQuery({ queryKey: ["scale-status"], queryFn: api.scaleStatus, refetchInterval: (x) => (x.state.data?.enabled ? 4000 : false) });
+  const toggle = useMutation({
+    mutationFn: (on: boolean) => api.setScale(on),
+    onSuccess: () => ["scale-status", "weight", "overview", "sources"].forEach((k) => client.invalidateQueries({ queryKey: [k] })),
+  });
+  if (q.isPending) return <LoadingBlock height={160} />;
+  if (q.isError) return <ErrorBlock error={q.error} retry={() => q.refetch()} />;
+  const s = q.data;
+  const state = !s.available ? "Not installed on this machine" : s.connected ? "Connected — listening for a reading" : s.enabled ? "Scanning for the scale…" : "Off";
+  return (
+    <section className="surface flex flex-wrap items-start justify-between gap-6 p-8">
+      <div className="max-w-2xl">
+        <h2 className="font-display text-3xl text-cream">Bluetooth scale</h2>
+        <p className="mt-3 text-sm leading-relaxed text-mute">
+          Weight from the SSW526 (Dr Trust USA 526 Legend) is read locally over Bluetooth and added to your weight trend — a reading is
+          accepted once it locks on the scale's display. Body composition isn't sent by this scale and is never imported; see the research
+          notes if you're curious why.
+        </p>
+        <p className={clsx("mt-2 text-sm", s.connected ? "text-lime" : "text-dim")}>{state}</p>
+        {!s.available && <p className="mt-2 text-xs text-dim">Install the research package alongside this backend to turn this on (see the README).</p>}
+        {s.last_error && <p className="mt-2 text-xs text-coral">{s.last_error}</p>}
+        {s.last_reading && (
+          <p className="mt-2 text-xs text-dim">
+            Last reading: {s.last_reading.weight_kg.toFixed(2)} kg on {s.last_reading.local_date}
+          </p>
+        )}
+      </div>
+      <button type="button" role="switch" aria-checked={s.enabled} disabled={READ_ONLY || !s.available || toggle.isPending}
+        onClick={() => toggle.mutate(!s.enabled)} className={s.enabled ? "pop pop-lime" : "pop pop-ghost"}>
+        {s.enabled ? "On" : "Off"}
       </button>
     </section>
   );
@@ -444,7 +484,10 @@ const SOURCE_STATUS: Record<string, { text: string; className: string }> = {
   awaiting_docs: { text: "Awaiting API docs", className: "!border-gold/40 !text-gold" },
   not_synced: { text: "Ready to connect", className: "!border-gold/40 !text-gold" },
   not_configured: { text: "No key", className: "" },
-  protocol_unverified: { text: "Protocol in research", className: "!border-violet/40 !text-violet" },
+  connected: { text: "Connected", className: "!border-lime/40 !text-lime" },
+  listening: { text: "Listening", className: "!border-gold/40 !text-gold" },
+  off: { text: "Off", className: "" },
+  unavailable: { text: "Not available", className: "" },
 };
 
 function SourcesCard() {

@@ -57,12 +57,14 @@ rather their health data stayed on their own machine.
 | **Weather** | Hot/cold/windy session notes, a personal heat cost on efficiency, forecasts with a cooler-hour suggestion for planned sessions. |
 | **Reviews** | Weekly and monthly reviews — training, plan adherence, fitness, recovery, sleep, habits, highlights — each with one focus for next period. |
 | **All-day strain** | Banister TRIMP from all-day heart rate, split into workout vs everyday movement, against a daily target band. |
+| **BLE scale bridge** | Weight from a reverse-engineered Dr Trust USA 526 Legend, read locally over Bluetooth (opt-in, macOS) and blended into your weight trend — no cloud, no official app. |
 | **Vault** | Every Garmin response is kept, compressed, forever. Dashboards rebuild from the vault with zero API calls. |
 | **Your iPhone** | A read-only (apart from its own check-ins) share server with QR pairing, installable as a Home Screen app, with Web Push notifications. |
 
-> **Scale status: protocol discovery.** Cadence also includes Python research tools for the Dr Trust USA 526 Legend
-> BLE body-composition scale (see [BLE scale research](#ble-scale-research) below). Nothing about that scale's
-> protocol is confirmed yet, and no compatibility is claimed until it is.
+> **Scale status: weight confirmed, body composition is not.** Cadence includes Python research tools for the Dr
+> Trust USA 526 Legend BLE body-composition scale (see [BLE scale research](#ble-scale-research) below) and an
+> opt-in bridge that imports weight into the app. Body-composition values are never presented as measured — this
+> scale doesn't transmit them, only its own app computes them from your profile.
 
 ## Quick start (try it with demo data)
 
@@ -201,6 +203,23 @@ Capture format: versioned JSON (`format: "cadence-capture"`, `schema_version: 1`
 
 The tools never write to the scale; a write would only be added deliberately with captured justification. See
 [docs/protocol-investigation.md](docs/protocol-investigation.md) for the full capture workflow.
+
+### Using the scale in the app
+
+With the weight formula confirmed, the main backend can import it directly — `cadence_app/scale.py` is a
+background listener (opt-in, macOS/Bluetooth only) that connects, debounces a stream of packets down to one
+accepted reading per weigh-in, and stores it in your local vault (blended into your weight trend alongside
+Garmin or demo data). Nothing here reimplements the protocol; it imports the tested
+[`cadence_ble.ssw526`](research/cadence_ble/ssw526.py) decoder. To turn it on, install the research package
+into the backend's own venv too:
+
+```sh
+cd app/backend && .venv/bin/pip install -e '.[test]' -e ../../research
+```
+
+Then enable it from **Settings → Bluetooth scale** in the app. Without that extra install, the backend runs
+and tests exactly as before — this is entirely optional, and the feature reports itself as unavailable
+rather than failing.
 
 ## Privacy
 

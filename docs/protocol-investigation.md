@@ -160,6 +160,13 @@ with the app computing them client-side from weight plus profile rather than rea
 Per the project's own rule, Cadence will not present body-composition values as *measured* unless a future
 capture shows the scale actually transmitting them — right now the evidence points the other way.
 
+**In the app.** The weight formula above is live in `app/backend/cadence_app/scale.py` — an opt-in background
+listener (Settings → Bluetooth scale) that imports `decode_weight_packet` directly from this package rather
+than reimplementing it, debounces a stream of packets down to one accepted reading per weigh-in, and stores
+it in the local vault. See that module's docstring for the debounce policy. It has not yet been run against
+real hardware end-to-end (only unit/integration-tested on synthetic readings) — that's the next thing to
+verify interactively, the same way the decode itself was verified above.
+
 **Next useful captures**, in order of value:
 1. Step on holding (or not holding) a known small weight, to test for an offset in the weight formula.
 2. A capture that stays connected through the scale's full auto-cycle and display sequence without

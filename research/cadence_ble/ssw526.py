@@ -14,6 +14,13 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+# Identity, from cadence inspect/scan (docs/protocol-investigation.md).
+DEVICE_NAME = "SSW526"
+SERVICE_UUID = "0000ffb0-0000-1000-8000-00805f9b34fb"
+NOTIFY_CHAR_UUID = "0000ffb2-0000-1000-8000-00805f9b34fb"
+WRITE_CHAR_UUID = "0000ffb1-0000-1000-8000-00805f9b34fb"  # purpose unconfirmed; nothing here writes to it
+MANUFACTURER_COMPANY_ID = 0x27AC
+
 PACKET_LEN = 20
 HEADER = bytes.fromhex("ac2700")
 TRAILER = bytes.fromhex("03d5")

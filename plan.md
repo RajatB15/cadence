@@ -105,11 +105,39 @@ Gate: connect or import, backfill, browse, tag, and export work end to end. Miss
 
 ### Stage 3: Scale Bridge (Idea 1)
 
-- [ ] Verify the BLE protocol with captures and measurement fixtures.
-- [ ] Persist readings locally with duplicate protection and source provenance.
-- [ ] Add explicit, opt-in Garmin upload only if supported, with retries and visible upload status.
+- [x] Verify the BLE protocol with captures and measurement fixtures. Weight confirmed (see
+  docs/protocol-investigation.md and `research/cadence_ble/ssw526.py`); body composition is not
+  transmitted (see Stage findings) — never persisted or presented as measured.
+- [x] Establish whether Garmin writes are supported: no (Personal API is "Pull only"; 26 published
+  endpoints, all reads, no weight-upload endpoint). Garmin upload is permanently out of scope for this
+  credential, not just deferred; readings live only in Cadence's own vault.
+- [x] Persist readings locally with duplicate protection and source provenance (not verified against real
+  hardware yet — covered by unit/integration tests on synthetic readings; next: confirm a real accepted
+  weigh-in writes a row and shows up in the weight trend):
+  - `cadence_app/scale.py`: platform/opt-in-gated (`available()` checks `cadence_ble` is importable;
+    `enabled()` is a Settings toggle, off by default — this needs real hardware present, unlike weather).
+    A background thread with its own asyncio loop (bleak is async-native; this mirrors the existing
+    Scheduler/AnalysisWorker thread pattern so it never touches the main request loop and is fully opt-in
+    in tests).
+  - `Debouncer`: a stream of decoded packets becomes at most one accepted reading per physical weigh-in —
+    requires N consecutive identical *locked* (stability-flag) raw values, then a cooldown before the next
+    acceptance. Pure, unit-tested logic, independent of the BLE I/O.
+  - Storage: reuses `WeightReading`/`write_batch` with `source_id="scale"`; the existing
+    `UniqueConstraint(source_id, source_record_id)` is the duplicate guard. `source_record_id` is derived
+    from the acceptance timestamp. Local date/timezone from the Mac's own clock (the scale has none).
+  - The weight page/summary blends `source_id IN (active_source, "scale")` — scale readings are
+    supplementary to whichever primary source is active, not a competing "source" in the single-source
+    sense used elsewhere.
+  - Install: the backend venv additionally installs `research` editable (`pip install -e '.[test]' -e
+    ../../research`) to reuse `cadence_ble.ssw526`'s confirmed, tested decoder — never reimplemented.
+    Entirely optional; the backend runs and tests fully without it (Linux CI has no Bluetooth and does not
+    install it).
+  - Settings: a "Bluetooth scale" card — available/not on this platform, enabled toggle, connected status,
+    last accepted reading.
 
-Gate: no silent overwrites; distinguish transmitted measurements from calculated estimates.
+Gate: no silent overwrites (upsert, never duplicate on reconnect/repeat notifications); distinguish
+transmitted measurements (weight) from calculated estimates (body composition, never stored from this
+scale).
 
 ### Stage 4: Personal Analytics (Ideas 3-6)
 

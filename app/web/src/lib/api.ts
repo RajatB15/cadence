@@ -4,6 +4,7 @@ import type {
   JournalView,
   PlanOption,
   Review,
+  ScaleStatus,
   PlannedSessionView,
   PlannerWeek,
   Sport,
@@ -140,6 +141,9 @@ export const api = {
   weatherSetting: () => request<{ enabled: boolean; available: boolean }>("/api/settings/weather"),
   setWeather: (enabled: boolean) =>
     request<{ enabled: boolean; available: boolean }>("/api/settings/weather", { method: "PUT", body: JSON.stringify({ enabled }) }),
+  scaleStatus: () => request<ScaleStatus>("/api/scale/status"),
+  setScale: (enabled: boolean) =>
+    request<{ enabled: boolean; available: boolean }>("/api/settings/scale", { method: "PUT", body: JSON.stringify({ enabled }) }),
   setGoal: (goal: { distance: GoalDistance; date: string; target_s: number | null } | null) =>
     request<{ goal: TrainingGoal | null }>("/api/settings/goal", { method: "PUT", body: JSON.stringify(goal ?? {}) }),
   sources: () => request<SourceInfo[]>("/api/sources"),
