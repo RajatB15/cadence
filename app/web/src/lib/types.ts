@@ -315,6 +315,36 @@ export interface WeekSummary {
   complete: boolean;
 }
 
+export interface Behaviour {
+  key: string;
+  label: string;
+  question: string;
+  kind: "yes_no" | "count";
+  unit: string;
+  active: boolean;
+  builtin: boolean;
+}
+
+export interface JournalView {
+  behaviours: Behaviour[];
+  checkin: { day: string; done: boolean };
+  days: { day: string; answers: Record<string, number> }[];
+  today: string;
+}
+
+export interface HabitProgress {
+  key: string;
+  label: string;
+  yes: number;
+  no: number;
+  needed: number;
+  ready: boolean;
+  yes_label: string;
+  no_label: string;
+}
+
+export type HabitEffect = Effect & { extra: { behaviour: string; outcome: string } };
+
 export type GoalDistance = "5k" | "10k" | "half" | "marathon";
 
 export interface TrainingGoal {
@@ -505,6 +535,7 @@ export type Insights =
       warnings: WarningSignals | null;
       run_load: { acwr: number | null; km_7d: number; km_week_avg_28d: number } | null;
       strength: StrengthSummary | null;
+      habits: { effects: HabitEffect[]; progress: HabitProgress[] };
       hr_zones: { method: string | null; floors: number[]; max: number | null; threshold: number | null } | null;
       analysis_pending: number;
       analysis_running: boolean;
@@ -556,6 +587,7 @@ export type Overview =
       as_of: string;
       coach: Brief | null;
       score: ScoreSummary | null;
+      journal: { day: string; done: boolean; behaviours: Behaviour[] };
       metrics: MetricSummary[];
       week: {
         start: string;

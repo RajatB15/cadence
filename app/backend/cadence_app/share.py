@@ -32,6 +32,8 @@ COOKIE_MAX_AGE = 180 * 86400
 BLOCKED_API = ("/api/share",)
 # The only writes a paired phone may make: its own notifications and an on-demand Garmin refresh.
 PHONE_WRITES = {"/api/push/subscribe", "/api/push/unsubscribe", "/api/push/test", "/api/push/prefs", "/api/garmin/sync"}
+# The journal check-in is made on the phone, so its routes accept writes from paired devices too.
+PHONE_WRITE_PREFIXES = ("/api/journal/",)
 READ_ONLY_META = '<meta name="cadence-mode" content="read-only" />'
 TAILSCALE_APP_CLI = "/Applications/Tailscale.app/Contents/MacOS/Tailscale"
 SECURITY_HEADERS = [
@@ -79,7 +81,7 @@ class ShareGate:
 
     def _route(self, request: Request) -> Response | None:
         path = request.url.path
-        if request.method not in ("GET", "HEAD") and path not in PHONE_WRITES:
+        if request.method not in ("GET", "HEAD") and path not in PHONE_WRITES and not path.startswith(PHONE_WRITE_PREFIXES):
             return PlainTextResponse("This device has read-only access.", status_code=405)
         token = self.token()
         if not token:

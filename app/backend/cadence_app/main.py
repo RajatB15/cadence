@@ -15,7 +15,7 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from cadence_app import days, push
+from cadence_app import days, journal, push
 from cadence_app.activity_types import activity_family
 from cadence_app.analytics import insights as insights_service
 from cadence_app.analytics import notes as coach_notes
@@ -104,6 +104,23 @@ class TrainingGoalRequest(BaseModel):
     distance: Literal["5k", "10k", "half", "marathon"] | None = None
     date: RaceDate | None = None
     target_s: int | None = Field(default=None, ge=600, le=8 * 3600)
+
+
+class JournalDayRequest(BaseModel):
+    answers: dict[str, float] = Field(default_factory=dict, max_length=60)
+
+
+class BehaviourCreate(BaseModel):
+    label: str = Field(min_length=1, max_length=60)
+    question: str = Field(default="", max_length=150)
+    kind: Literal["yes_no", "count"] = "yes_no"
+    unit: str = Field(default="", max_length=16)
+
+
+class BehaviourUpdate(BaseModel):
+    active: bool | None = None
+    label: str | None = Field(default=None, min_length=1, max_length=60)
+    question: str | None = Field(default=None, min_length=1, max_length=150)
 
 
 class GarminSyncRequest(BaseModel):
@@ -497,8 +514,11 @@ def create_app(
         verdicts = coach_notes.verdicts(ctx)
 
         weight = _weight_summary(session, clock.today())
+        journal.ensure_catalogue(session, clock.now())
         return {
             "has_data": True,
+            "journal": {**journal.checkin(session, clock.today()),
+                        "behaviours": [journal.behaviour_dict(b) for b in journal.catalogue(session, include_inactive=False)]},
             "source_id": source_id,
             "as_of": latest_day,
             "coach": coach_notes.brief(ctx) if ctx else None,
@@ -773,6 +793,38 @@ def create_app(
             session.add(AppSetting(key=WEIGHT_GOAL_KEY, value=str(body.goal_kg)))
         session.commit()
         return {"goal_kg": body.goal_kg}
+
+    @app.get("/api/journal")
+    def journal_view(days: int = Query(14, ge=1, le=60), session: Session = Depends(get_session)) -> dict:
+        journal.ensure_catalogue(session, clock.now())
+        today = clock.today()
+        return {
+            "behaviours": [journal.behaviour_dict(b) for b in journal.catalogue(session)],
+            "checkin": journal.checkin(session, today),
+            "days": journal.days(session, today - timedelta(days=days)),
+            "today": today,
+        }
+
+    @app.put("/api/journal/{day}")
+    def journal_save(day: date, body: JournalDayRequest, session: Session = Depends(get_session)) -> dict:
+        journal.ensure_catalogue(session, clock.now())
+        try:
+            answers = journal.save_day(session, day, body.answers, clock.today(), clock.now())
+        except ValueError as exc:
+            raise HTTPException(400, str(exc)) from None
+        return {"day": day, "answers": answers, "checkin": journal.checkin(session, clock.today())}
+
+    @app.post("/api/journal/behaviours")
+    def journal_add(body: BehaviourCreate, session: Session = Depends(get_session)) -> dict:
+        b = journal.add_behaviour(session, body.label, body.question, body.kind, body.unit, clock.now())
+        return journal.behaviour_dict(b)
+
+    @app.patch("/api/journal/behaviours/{key}")
+    def journal_update(key: str, body: BehaviourUpdate, session: Session = Depends(get_session)) -> dict:
+        b = journal.update_behaviour(session, key, active=body.active, label=body.label, question=body.question)
+        if b is None:
+            raise HTTPException(404, "Unknown habit")
+        return journal.behaviour_dict(b)
 
     @app.put("/api/settings/goal")
     def set_training_goal(body: TrainingGoalRequest, session: Session = Depends(get_session)) -> dict:

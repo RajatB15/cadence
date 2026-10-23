@@ -6,6 +6,7 @@ from datetime import date, datetime, timedelta
 from statistics import fmean, median
 
 from cadence_app.analytics import athlete as A
+from cadence_app.analytics import habits as H
 from cadence_app.analytics import plan as training_plan
 from cadence_app.analytics import recovery as R
 from cadence_app.analytics.insights import (
@@ -39,6 +40,10 @@ def fmt_pace(seconds: float) -> str:
 
 def fmt_day(d: date) -> str:
     return f"{d.day} {d:%b %Y}"
+
+
+def _lc_first(text: str) -> str:
+    return text if text[:2].isupper() else text[:1].lower() + text[1:]
 
 
 def _join(parts: list[str]) -> str:
@@ -338,6 +343,22 @@ def contributors(c: dict, d: date) -> list[str]:
     stress = s.get("stress", {})
     if prev in stress and len(stress) >= 30 and stress[prev] >= A.quantile(list(stress.values()), 0.75):
         out.append(f"a high-stress day (average {stress[prev]:.0f})")
+    out += logged_habits(c, prev)
+    return out
+
+
+def logged_habits(c: dict, day: date) -> list[str]:
+    """Journal answers for `day` that usually cost recovery, in words ("2 drinks", "late caffeine")."""
+    j = c.get("journal") or {}
+    proven = H.strongest((c.get("habits") or {}).get("effects", []))
+    out = []
+    for b in j.get("behaviours", []):
+        value = j.get("answers", {}).get(b["key"], {}).get(day)
+        if not value:
+            continue
+        costly = b["key"] in H.PRESUMED_COSTLY or (b["key"] in proven and H.worse(proven[b["key"]]))
+        if costly:
+            out.append(f"{value:.0f} {b['unit'] or 'x'} ({b['label'].lower()})" if b["kind"] == "count" else b["label"].lower())
     return out
 
 
@@ -353,6 +374,13 @@ def day(c: dict, d: date) -> dict:  # noqa: C901 - one block per metric family
     guided = R.hrv_guided(g("hrv"), d, history_days=14)
     call = recommend(r, c["pmc_by_day"].get(d), c["load"].get(d - DAY, 0), warn, guided) if r else None
     target = need(c)
+    for key, e in H.strongest((c.get("habits") or {}).get("effects", [])).items():
+        value = (c.get("journal") or {}).get("answers", {}).get(key, {}).get(d - DAY)
+        yes, *_ = H.exposure(next(b for b in c["journal"]["behaviours"] if b["key"] == key), {d - DAY: value} if value is not None else {})
+        if yes and H.worse(e):
+            notes.append(note(f"habit_{key}", "info", "Your habits", f"{e.exposed} yesterday",
+                              f"On your history that's followed by {_lc_first(e.outcome)} of {e.exposed_mean:.0f} vs {e.reference_mean:.0f} on days without it.",
+                              None, None, (e.extra["outcome"],) if e.extra["outcome"] in s else ()))
     if warn:
         notes.append(note("warning", warn["level"], "Recovery", "Several signals off together",
                           _join([x["label"] for x in warn["signals"]]) + ". Two or more moving together is a common early sign of illness or overreaching.",

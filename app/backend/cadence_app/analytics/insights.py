@@ -13,8 +13,10 @@ from statistics import fmean, median, pstdev
 from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
 
+from cadence_app import journal as journal_store
 from cadence_app.activity_types import activity_family
 from cadence_app.analytics import athlete as A
+from cadence_app.analytics import habits as H
 from cadence_app.analytics import performance as P
 from cadence_app.analytics import plan as training_plan
 from cadence_app.analytics import recovery as R
@@ -206,13 +208,15 @@ def context(session: Session, source_id: str, today: date) -> dict | None:
         goal=load_goal(session),
         weights=load_weights(session, source_id),
         strength=strength_labelling(session, today) if garmin else None,
+        journal={"behaviours": [journal_store.behaviour_dict(b) for b in journal_store.catalogue(session)],
+                 "answers": journal_store.entries(session)},
     )
 
 
 def assemble(
     source_id: str, series: dict[str, A.Series], acts: list[A.Act], today: date, *,
     analyses: dict[int, dict] | None = None, zones: dict | None = None, goal: dict | None = None,
-    weights: list[tuple[date, float]] | None = None, strength: dict | None = None,
+    weights: list[tuple[date, float]] | None = None, strength: dict | None = None, journal: dict | None = None,
 ) -> dict | None:
     """Pure assembly of the shared context from loaded data (tests build contexts with this directly)."""
     if not series and not acts:
@@ -276,7 +280,24 @@ def assemble(
         "spikes": distance_spikes(acts, as_of - timedelta(days=13), as_of),
     }
     c["underfuelling"] = R.underfuelling(weights, hrv, eff_trend, as_of)
+    c["journal"] = journal or {"behaviours": [], "answers": {}}
+    c["habits"] = habit_insights(c)
     return c
+
+
+def habit_insights(c: dict) -> dict:
+    """Journal behaviours against next-morning recovery and next-day running, adjusted for load and weekends."""
+    j = c["journal"]
+    if not any(j["answers"].values()):
+        return {"effects": [], "progress": []}
+    logged = {d for values in j["answers"].values() for d in values}
+    readiness = {d + DAY: r["score"] for d in logged if (r := readiness_on(c, d + DAY)) is not None}
+    s = c["series"]
+    outcomes = {"hrv": s.get("hrv", {}), "resting_hr": s.get("resting_hr", {}), "sleep_score": s.get("sleep_score", {}),
+                "readiness": readiness, "run_eff": H.run_efficiency_series(c["eff"])}
+    span = list(A.daterange(min(logged), max(logged)))
+    covariates = {"weekend": {d: float(d.weekday() >= 5) for d in span}, "training load": {d: c["load"].get(d, 0.0) for d in span}}
+    return H.insights(j["behaviours"], j["answers"], outcomes, covariates)
 
 
 def run_load(acts: list[A.Act], as_of: date) -> dict | None:
@@ -377,6 +398,7 @@ def build(session: Session, source_id: str, today: date) -> dict:
         "warnings": ctx["warnings"],
         "run_load": ctx["run_load"],
         "strength": ctx["strength_labelled"],
+        "habits": {"effects": [e.__dict__ for e in ctx["habits"]["effects"]], "progress": ctx["habits"]["progress"]},
         "hr_zones": ctx["zones"],
         "analysis_pending": pending,
     }
@@ -784,6 +806,19 @@ def coach(c: dict) -> list[dict]:  # noqa: C901 - a flat list of independent rul
     sl = c["strength_labelled"]
     if sl and sl["sessions"] >= 5 and sl["labelled"] / sl["sessions"] < 0.2:
         out.append(finding("strength_data", "info", "Missing data", "Strength exercises aren't being recorded", f"{sl['sessions']} strength sessions have set data but none name the exercise, so muscle balance and progressive overload can't be tracked.", "Use a structured strength workout on the watch, or confirm exercise names in Garmin Connect after each session."))
+
+    # Journal habits with a clear effect on your recovery
+    for key, e in H.strongest((c.get("habits") or {}).get("effects", [])).items():
+        bad = H.worse(e)
+        diff = f"{abs(e.diff):.0f}{' ' + e.unit if e.unit and e.unit != '%' else e.unit} "
+        out.append(finding(
+            f"habit_{key}", "warn" if bad else "good", "Your habits",
+            f"{e.exposed} {'costs' if bad else 'adds'} you {diff}{'of' if bad else 'to'} {_lc(e.outcome)}",
+            f"After {_lc(e.exposed)} days your {_lc(e.outcome)} averages {e.exposed_mean:.0f} vs {e.reference_mean:.0f} after {_lc(e.reference)} days "
+            f"({e.n_exposed} vs {e.n_reference}), still {abs(e.diff):.0f} after allowing for training load and weekends.",
+            ("Cut it back before key sessions and long runs." if bad else "Keep it in your routine."),
+            [{"label": "Effect size", "value": f"{abs(e.effect_size):.1f} SD"}, {"label": "Confidence", "value": f"q = {e.q_value:.3f}"}], "#habits",
+        ))
 
     # Strongest personal patterns (FDR-controlled), translated into levers
     for e in [e for e in c.get("effects", []) if e.significant and abs(e.effect_size) >= 0.5][:2]:

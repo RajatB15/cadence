@@ -1,5 +1,7 @@
 import type {
   ActivityDetail,
+  Behaviour,
+  JournalView,
   ActivityItem,
   ActivityLog,
   CredentialStatus,
@@ -32,7 +34,7 @@ export class ApiError extends Error {
 export const READ_ONLY =
   typeof document !== "undefined" &&
   document.querySelector('meta[name="cadence-mode"]')?.getAttribute("content") === "read-only";
-const PHONE_WRITES = ["/api/push/", "/api/garmin/sync"];
+const PHONE_WRITES = ["/api/push/", "/api/garmin/sync", "/api/journal/"];
 
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const method = init.method ?? "GET";
@@ -94,6 +96,13 @@ export const api = {
       method: "PUT",
       body: JSON.stringify({ goal_kg }),
     }),
+  journal: (days = 14) => request<JournalView>(`/api/journal?days=${days}`),
+  saveJournal: (day: string, answers: Record<string, number>) =>
+    request<{ day: string; answers: Record<string, number> }>(`/api/journal/${day}`, { method: "PUT", body: JSON.stringify({ answers }) }),
+  addBehaviour: (b: { label: string; question: string; kind: Behaviour["kind"]; unit: string }) =>
+    request<Behaviour>("/api/journal/behaviours", { method: "POST", body: JSON.stringify(b) }),
+  updateBehaviour: (key: string, patch: { active?: boolean }) =>
+    request<Behaviour>(`/api/journal/behaviours/${encodeURIComponent(key)}`, { method: "PATCH", body: JSON.stringify(patch) }),
   setGoal: (goal: { distance: GoalDistance; date: string; target_s: number | null } | null) =>
     request<{ goal: TrainingGoal | null }>("/api/settings/goal", { method: "PUT", body: JSON.stringify(goal ?? {}) }),
   sources: () => request<SourceInfo[]>("/api/sources"),

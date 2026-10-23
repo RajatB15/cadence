@@ -91,14 +91,33 @@ class WeightReading(Base):
     imported_at: Mapped[datetime] = mapped_column(DateTime)
 
 
-class Tag(Base):
-    __tablename__ = "tags"
-    __table_args__ = (UniqueConstraint("day", "label"),)
+class Behaviour(Base):
+    """Something worth tracking in the journal: built in (deactivate only) or your own."""
+
+    __tablename__ = "behaviours"
+
+    key: Mapped[str] = mapped_column(String(48), primary_key=True)
+    label: Mapped[str] = mapped_column(String(80))
+    question: Mapped[str] = mapped_column(String(160))
+    kind: Mapped[str] = mapped_column(String(16))  # yes_no | count
+    unit: Mapped[str] = mapped_column(String(16), default="")
+    active: Mapped[bool] = mapped_column(Boolean, default=True)
+    builtin: Mapped[bool] = mapped_column(Boolean, default=False)
+    sort: Mapped[int] = mapped_column(Integer, default=100)
+    created_at: Mapped[datetime] = mapped_column(DateTime)
+
+
+class JournalEntry(Base):
+    """One answer for one behaviour on the day it happened. A "no" is stored too: it is data, not a gap."""
+
+    __tablename__ = "journal_entries"
+    __table_args__ = (UniqueConstraint("day", "behaviour_key"),)
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     day: Mapped[date] = mapped_column(Date, index=True)
-    label: Mapped[str] = mapped_column(String(48))
-    created_at: Mapped[datetime] = mapped_column(DateTime)
+    behaviour_key: Mapped[str] = mapped_column(ForeignKey("behaviours.key", ondelete="CASCADE"), index=True)
+    value: Mapped[float] = mapped_column(Float)
+    answered_at: Mapped[datetime] = mapped_column(DateTime)
 
 
 class SyncRun(Base):

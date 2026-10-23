@@ -104,3 +104,13 @@ def test_share_endpoints_on_loopback(tmp_path):
         r = client.post("/api/share/start", headers=MUTATE)
         assert r.status_code == 409 and "npm run build" in r.json()["detail"]
         assert client.post("/api/share/start").status_code == 403
+
+
+def test_paired_phone_can_write_the_journal_but_nothing_else(api, web):
+    c = phone(api, web)
+    c.get("/pair?key=tok", follow_redirects=False)
+    assert c.get("/api/journal").status_code == 200
+    r = c.put("/api/journal/2026-10-21", json={"answers": {"alcohol": 2}}, headers=MUTATE)
+    assert r.status_code == 200 and r.json()["answers"]["alcohol"] == 2
+    assert c.post("/api/sync/demo", headers=MUTATE).status_code == 405
+    assert c.put("/api/settings/goal", json={}, headers=MUTATE).status_code == 405

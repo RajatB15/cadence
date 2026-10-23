@@ -136,11 +136,11 @@ Gate: test on controlled fixtures and representative activities; unsuitable acti
 Closes the software gaps against WHOOP that matter for training (journal insights, adaptive sleep need, all-day strain), plus strength-session content. Hardware/medical features (skin temperature, ECG, clinician visits) are out of scope.
 
 Phase 1 — Journal and behaviour insights
-- [ ] Migration: behaviour catalogue (key, label, question, kind yes/no · count, active, sort) and daily answers (day, behaviour, value, answered_at); fold in the unused `tags` table.
-- [ ] Default behaviours asked each morning about yesterday: alcohol (drinks), caffeine after 14:00, late big meal, screens in bed, sauna/heat, stressful day, travel/time zone, felt ill, mobility, nap; custom behaviours allowed.
-- [ ] API: catalogue CRUD, answers for a day, check-in status. Paired phones may write only `/api/journal/*` (and later `/api/strength/*`); everything else stays read-only.
-- [ ] Morning check-in sheet on Home (offered until answered), journal history page section, morning push mentions it.
-- [ ] Insights: behaviours with ≥ 8 yes and ≥ 8 no days feed the effects engine (overnight HRV, resting HR, sleep score, readiness, next-day run efficiency), adjusted for load and weekends, FDR across all tests; "What your habits cost you" section and coach notes.
+- [x] Migration: behaviour catalogue (key, label, question, kind yes/no · count, active, sort) and daily answers (day, behaviour, value, answered_at); fold in the unused `tags` table.
+- [x] Default behaviours asked each morning about yesterday: alcohol (drinks), caffeine after 14:00, late big meal, screens in bed, sauna/heat, stressful day, travel/time zone, felt ill, mobility, nap; custom behaviours allowed.
+- [x] API: catalogue CRUD, answers for a day, check-in status. Paired phones may write only `/api/journal/*` (and later `/api/strength/*`); everything else stays read-only.
+- [x] Morning check-in sheet on Home (offered until answered), journal history page section, morning push mentions it.
+- [x] Insights: behaviours with ≥ 8 yes and ≥ 8 no days feed the effects engine (overnight HRV, resting HR, sleep score, readiness, next-day run efficiency), adjusted for load and weekends, FDR across all tests; "What your habits cost you" section and coach notes.
 
 Phase 2 — Strength content from class screenshots
 - [ ] Paste text (iPhone Live Text) into "Name this class" on a strength/HIIT session; parse blocks and exercises; save as reusable template.

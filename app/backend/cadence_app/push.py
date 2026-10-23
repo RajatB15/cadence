@@ -25,6 +25,7 @@ from py_vapid import Vapid02
 from sqlalchemy import delete, select
 from sqlalchemy.orm import sessionmaker
 
+from cadence_app import journal
 from cadence_app.analytics import insights, notes
 from cadence_app.credentials import CredentialStatus
 from cadence_app.models import AppSetting, NotificationLog, PushSubscription, SyncRun
@@ -173,9 +174,12 @@ class Notifier:
             r = insights.readiness_on(c, today)
             if r is not None and c["as_of"] == today:
                 b = notes.brief(c)
-                out.append({"key": f"morning:{today}", "kind": "morning", "url": "/",
+                with self.factory() as session:
+                    pending = not journal.checkin(session, today)["done"]
+                out.append({"key": f"morning:{today}", "kind": "morning", "url": "/?checkin=1" if pending else "/",
                             "title": f"Readiness {r['score']} · {b['call']['headline']}" if b["call"] else f"Readiness {r['score']}",
-                            "body": f"{b['today']['title']}. {_first_sentence(b['today']['detail'])}"})
+                            "body": f"{b['today']['title']}. {_first_sentence(b['today']['detail'])}"
+                                    + (" Tap to log yesterday's habits." if pending else "")})
 
         if prefs["session"]:
             cutoff = now_local - timedelta(hours=36)

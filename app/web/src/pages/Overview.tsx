@@ -16,7 +16,8 @@ import {
 } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { useCallback, useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
+import { CheckInCard } from "../components/Journal";
 import { Ring, SEVERITY, VerdictChip, readyColor } from "../components/CoachNotes";
 import { CountUp } from "../components/CountUp";
 import { RefreshChip } from "../components/RefreshButton";
@@ -77,6 +78,7 @@ function Dashboard({ data }: { data: Extract<Overview, { has_data: true }> }) {
   const [sheet, setSheet] = useState<null | "readiness" | "week">(null);
   const r = coach?.readiness;
   const fallback = headline(data.metrics);
+  const [params] = useSearchParams();
 
   return (
     <motion.div variants={stagger} initial="hidden" animate="show" className="space-y-10">
@@ -113,6 +115,12 @@ function Dashboard({ data }: { data: Extract<Overview, { has_data: true }> }) {
               to="/score"
             />
           )}
+        </motion.section>
+      )}
+
+      {data.journal && (
+        <motion.section variants={rise}>
+          <CheckInCard day={data.journal.day} done={data.journal.done} count={data.journal.behaviours.length} autoOpen={params.get("checkin") === "1"} />
         </motion.section>
       )}
 
