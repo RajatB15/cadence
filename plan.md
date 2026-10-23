@@ -1,0 +1,187 @@
+# Cadence Product Plan
+
+Last updated: 2026-10-23.
+
+## Direction
+
+Build a single-user, local-first health and training web app, then package the validated experience as a standalone macOS app. LLM integration is the final stage.
+
+Differentiate through transparent analytics, cross-source context, customizable workflows, and data ownership. Garmin already provides overlapping trends, readiness, training load, and summaries; verify current product capabilities before claiming a feature is unique.
+
+The existing Python BLE scale research remains intact. The web-first roadmap supersedes the earlier iOS-first roadmap. No cloud account or hosted backend is required initially.
+
+**Store everything, surface what matters:** every imported response stays in the vault; product pages show curated views and derived insights, and raw records remain inspectable in the Vault data explorer.
+
+## Current State
+
+- Existing: BLE capture and analysis tools and synthetic tests under research/.
+- Built (2026-10-22): local FastAPI backend and SQLite schema under app/backend; React web app under app/web; deterministic demo connector; weight trend analytics; credential expiry status, banner, and settings timeline. Verified with backend/frontend tests and in-browser checks at desktop and mobile widths.
+- Verified on 2026-10-22: official Garmin Personal API key exchange and authenticated reads. Full-history core backfill completed against the real account: 421 activities, 648 days of daily summaries, sleep, HRV, Body Battery, and 19 weigh-ins, back to 2025-01-12 (account history start), in ~126 API calls. Deep archive (FIT files, activity details/workouts, intraday HR/HRV, SpO₂, fitness age) runs in the background.
+- Garmin vault: every response is stored compressed in SQLite (`raw_responses`), FIT ZIPs under `data/archive/garmin/fit/` (0600). Dashboards are derived from the vault and can be rebuilt offline with zero API calls. Days older than 3 days are fetched once and never re-requested; each later sync makes about one request per dataset.
+- Once Garmin has data, all dashboard queries select Garmin records exclusively; demo records are never blended with real observations.
+- Unverified: scale protocol, Garmin rate limits (none hit so far), and personal-use storage terms beyond the FAQ ("personal applications using their own data"). Published Swagger lists 26 read-only endpoints and no weight-upload endpoint.
+- Not built: export/backup, tags, deeper analytics, app packaging, OS notifications. Remaining datasets without purpose-built views (auto-detected moves, food logs) are viewable via the day "Everything recorded" panel and the Vault data explorer.
+- Coach / analytics (2026-10-22): `/coach` page backed by `analytics/athlete.py` (pure algorithms) and `analytics/insights.py` (assembly, rules, plan). Readiness score (HRV/RHR z-scores vs 60-day baseline, sleep score, form), Banister fitness/fatigue/form and EWMA acute:chronic ratio, weekly monotony/strain/rest days, 80/20 intensity distribution from HR-zone time, aerobic efficiency (grade-adjusted pace per heartbeat, Theil–Sen trend), Pa:HR decoupling from FIT streams (cached per run in `activity_analyses`), sleep timing regularity, lagged personal effects (Welch t-tests, n ≥ 8 per group), a rule-based "what you're missing" list, and a 7-day prescription using Garmin lactate-threshold HR zones. Raw-dump panels were removed from product pages; the Vault data explorer remains for inspection.
+- Coach everywhere (2026-10-22): `analytics/notes.py` builds on a shared per-request insights context (~0.1 s). Home leads with today's call (readiness ring + concrete session from the weekly plan, HR targets from Garmin zones), this week vs plan (load band, sessions, quality sessions, long run, easy-kept-easy, sleep, lights-out), an athlete score with five pillars and week-over-week deltas (fitness vs 1-year peak, 7-day readiness, sleep, consistency, intensity balance), streaks with personal bests, and the top issues to fix. Every session gets a verdict (Easy, Long & easy, Key session, Grey zone, Hard again, Long & hard, High intensity) and notes: intensity mix vs readiness and recent hard days, load percentile, efficiency vs similar-HR runs, HR drift, pacing split, next-morning HRV response, late-finish sleep cost, distance/pace milestones, unlabelled strength sets. Every day gets metric-tagged notes (sleep duration with a bedtime from the wake time, sleep quality with likely contributors, deep/REM lows, HRV and RHR vs baseline, stress, Body Battery, steps, SpO₂, respiration, load/ACWR, weekly intensity minutes), and weigh-ins get frequency, rate-vs-goal and goal-path notes.
+- Renamed WeighIn → Cadence (2026-10-22): packages `cadence_app` / `cadence_ble`, CLI `cadence`, header `X-Cadence-Request`, env `CADENCE_*`, database `data/cadence.sqlite3`. Captures written as `weighin-capture` still load.
+- iPhone access (2026-10-22): opt-in, read-only share server (`cadence_app/share.py`, port 8766, all interfaces) started from Settings. QR pairing key → HttpOnly cookie; GET/HEAD only; `/api/share` blocked from phones; serves the built `app/web/dist` with a read-only marker so the UI skips on-demand fetches; resumes on restart. Home-screen install via web manifest + apple-touch-icon. Plain HTTP on the LAN; use Tailscale for remote access. Rebuild `dist` after frontend changes.
+- Direction (2026-10-22): one always-on Cadence service + the web app on every device, joined by Tailscale. A native iOS app is only worth it for HealthKit, phone-side BLE or background sync; the standalone macOS app (Stage 8) is deferred in favour of the login service. Raspberry Pi / Mac mini hosting to be evaluated so the phone doesn't depend on the laptop being awake.
+- Login service + notifications (2026-10-22): `scripts/cadence-service.sh` installs a LaunchAgent (RunAtLoad, KeepAlive; logs in ~/Library/Logs/Cadence). The backend now serves the built site on :8765. `cadence_app/push.py`: VAPID + RFC 8291 Web Push (py-vapid, http-ece, httpx), subscriptions restricted to known push services, `notification_log` makes each notification fire once; scheduler syncs Garmin every 3 h (45 min on mornings) and sends the morning readiness brief, session verdicts, 22:30 bedtime nudge and key reminders, each toggleable. Paired phones may only write to `/api/push/*`. Share card detects `tailscale serve` and pairs to the https://…ts.net address. iOS push requires the Home Screen app over HTTPS (Tailscale).
+- Readiness v2 + Cadence Score (2026-10-23): Garmin's Training Readiness isn't exposed by the personal API, so readiness was rebuilt on its factors: sleep score 25%, 3-night sleep 10%, HRV vs Garmin's balanced range 20%, resting HR in bpm vs 60-day normal 10%, load (ACWR + form) 20%, Body Battery 15%; a normal day scores ~80 (matched the user's Garmin 82 on 2026-10-23, previously 52). After a session, Home compares it with what the day called for (matched / open / harder / extra) and only suggests an optional easy second session before 19:00 with readiness ≥ 70. Home shows today's (or the latest) sessions with verdict and headline note. `analytics/score.py` computes a daily Cadence Score from 15 factors in Train 30% / Recover 30% / Sleep 25% / Move 15%, recomputable for any past day, with points lost per factor; `/score` shows rings, a radar of every factor, the 100-point bar, ranked gaps with fixes, 30/90/365-day history and per-area factor cards.
+- Live readiness + minimal Home (2026-10-23): new `body_battery_now` metric (Garmin's `bodyBattery.latestValue`). Today's readiness starts from the morning score and moves through the day: Body Battery drain (half-weighted, so normal evening decline isn't punished) and a per-session strain cost (up to 35 load points, scaled by load vs fitness, recovering with a 7 h half-life), with a "since this morning" breakdown. The day's plan still uses the morning score. Scheduler syncs hourly 11:00–23:00 (45 min mornings, 3 h overnight); Home refetches every 5 min. Home is now two dials (live Readiness, Cadence score) with detail sheets, a compact Today card with expandable "why", today's sessions, a week strip of mini rings (sheet for the full list), a "biggest gain" line, a swipeable vitals strip and streak chips. Motion: rings rotate in and count up, sparklines draw themselves, bars grow and ECharts animate as each scrolls into view.
+- Analytics review (2026-10-23): fixes — walks no longer dilute the 80/20 split or count as training sessions; aerobic efficiency is speed per beat above resting HR (ACSM/Swain), so pace-at-HR is right away from the median HR, and interval runs are excluded; readiness weights rebalanced (HRV 25%, RHR 15%, Body Battery 5% since it is derived from HRV/sleep) and checked against same-day run efficiency (`readiness_validation`, suggested weights shown, never auto-applied); one personal sleep need everywhere (broken-stick plateau of overnight HRV vs sleep, 8 h default); lagged effects use regression with weekend/load covariates, autocorrelation-inflated SEs and Benjamini–Hochberg FDR; sprint sessions count as hard by anaerobic TE ≥ 3; ACWR > 1.5 only alerts when corroborated (run-km spike or warning signals) and has half weight in the score; recovery/taper weeks are not penalised. New modules: `analytics/performance.py` (Minetti grade-adjusted speed, best efforts, critical speed + D′ with validity checks, race predictions, CS pace bands, zone staleness check, cadence-at-speed and late-run fade trends; FIT analysis v2 for every run ≥ 10 min), `analytics/recovery.py` (HRV-guided ln RMSSD 7-day vs ±0.5 SD band with CV coping, personal recovery cost by session type → quality-session spacing and live-readiness half-life, sleep need, Sleep Regularity Index, two-signal illness/overreach warning, RED-S pattern) and `analytics/plan.py` (goal-aware periodisation: base/build/specific/taper/race counted back from a race goal set on the Coach page, 3:1 blocks without one, CTL ramp ~6%/week capped at 1.25 × chronic, long run +10 min/week capped at 110% of the 30-day longest run, rotating progressive threshold/VO₂/race-pace sessions with HR and CS pace targets, strength 2×/week). Verified against the real vault: CS fits from 177 analysed runs, hard-session recovery is personal (26 isolated sessions); readiness validation still needs 20 comparable runs.
+- Day explorer (2026-10-22): every metric page is a day explorer — pick a day (click the trend, arrows, or ←/→) to see its value against the 7-day/30-day averages, 60-day baseline, prior week, all-time range, rank and percentile, plus metric-specific panels: HRV (baseline band, status, overnight 5-minute readings), all-day heart rate, sleep (stages, timing, score components, SpO₂/respiration), Body Battery timeline, stress breakdown, movement goals and energy, SpO₂ hourly, breathing, sessions, fitness age, hydration. Intraday detail not yet archived is fetched once on first view of a day.
+- Activity detail page (2026-10-22): decodes each archived FIT file with Garmin's official FIT SDK and shows headline stats, HR zones, every recorded channel as linked charts, the GPS route, laps/splits and strength sets. Missing per-activity assets are fetched once on first open; raw fields stay in the Vault data explorer.
+- Route maps (2026-10-24): the activity route is a MapLibre GL v6 map (lazy-loaded) on free, keyless providers — OpenFreeMap Dark/Streets (OSM data), EOX Sentinel-2 cloudless 2025 satellite (CC BY-NC-SA 4.0: personal, non-commercial use with attribution) and AWS/Mapzen terrarium elevation for 3D terrain + hillshade. The route is a glowing line gradient by pace/speed, heart rate or elevation (FIT decode now emits a `track` with per-GPS-point t/hr/speed/alt/dist), with start/finish pins and collision-aware km badges. A 3D chase-cam flyover follows the trail, with an elevation-profile scrubber and live time/distance/pace/HR/elevation readout; fullscreen; 3D is the default when relief ≥ 60 m. Tile requests reveal the viewed area to those providers (accepted by the user); no activity data is sent. Without WebGL or if the style can't load, the locally drawn route shape is shown.
+
+## Technology
+
+| Layer | Choice |
+| --- | --- |
+| UI | React, TypeScript, Vite |
+| Styling and controls | Tailwind CSS, accessible Radix primitives, Lucide icons |
+| Charts | Apache ECharts |
+| Local backend | Python, FastAPI, Pydantic |
+| Persistence | SQLite, SQLAlchemy, Alembic migrations |
+| Source archive | Original responses and activity files in a local application-data directory |
+| Analytics | NumPy, pandas, SciPy; statsmodels when justified |
+| Jobs | One local worker with persisted job state; no Redis initially |
+| Tests | pytest, Vitest, Playwright |
+| macOS shell | Tauri provisionally; validate Python sidecar, signing, and Bluetooth permissions early |
+| LLM | Provider-independent adapter added last |
+
+Avoid microservices, cloud databases, Kubernetes, and vector databases until a concrete need exists.
+
+## Data Architecture
+
+Garmin API/exports, BLE scale, and optional external sources feed connectors. Preserve raw source data, normalize into SQLite, then compute versioned analytics exposed by the local API to the web UI.
+
+- Separate source records, normalized records, and derived results.
+- Retain source IDs, timestamps, units, provenance, calculation version, and freshness.
+- Normalize instants while preserving source timezone and local-day semantics.
+- Make imports idempotent, resumable, and rate-limit aware; persist checkpoints and retry state.
+- Core browsing must work offline after import. Provide portable export, backup, and deletion.
+- Keep BLE logic behind a connector boundary; reuse tested research parsing once verified.
+
+## Roadmap
+
+Estimate delivery dates after API verification and a representative data sample.
+
+### Stage 0: Access and Packaging Spikes
+
+- [x] Obtain official documentation for this credential type (Personal API page, FAQ, Swagger, garmin/connect-personal-api-python).
+- [x] Verify authentication, endpoints, historical depth, pagination, and raw activity/FIT access. Access tokens last 24 h (renewed at 23 h); no refresh tokens. Rate limits are undocumented: client throttles to 1 req/s and backs off on 429 / Retry-After.
+- [x] Establish whether weight/body-composition writes are supported: no write endpoint is published.
+- [x] Verified documented authentication and daily-summary read on 2026-10-22 without printing the key, access token, or personal response body.
+- [x] Define capability flags: datasets returning 401/403, or probes returning no data, are marked unavailable; other datasets continue.
+- [ ] Spike Tauri/Python sidecar startup, lifecycle, signing, and Bluetooth permission requirements.
+
+Gate: document observed capabilities without inventing endpoints. Unsupported writes disable Garmin upload, not local scale storage or the rest of the app.
+
+Official sources: [Personal API authentication](https://developer.garmin.com/gc-developer-program/personal/personal-api/), [Personal API Swagger](https://developer.garmin.com/gc-developer-program/personal/swagger-docs/), and [program overview](https://developer.garmin.com/gc-developer-program/overview/). Token exchange: POST `/personalapitoken-service/personal-api/personal-api-key/token` with `Authorization: ApiKey ...`; observed response is a plain-text access token. Data host: `https://personal.connectapi.garmin.com`, Bearer authentication.
+
+Observed limits (2026-10-22): Swagger says daily summaries accept 1-year windows, but Garmin returns HTTP 500 above ~120 days. The engine treats 400/500 on a range window as "too large", halves and persists the window size, and only treats a failing single day as a transient error. Defaults: daily summaries/weight/goals 120 d, activities 180 d × 50 per page, sleep/HRV/Body Battery 31 d.
+
+### Stage 1: Data Foundation (Idea 10)
+
+- [x] Create local backend, schema/migrations, and connector boundary.
+- [x] Add raw source archive (Garmin vault) and a background worker with persisted checkpoints, stop, and resume.
+- [x] Implement historical backfill and incremental sync for verified datasets; offline rebuild from the vault.
+- [x] Expose sync progress, failures, freshness, and available capabilities (Vault page).
+- [ ] Implement export and backup. (Demo-data deletion is implemented.)
+- [x] Implement credential expiry status and renewal reminders specified below (in-app; see criteria for remaining items).
+
+Gate: repeated imports do not duplicate records (verified); interrupted sync resumes (verified live); rebuild makes zero API calls (verified by test); secrets never reach the browser (verified by test).
+
+### Stage 2: First Usable Web Release (Idea 2)
+
+- [x] Build overview, activity explorer, and sleep, HRV, resting-heart-rate, stress, and weight timelines (demo data).
+- [ ] Add manual context tags. (Schema exists; no API or UI yet.)
+- [x] Add smoothed weight trends, uncertainty, and cautious goal projections.
+- [x] Display credential renewal status and test desktop/mobile layouts.
+- [ ] Verify offline browsing and add a Playwright end-to-end suite.
+
+Gate: connect or import, backfill, browse, tag, and export work end to end. Missing data is explicitly distinguished from zero.
+
+### Stage 3: Scale Bridge (Idea 1)
+
+- [ ] Verify the BLE protocol with captures and measurement fixtures.
+- [ ] Persist readings locally with duplicate protection and source provenance.
+- [ ] Add explicit, opt-in Garmin upload only if supported, with retries and visible upload status.
+
+Gate: no silent overwrites; distinguish transmitted measurements from calculated estimates.
+
+### Stage 4: Personal Analytics (Ideas 3-6)
+
+- [x] Idea 3: lagged associations across metrics (load, sleep, bedtime, workout timing, stress, steps) with sample sizes and significance; tags not yet included.
+- [x] Idea 4 (first pass): transparent readiness score from HRV/RHR baselines, sleep and form, validated against same-day run efficiency (Spearman). Forecasting still pending.
+- [x] Idea 5 (first pass): HRV and resting-HR deviation findings vs personal baseline, not diagnoses.
+- [ ] Idea 6: weight versus aerobic efficiency — blocked by sparse weigh-ins (flagged as a data gap).
+
+Gate: reproducible calculations, uncertainty, minimum-data rules, and no causal or medical claims unsupported by evidence.
+
+### Stage 5: Training Lab (Ideas 7-9)
+
+- [x] Idea 7: transparent fitness/fatigue/form (42/7-day EWMA) with acute:chronic ratio and visible assumptions.
+- [ ] Idea 8: repeated-route matching and effort comparison; add weather context before claiming weather adjustment.
+- [x] Idea 9: heart-rate drift (Pa:HR) on grade-adjusted pace for runs ≥ 45 min; late-run fade on runs ≥ 75 min; unsteady-pace runs excluded.
+- [x] Critical speed / D′, race predictions, pace bands and HR-zone staleness from best efforts.
+- [x] Periodised plan with optional race goal, 3:1 blocks, run-specific spike caps and HRV-guided gating.
+- [ ] Personal Banister fit (individual time constants) once critical-speed history is long enough.
+
+Gate: test on controlled fixtures and representative activities; unsuitable activities get explicit exclusions.
+
+### Stage 6: Context and Actions (Ideas 11-12)
+
+- [ ] Idea 11: weather, calendar summaries, and optional caffeine/meal context with explicit permissions.
+- [ ] Idea 12: previewable digest/automation rules, opt-in notifications, and delivery history.
+
+Gate: external integrations can be disconnected, provenance remains visible, and failed delivery is inspectable.
+
+### Stage 7: Retrospectives (Idea 13)
+
+- [ ] Build monthly/yearly reports and shareable graphics from verified statistics, including consistency and recovery patterns.
+- [ ] Provide private previews and deliberate export rather than automatic publication.
+
+### Stage 8: Standalone macOS Release
+
+- [ ] Package validated web workflows with Tauri if the early spike succeeds.
+- [ ] Move credentials to macOS Keychain with a deliberate migration from the local development file.
+- [ ] Implement service lifecycle, app-data paths, installer/signing, and an update strategy.
+- [ ] Validate Bluetooth access, sync resume, backups, and expiry reminders in the packaged app.
+
+### Stage 9: LLM Integration (Idea 14, Last)
+
+- [ ] Add read-only analytics tools and a provider adapter after the data/analytics workflows are verified.
+- [ ] Answer questions with dated evidence, traceable calculations, and explicit uncertainty.
+- [ ] Preview and obtain opt-in for health data sent to an external provider.
+- [ ] Evaluate factual grounding and refusal to invent missing observations; no autonomous uploads or health decisions.
+
+## Credential Storage and Renewal Reminder
+
+Development credentials are stored only in the git-ignored `.secrets/garmin.env`, with owner-only directory/file permissions. This is plaintext storage, not encryption. Do not duplicate the key here or in any tracked file. Load it on the backend; do not expose it through Vite environment variables.
+
+- `GARMIN_API_KEY`: local credential, never displayed or logged.
+- `GARMIN_API_KEY_EXPIRES_ON=2027-10-22`: date supplied by the user as one year from 2026-10-22; not provider-verified.
+- `GARMIN_API_KEY_REMINDER_DAYS=30,7,1`: initial reminder thresholds.
+
+Reminder acceptance criteria:
+
+- [x] Backend exposes only availability, configured expiry date, days remaining, and renewal status, never the credential itself.
+- [x] Persistent settings status shows expiry; show a renewal banner within 30 days and escalate at 7 days, 1 day, and on expiry.
+- [x] Initial reminder dates are 2027-09-22, 2027-10-15, and 2027-10-21; mark expired on 2027-10-22 using local calendar dates.
+- [x] Recalculate on startup/resume and daily while running; surface missed thresholds on next launch.
+- [x] Dismissal does not hide later escalation; deduplicate notifications by expiry date and threshold.
+- [ ] OS notifications are opt-in and require permission. Do not promise delivery while the web app is closed; background delivery requires a separately validated desktop mechanism.
+- [ ] Replacement updates credential and expiry together without exposing either key; reset reminder state for the new expiry. (Manual file edit works and reminder keys reset by expiry date; no in-app replacement flow yet.)
+- [ ] Handle missing/malformed expiry and authentication rejection separately; a configured date does not prove the key is valid.
+- [ ] Test threshold boundaries, leap years, timezone/day changes, resume after missed reminders, rotation, and notification deduplication with a controllable clock.
+
+## Security and Quality Gates
+
+- Bind the local service to loopback; protect browser requests with strict allowed origins and request authentication/CSRF controls as appropriate.
+- Never commit credentials, raw personal records, local databases, or logs containing health data.
+- Use synthetic fixtures or explicitly reviewed, redacted samples in tests.
+- Never claim local data is encrypted unless encryption is actually implemented; plan backup and deletion accordingly.
+- Keep BLE capture workflows working and run focused tests for every changed behavior.
+- Maintain empty, missing-data, loading, failure, and unsupported-capability states throughout the UI.

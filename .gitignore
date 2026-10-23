@@ -1,0 +1,22 @@
+# Raw captures can contain nearby devices' identifiers and personal body data.
+# Curated, reviewed fixtures belong in research/tests/fixtures instead.
+captures/*
+!captures/.gitkeep
+
+.venv/
+__pycache__/
+*.egg-info/
+.pytest_cache/
+*.json.tmp
+.DS_Store
+
+.env
+.env.*
+!.env.example
+.secrets/
+
+# Local app database and raw source archive contain personal health data.
+data/
+node_modules/
+dist/
+*.tsbuildinfo

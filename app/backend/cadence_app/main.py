@@ -1,0 +1,882 @@
+from __future__ import annotations
+
+from collections.abc import Callable, Iterator
+from contextlib import asynccontextmanager
+from dataclasses import asdict
+from datetime import date, datetime, timedelta
+from statistics import fmean
+from typing import Literal
+
+from fastapi import Depends, FastAPI, HTTPException, Query, Request
+from fastapi.middleware.trustedhost import TrustedHostMiddleware
+from fastapi.responses import FileResponse, JSONResponse, Response
+from pydantic import BaseModel, Field
+from sqlalchemy import delete, func, select
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Session
+
+from cadence_app import days, push
+from cadence_app.activity_types import activity_family
+from cadence_app.analytics import insights as insights_service
+from cadence_app.analytics import notes as coach_notes
+from cadence_app.analytics import score as cadence_score
+from cadence_app.analytics import training_log
+from cadence_app.analytics import weight as weight_analytics
+from cadence_app.config import Settings, load_settings
+from cadence_app.credentials import credential_status
+from cadence_app.db import make_engine, make_session_factory, upgrade_database
+from cadence_app.garmin import fit, vault
+from cadence_app.garmin.client import GarminClient, GarminError
+from cadence_app.garmin.datasets import BY_KEY, DATASETS
+from cadence_app.garmin.engine import SyncManager
+from cadence_app.models import (
+    Activity,
+    AppSetting,
+    DailyMetric,
+    DatasetState,
+    ReminderDismissal,
+    Source,
+    SyncRun,
+    WeightReading,
+)
+from cadence_app.models import RawResponse as vault_model
+from cadence_app.secrets import read_env_file
+from cadence_app.share import ShareServer
+from cadence_app.sync import latest_runs, run_demo_sync, utcnow
+
+SAFE_METHODS = {"GET", "HEAD", "OPTIONS"}
+ALLOWED_HOSTS = ["127.0.0.1", "localhost"]
+WEIGHT_GOAL_KEY = "weight_goal_kg"
+
+# higher_is_better: None means context-dependent.
+METRICS: dict[str, dict] = {
+    "hrv": {"label": "HRV", "unit": "ms", "higher_is_better": True},
+    "hrv_weekly": {"label": "HRV 7-day", "unit": "ms", "higher_is_better": True},
+    "resting_hr": {"label": "Resting HR", "unit": "bpm", "higher_is_better": False},
+    "sleep_hours": {"label": "Sleep", "unit": "h", "higher_is_better": True},
+    "sleep_score": {"label": "Sleep score", "unit": "", "higher_is_better": True},
+    "deep_sleep_h": {"label": "Deep sleep", "unit": "h", "higher_is_better": True},
+    "rem_sleep_h": {"label": "REM sleep", "unit": "h", "higher_is_better": True},
+    "sleep_stress": {"label": "Sleep stress", "unit": "", "higher_is_better": False},
+    "stress": {"label": "Stress", "unit": "", "higher_is_better": False},
+    "body_battery": {"label": "Body Battery", "unit": "", "higher_is_better": True},
+    "body_battery_low": {"label": "Body Battery low", "unit": "", "higher_is_better": True},
+    "body_battery_now": {"label": "Body Battery now", "unit": "", "higher_is_better": True},
+    "steps": {"label": "Steps", "unit": "", "higher_is_better": True},
+    "floors": {"label": "Floors", "unit": "", "higher_is_better": True},
+    "intensity_minutes": {"label": "Intensity", "unit": "min", "higher_is_better": True},
+    "active_calories": {"label": "Active calories", "unit": "kcal", "higher_is_better": None},
+    "total_calories": {"label": "Total calories", "unit": "kcal", "higher_is_better": None},
+    "calories_consumed": {"label": "Calories eaten", "unit": "kcal", "higher_is_better": None},
+    "respiration": {"label": "Respiration", "unit": "brpm", "higher_is_better": None},
+    "spo2": {"label": "SpO₂", "unit": "%", "higher_is_better": True},
+    "hydration_ml": {"label": "Hydration", "unit": "ml", "higher_is_better": True},
+    "training_load": {"label": "Training load", "unit": "", "higher_is_better": None},
+    "vo2max": {"label": "VO₂ max", "unit": "", "higher_is_better": True},
+    "fitness_age": {"label": "Fitness age", "unit": "yrs", "higher_is_better": False},
+}
+OVERVIEW_METRICS = [
+    "hrv", "resting_hr", "sleep_hours", "sleep_score", "body_battery", "stress",
+    "steps", "intensity_minutes", "vo2max",
+]
+
+
+class Clock:
+    def today(self) -> date:
+        return date.today()
+
+    def now(self) -> datetime:
+        return utcnow()
+
+
+class DismissRequest(BaseModel):
+    key: str = Field(max_length=64)
+
+
+class WeightGoalRequest(BaseModel):
+    goal_kg: float | None = Field(default=None, ge=30, le=300)
+
+
+RaceDate = date  # the request field is called `date`, which would shadow the type inside the model
+
+
+class TrainingGoalRequest(BaseModel):
+    distance: Literal["5k", "10k", "half", "marathon"] | None = None
+    date: RaceDate | None = None
+    target_s: int | None = Field(default=None, ge=600, le=8 * 3600)
+
+
+class GarminSyncRequest(BaseModel):
+    mode: Literal["quick", "full"] = "full"
+
+
+class PushKeys(BaseModel):
+    p256dh: str = Field(min_length=20, max_length=256)
+    auth: str = Field(min_length=8, max_length=64)
+
+
+class PushSubscribeRequest(BaseModel):
+    endpoint: str = Field(max_length=1024)
+    keys: PushKeys
+    label: str = Field(default="", max_length=120)
+
+
+class PushEndpointRequest(BaseModel):
+    endpoint: str = Field(max_length=1024)
+
+
+def create_app(
+    settings: Settings | None = None,
+    clock: Clock | None = None,
+    garmin_client_factory: Callable[[str], GarminClient] | None = None,
+) -> FastAPI:
+    settings = settings or load_settings()
+    clock = clock or Clock()
+    settings.data_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
+    upgrade_database(settings.database_url)
+    engine = make_engine(settings.database_url)
+    factory = make_session_factory(engine)
+    make_client = garmin_client_factory or (
+        lambda key: GarminClient(key, min_interval_s=settings.garmin_min_interval_s)
+    )
+    garmin_jobs = SyncManager(
+        factory,
+        settings.archive_dir,
+        clock.today,
+        clock.now,
+        lambda: make_client(read_env_file(settings.secrets_file).get("GARMIN_API_KEY", "")),
+    )
+    garmin_jobs.recover_interrupted()
+    analysis = insights_service.AnalysisWorker(factory, settings.archive_dir)
+
+    def current_credential():
+        return credential_status(read_env_file(settings.secrets_file), clock.today())
+
+    def active_source() -> str:
+        with factory() as session:
+            return _active_source(session)
+
+    sender = push.PushSender(factory, settings.data_dir / "push-vapid.pem", settings.push_contact, clock.now)
+    notifier = push.Notifier(factory, sender, active_source, current_credential)
+    scheduler = push.Scheduler(
+        factory, notifier, garmin_jobs.start, lambda: garmin_jobs.busy,
+        lambda: current_credential().configured, clock.now, settings.sync_every_h,
+    )
+
+    @asynccontextmanager
+    async def lifespan(_app: FastAPI):
+        share.resume()
+        if settings.scheduler:
+            scheduler.start()
+        yield
+        scheduler.stop()
+        share.stop(remember=False)
+        analysis.stop()
+        garmin_jobs.close()
+        engine.dispose()
+
+    app = FastAPI(title="Cadence", lifespan=lifespan, docs_url=None, redoc_url=None)
+    share = ShareServer(app, factory, settings.web_dist, settings.share_port)
+    app.state.share = share
+    app.state.notifier, app.state.scheduler = notifier, scheduler
+    app.add_middleware(TrustedHostMiddleware, allowed_hosts=ALLOWED_HOSTS)
+
+    @app.middleware("http")
+    async def guard_mutations(request: Request, call_next: Callable):
+        # Custom header forces a CORS preflight, which this API never approves cross-origin.
+        if request.method not in SAFE_METHODS:
+            origin = request.headers.get("origin")
+            if request.headers.get("x-cadence-request") != "1" or (
+                origin is not None and origin not in settings.allowed_origins
+            ):
+                return JSONResponse({"detail": "Request rejected"}, status_code=403)
+        return await call_next(request)
+
+    def get_session() -> Iterator[Session]:
+        with factory() as session:
+            yield session
+
+    @app.get("/api/health")
+    def health() -> dict:
+        return {"ok": True}
+
+    @app.get("/api/push")
+    def push_status() -> dict:
+        return {
+            "public_key": sender.public_key,
+            "devices": push.devices(factory),
+            "prefs": push.get_prefs(factory),
+            "labels": push.PREFS,
+            "recent": notifier.recent(),
+            "scheduler": settings.scheduler,
+            "sync_every_h": settings.sync_every_h,
+        }
+
+    @app.post("/api/push/subscribe")
+    def push_subscribe(body: PushSubscribeRequest) -> dict:
+        if not push.allowed_endpoint(body.endpoint):
+            raise HTTPException(400, "Unsupported push service")
+        push.subscribe(factory, body.endpoint, body.keys.p256dh, body.keys.auth, body.label or "Device", clock.now())
+        return {"devices": push.devices(factory)}
+
+    @app.post("/api/push/unsubscribe")
+    def push_unsubscribe(body: PushEndpointRequest) -> dict:
+        push.unsubscribe(factory, body.endpoint)
+        return {"devices": push.devices(factory)}
+
+    @app.post("/api/push/test")
+    def push_test() -> dict:
+        delivered = sender.broadcast("Cadence is connected", "Notifications from your coach will arrive here.", "/settings", tag="test")
+        return {"delivered": delivered, "devices": push.devices(factory)}
+
+    @app.put("/api/push/prefs")
+    def push_prefs(body: dict[str, bool]) -> dict:
+        return {"prefs": push.set_prefs(factory, body)}
+
+    @app.get("/api/share")
+    def share_status() -> dict:
+        return share.status()
+
+    @app.post("/api/share/start")
+    def share_start() -> dict:
+        try:
+            share.start()
+        except RuntimeError as exc:
+            raise HTTPException(409, str(exc)) from None
+        return share.status()
+
+    @app.post("/api/share/stop")
+    def share_stop() -> dict:
+        share.stop()
+        return share.status()
+
+    @app.post("/api/share/reset")
+    def share_reset() -> dict:
+        share.reset()
+        return share.status()
+
+    @app.get("/api/credentials/status")
+    def credentials(session: Session = Depends(get_session)) -> dict:
+        status = current_credential()
+        key = status.reminder_key
+        dismissed = (
+            key is not None
+            and status.level != "expired"
+            and session.get(ReminderDismissal, key) is not None
+        )
+        return {
+            "configured": status.configured,
+            "expires_on": status.expires_on,
+            "days_remaining": status.days_remaining,
+            "level": status.level,
+            "active_threshold": status.active_threshold,
+            "thresholds": list(status.thresholds),
+            "reminder_dates": list(status.reminder_dates),
+            "reminder_key": key,
+            "dismissed": dismissed,
+            "today": clock.today(),
+        }
+
+    @app.post("/api/credentials/reminders/dismiss")
+    def dismiss(body: DismissRequest, session: Session = Depends(get_session)) -> dict:
+        status = current_credential()
+        if status.reminder_key is None or body.key != status.reminder_key:
+            raise HTTPException(409, "Reminder is no longer current")
+        if status.level == "expired":
+            raise HTTPException(409, "Expired credentials cannot be dismissed")
+        if session.get(ReminderDismissal, body.key) is None:
+            session.add(ReminderDismissal(key=body.key, dismissed_at=clock.now()))
+            session.commit()
+        return {"dismissed": True}
+
+    @app.get("/api/sources")
+    def sources(session: Session = Depends(get_session)) -> list[dict]:
+        demo = session.get(Source, "demo")
+        demo_rows = session.scalar(
+            select(func.count()).select_from(DailyMetric).where(DailyMetric.source_id == "demo")
+        )
+        cred = current_credential()
+        garmin = session.get(Source, "garmin")
+        return [
+            {
+                "id": "demo",
+                "name": "Demo data",
+                "status": "ready" if demo_rows else "empty",
+                "last_synced_at": demo.last_synced_at if demo else None,
+                "detail": "Synthetic, deterministic history for building and testing features.",
+            },
+            {
+                "id": "garmin",
+                "name": "Garmin Connect",
+                "status": "ready" if garmin and garmin.last_synced_at else "not_synced" if cred.configured else "not_configured",
+                "last_synced_at": garmin.last_synced_at if garmin else None,
+                "detail": "Full-history sync into a local vault. Every response is stored, so history is fetched once.",
+            },
+            {
+                "id": "scale",
+                "name": "Bluetooth scale",
+                "status": "protocol_unverified",
+                "last_synced_at": None,
+                "detail": "Readings will import once the BLE protocol is confirmed.",
+            },
+        ]
+
+    @app.post("/api/sync/demo")
+    def sync_demo() -> dict:
+        run = run_demo_sync(factory, clock.today(), clock.now())
+        return _run_dict(run)
+
+    @app.post("/api/garmin/sync", status_code=202)
+    def garmin_sync(body: GarminSyncRequest) -> dict:
+        if not current_credential().configured:
+            raise HTTPException(400, "No Garmin credential is configured")
+        try:
+            run_id = garmin_jobs.start(body.mode)
+        except RuntimeError:
+            raise HTTPException(409, "A Garmin job is already running") from None
+        return {"run_id": run_id}
+
+    @app.post("/api/garmin/rebuild", status_code=202)
+    def garmin_rebuild() -> dict:
+        try:
+            return {"run_id": garmin_jobs.start("rebuild")}
+        except RuntimeError:
+            raise HTTPException(409, "A Garmin job is already running") from None
+
+    @app.post("/api/garmin/stop")
+    def garmin_stop() -> dict:
+        return {"stopping": garmin_jobs.stop()}
+
+    @app.get("/api/garmin/status")
+    def garmin_status(session: Session = Depends(get_session)) -> dict:
+        states = {
+            s.dataset: s
+            for s in session.scalars(select(DatasetState).where(DatasetState.source_id == "garmin"))
+        }
+        counts = dict(
+            session.execute(
+                select(vault_model.dataset, func.count())
+                .where(vault_model.source_id == "garmin")
+                .group_by(vault_model.dataset)
+            ).all()
+        )
+        stored = dict(
+            session.execute(
+                select(vault_model.dataset, func.coalesce(func.sum(vault_model.stored_bytes), 0))
+                .where(vault_model.source_id == "garmin")
+                .group_by(vault_model.dataset)
+            ).all()
+        )
+        latest = session.scalar(
+            select(SyncRun)
+            .where(SyncRun.source_id == "garmin", SyncRun.mode.is_not(None))
+            .order_by(SyncRun.id.desc())
+            .limit(1)
+        )
+        totals = {
+            "activities": session.scalar(
+                select(func.count()).select_from(Activity).where(Activity.source_id == "garmin")
+            ),
+            "days": session.scalar(
+                select(func.count(func.distinct(DailyMetric.day))).where(DailyMetric.source_id == "garmin")
+            ),
+            "metrics": session.scalar(
+                select(func.count()).select_from(DailyMetric).where(DailyMetric.source_id == "garmin")
+            ),
+            "weigh_ins": session.scalar(
+                select(func.count()).select_from(WeightReading).where(WeightReading.source_id == "garmin")
+            ),
+            "first_day": session.scalar(
+                select(func.min(DailyMetric.day)).where(DailyMetric.source_id == "garmin")
+            ),
+            "api_calls": sum(s.calls for s in states.values()),
+        }
+        datasets = []
+        for ds in DATASETS:
+            s = states.get(ds.key)
+            if s is None:
+                status = "pending"
+            elif s.unsupported:
+                status = "unavailable"
+            elif ds.kind == "range":
+                status = "complete" if s.backfill_done else "backfilling"
+            else:
+                status = "synced" if s.calls else "pending"
+            datasets.append(
+                {
+                    "key": ds.key,
+                    "label": ds.label,
+                    "tier": ds.tier,
+                    "kind": ds.kind,
+                    "status": status,
+                    "oldest": (s.oldest_with_data if s else None),
+                    "covered_from": (s.oldest_fetched if s else None),
+                    "calls": s.calls if s else 0,
+                    "responses": counts.get(ds.key, 0),
+                    "stored_bytes": stored.get(ds.key, 0),
+                    "last_fetched_at": s.last_fetched_at if s else None,
+                    "error": s.last_error if s else None,
+                }
+            )
+        return {
+            "busy": garmin_jobs.busy,
+            "run": _run_dict(latest) if latest else None,
+            "vault": vault.stats(session),
+            "totals": totals,
+            "datasets": datasets,
+        }
+
+    @app.get("/api/sync/runs")
+    def sync_runs(session: Session = Depends(get_session)) -> list[dict]:
+        return [_run_dict(r) for r in latest_runs(session)]
+
+    @app.delete("/api/sources/demo/data")
+    def delete_demo(session: Session = Depends(get_session)) -> dict:
+        for model in (DailyMetric, Activity, WeightReading, SyncRun):
+            session.execute(delete(model).where(model.source_id == "demo"))
+        session.execute(delete(Source).where(Source.id == "demo"))
+        session.commit()
+        return {"deleted": True}
+
+    @app.get("/api/overview")
+    def overview(session: Session = Depends(get_session)) -> dict:
+        source_id = _active_source(session)
+        latest_day = session.scalar(select(func.max(DailyMetric.day)).where(DailyMetric.source_id == source_id))
+        if latest_day is None:
+            return {"has_data": False}
+        since = latest_day - timedelta(days=66)
+        rows = session.execute(
+            select(DailyMetric.metric, DailyMetric.day, DailyMetric.value)
+            .where(DailyMetric.source_id == source_id, DailyMetric.day > since, DailyMetric.metric.in_(OVERVIEW_METRICS))
+            .order_by(DailyMetric.day)
+        ).all()
+        series: dict[str, list[tuple[date, float]]] = {m: [] for m in OVERVIEW_METRICS}
+        for metric, day, value in rows:
+            series[metric].append((day, value))
+
+        metrics = []
+        for metric in OVERVIEW_METRICS:
+            points = series[metric]
+            if not points:
+                continue
+            recent = [v for d, v in points if (latest_day - d).days < 7]
+            baseline = [v for d, v in points if 7 <= (latest_day - d).days < 67]
+            recent_mean = fmean(recent) if recent else None
+            baseline_mean = fmean(baseline) if len(baseline) >= 14 else None
+            delta_pct = (
+                (recent_mean - baseline_mean) / baseline_mean * 100
+                if recent_mean is not None and baseline_mean
+                else None
+            )
+            metrics.append(
+                {
+                    "metric": metric,
+                    **METRICS[metric],
+                    "latest": points[-1][1],
+                    "latest_day": points[-1][0],
+                    "recent_mean": recent_mean,
+                    "baseline_mean": baseline_mean,
+                    "delta_pct": delta_pct,
+                    "spark": [{"day": d, "value": v} for d, v in points if (latest_day - d).days < 30],
+                }
+            )
+
+        week_start = latest_day - timedelta(days=6)
+        week = session.execute(
+            select(
+                func.count(Activity.id),
+                func.coalesce(func.sum(Activity.duration_s), 0),
+                func.coalesce(func.sum(Activity.distance_m), 0),
+                func.coalesce(func.sum(Activity.training_load), 0),
+            ).where(Activity.source_id == source_id, Activity.local_date >= week_start, Activity.local_date <= latest_day)
+        ).one()
+        recent_activities = session.scalars(
+            select(Activity).where(Activity.source_id == source_id).order_by(Activity.start_time_utc.desc()).limit(5)
+        ).all()
+        ctx = insights_service.context(session, source_id, clock.today())
+        verdicts = coach_notes.verdicts(ctx)
+
+        weight = _weight_summary(session, clock.today())
+        return {
+            "has_data": True,
+            "source_id": source_id,
+            "as_of": latest_day,
+            "coach": coach_notes.brief(ctx) if ctx else None,
+            "score": cadence_score.summary(ctx) if ctx else None,
+            "metrics": metrics,
+            "week": {
+                "start": week_start,
+                "activities": week[0],
+                "duration_s": week[1],
+                "distance_m": week[2],
+                "training_load": week[3],
+            },
+            "recent_activities": [_activity_dict(a, verdicts) for a in recent_activities],
+            "weight": {
+                "latest_trend_kg": weight.latest_trend_kg,
+                "rate_kg_per_week": weight.rate_kg_per_week,
+                "latest_reading": asdict(weight.points[-1]) if weight.points else None,
+                "goal_kg": _goal(session),
+                "projection": asdict(weight.projection) if weight.projection else None,
+                "spark": [
+                    {"day": p.day, "value": p.trend_kg} for p in weight.points[-60:]
+                ],
+            },
+        }
+
+    @app.get("/api/metrics/{metric}")
+    def metric_series(
+        metric: str, days: int = Query(90, ge=7, le=3650), session: Session = Depends(get_session)
+    ) -> dict:
+        if metric not in METRICS:
+            raise HTTPException(404, "Unknown metric")
+        source_id = _active_source(session)
+        latest_day = session.scalar(select(func.max(DailyMetric.day)).where(DailyMetric.source_id == source_id))
+        if latest_day is None:
+            return {"metric": metric, **METRICS[metric], "points": []}
+        rows = session.execute(
+            select(DailyMetric.day, DailyMetric.value)
+            .where(DailyMetric.source_id == source_id, DailyMetric.metric == metric, DailyMetric.day > latest_day - timedelta(days=days))
+            .order_by(DailyMetric.day)
+        ).all()
+        return {
+            "metric": metric,
+            **METRICS[metric],
+            "points": [{"day": d, "value": v} for d, v in rows],
+        }
+
+    @app.get("/api/activities")
+    def activities(
+        limit: int = Query(50, ge=1, le=500),
+        offset: int = Query(0, ge=0),
+        family: str | None = Query(None, max_length=16),
+        session: Session = Depends(get_session),
+    ) -> dict:
+        source_id = _active_source(session)
+        rows = session.scalars(
+            select(Activity)
+            .where(Activity.source_id == source_id)
+            .order_by(Activity.start_time_utc.desc())
+        ).all()
+        counts: dict[str, int] = {}
+        for a in rows:
+            fam = activity_family(a.activity_type)
+            counts[fam] = counts.get(fam, 0) + 1
+        if family:
+            rows = [a for a in rows if activity_family(a.activity_type) == family]
+        ctx = insights_service.context(session, source_id, clock.today())
+        verdicts = coach_notes.verdicts(ctx)
+        mix = {a.id: i for a in ctx["acts"] if (i := coach_notes.intensity(a))} if ctx else {}
+        return {
+            "total": len(rows),
+            "families": counts,
+            "items": [_activity_dict(a, verdicts, mix) for a in rows[offset : offset + limit]],
+        }
+
+    @app.get("/api/activities/summary")
+    def activities_summary(
+        family: str | None = Query(None, max_length=16), session: Session = Depends(get_session)
+    ) -> dict:
+        ctx = insights_service.context(session, _active_source(session), clock.today())
+        return training_log.summary(ctx, family) if ctx else {"has_data": False}
+
+    def _activity_for(session: Session, activity_id: int) -> Activity:
+        a = session.get(Activity, activity_id)
+        if a is None or a.source_id != _active_source(session):
+            raise HTTPException(404, "Activity not found")
+        return a
+
+    @app.get("/api/activities/{activity_id}")
+    def activity_detail(activity_id: int, session: Session = Depends(get_session)) -> dict:
+        a = _activity_for(session, activity_id)
+        out: dict = {
+            "activity": _activity_dict(a),
+            "garmin_summary": None,
+            "detail": None,
+            "workouts": None,
+            "fit": None,
+            "missing": [],
+            "stored": {},
+            "coach": None,
+        }
+        if a.source_id == "garmin":
+            rid = a.source_record_id
+            out["garmin_summary"] = vault.activity_summaries(session).get(rid)
+            for key, field in (("activity_detail", "detail"), ("activity_workouts", "workouts"), ("activity_fit", None)):
+                raw, payload = vault.load(session, f"{key}:{rid}")
+                if raw is None:
+                    out["missing"].append(key)
+                    continue
+                out["stored"][key] = {"fetched_at": raw.fetched_at, "status": raw.status_code, "bytes": raw.body_bytes}
+                if field:
+                    out[field] = payload
+                elif raw.file_path:
+                    archive = settings.archive_dir.resolve()
+                    path = (archive / raw.file_path).resolve()
+                    if archive in path.parents and path.is_file():
+                        out["fit"] = fit.decode(
+                            path, activity_family(a.activity_type), fit.offset_minutes(a.timezone)
+                        )
+        ctx = insights_service.context(session, a.source_id, clock.today())
+        if ctx:
+            streams = out["fit"].get("streams") if out["fit"] else None
+            out["coach"] = coach_notes.session(ctx, a.id, streams, out["garmin_summary"])
+        return out
+
+    @app.post("/api/activities/{activity_id}/fetch")
+    def activity_fetch(activity_id: int, session: Session = Depends(get_session)) -> dict:
+        a = _activity_for(session, activity_id)
+        if a.source_id != "garmin":
+            return {"fetched": []}
+        try:
+            return {"fetched": garmin_jobs.fetch_activity(a.source_record_id)}
+        except IntegrityError:
+            # The background sync stored the same asset concurrently.
+            return {"fetched": []}
+        except GarminError as exc:
+            raise HTTPException(502, str(exc)) from None
+
+    @app.get("/api/days/{day}")
+    def day_detail(day: date, session: Session = Depends(get_session)) -> dict:
+        source_id = _active_source(session)
+        values, context = days.metric_context(session, source_id, day)
+        prev_day, next_day = days.neighbours(session, source_id, day)
+        raw = days.raw_rows(session, day) if source_id == "garmin" else {}
+        missing = [
+            ds for ds, metric in days.ON_DEMAND.items()
+            if source_id == "garmin" and metric in values and ds not in raw
+        ]
+        acts = session.scalars(
+            select(Activity)
+            .where(Activity.source_id == source_id, Activity.local_date == day)
+            .order_by(Activity.start_time_utc)
+        ).all()
+        ctx = insights_service.context(session, source_id, clock.today())
+        verdicts = coach_notes.verdicts(ctx)
+        return {
+            "day": day,
+            "source_id": source_id,
+            "metrics": {
+                m: {**c, **METRICS.get(m, {"label": m, "higher_is_better": None})}
+                for m, c in context.items()
+            },
+            "raw": raw,
+            "missing": missing,
+            "activities": [_activity_dict(a, verdicts) for a in acts],
+            "coach": coach_notes.day(ctx, day) if ctx else None,
+            "prev_day": prev_day,
+            "next_day": next_day,
+        }
+
+    @app.post("/api/days/{day}/fetch")
+    def day_fetch(day: date, session: Session = Depends(get_session)) -> dict:
+        if _active_source(session) != "garmin" or day > clock.today():
+            return {"fetched": []}
+        values, _ = days.metric_context(session, "garmin", day)
+        wanted = [ds for ds, metric in days.ON_DEMAND.items() if metric in values]
+        try:
+            return {"fetched": garmin_jobs.fetch_day(day, wanted)}
+        except IntegrityError:
+            return {"fetched": []}
+        except GarminError as exc:
+            raise HTTPException(502, str(exc)) from None
+
+    @app.get("/api/insights")
+    def insights(session: Session = Depends(get_session)) -> dict:
+        source_id = _active_source(session)
+        result = insights_service.build(session, source_id, clock.today())
+        if result.get("analysis_pending"):
+            analysis.kick()
+        result["analysis_running"] = analysis.busy
+        return result
+
+    @app.get("/api/score")
+    def score_detail(days: int = Query(90, ge=7, le=365), session: Session = Depends(get_session)) -> dict:
+        ctx = insights_service.context(session, _active_source(session), clock.today())
+        r = cadence_score.report(ctx, days) if ctx else None
+        return {"has_data": True, **r} if r else {"has_data": False}
+
+    @app.get("/api/garmin/vault/{dataset}")
+    def vault_list(
+        dataset: str,
+        limit: int = Query(50, ge=1, le=500),
+        offset: int = Query(0, ge=0),
+        session: Session = Depends(get_session),
+    ) -> dict:
+        if dataset not in BY_KEY:
+            raise HTTPException(404, "Unknown dataset")
+        where = (vault_model.source_id == "garmin", vault_model.dataset == dataset)
+        rows = session.scalars(
+            select(vault_model)
+            .where(*where)
+            .order_by(vault_model.window_start.desc().nulls_last(), vault_model.fetched_at.desc())
+            .limit(limit)
+            .offset(offset)
+        ).all()
+        return {
+            "total": session.scalar(select(func.count()).select_from(vault_model).where(*where)),
+            "items": [_raw_meta(r) for r in rows],
+        }
+
+    @app.get("/api/garmin/vault/item/{raw_id}")
+    def vault_item(raw_id: int, session: Session = Depends(get_session)) -> dict:
+        raw = session.get(vault_model, raw_id)
+        if raw is None or raw.source_id != "garmin":
+            raise HTTPException(404, "Not found")
+        activity_id = None
+        if raw.dataset.startswith("activity_"):
+            activity_id = session.scalar(
+                select(Activity.id).where(
+                    Activity.source_id == "garmin",
+                    Activity.source_record_id == raw.request_key.split(":", 1)[1],
+                )
+            )
+        return {"meta": _raw_meta(raw), "payload": vault.decode(raw.body), "activity_id": activity_id}
+
+    @app.get("/api/weight")
+    def weight(
+        days: int = Query(180, ge=14, le=3650), session: Session = Depends(get_session)
+    ) -> dict:
+        summary = _weight_summary(session, clock.today())
+        cutoff = summary.points[-1].day - timedelta(days=days) if summary.points else None
+        latest_fat = session.scalar(
+            select(WeightReading.body_fat_pct)
+            .where(WeightReading.source_id == _active_source(session), WeightReading.body_fat_pct.is_not(None))
+            .order_by(WeightReading.measured_at_utc.desc())
+            .limit(1)
+        )
+        return {
+            "points": [asdict(p) for p in summary.points if cutoff is None or p.day > cutoff],
+            "latest_trend_kg": summary.latest_trend_kg,
+            "rate_kg_per_week": summary.rate_kg_per_week,
+            "rate_se_kg_per_week": summary.rate_se_kg_per_week,
+            "goal_kg": _goal(session),
+            "projection": asdict(summary.projection) if summary.projection else None,
+            "latest_body_fat_pct": latest_fat,
+            "coach": coach_notes.weight(summary.points, summary.rate_kg_per_week, _goal(session), clock.today()),
+            "model": {
+                "process_var_per_day": weight_analytics.PROCESS_VAR_PER_DAY,
+                "measurement_var": weight_analytics.MEASUREMENT_VAR,
+                "rate_window_days": weight_analytics.RATE_WINDOW_DAYS,
+            },
+        }
+
+    @app.put("/api/settings/weight-goal")
+    def set_weight_goal(body: WeightGoalRequest, session: Session = Depends(get_session)) -> dict:
+        existing = session.get(AppSetting, WEIGHT_GOAL_KEY)
+        if body.goal_kg is None:
+            if existing:
+                session.delete(existing)
+        elif existing:
+            existing.value = str(body.goal_kg)
+        else:
+            session.add(AppSetting(key=WEIGHT_GOAL_KEY, value=str(body.goal_kg)))
+        session.commit()
+        return {"goal_kg": body.goal_kg}
+
+    @app.put("/api/settings/goal")
+    def set_training_goal(body: TrainingGoalRequest, session: Session = Depends(get_session)) -> dict:
+        if body.distance is None or body.date is None:
+            insights_service.save_goal(session, None)
+            return {"goal": None}
+        if body.date < clock.today():
+            raise HTTPException(400, "Goal date is in the past")
+        goal = {"distance": body.distance, "date": body.date, "target_s": body.target_s}
+        insights_service.save_goal(session, goal)
+        return {"goal": insights_service._goal_dict(goal)}  # pylint: disable=protected-access
+
+    @app.get("/{path:path}", include_in_schema=False)
+    def web(path: str) -> Response:
+        """Serves the built site so the Mac needs no dev server."""
+        root = settings.web_dist.resolve()
+        if path.startswith("api/") or not (root / "index.html").is_file():
+            raise HTTPException(404, "Not found")
+        target = (root / path).resolve()
+        if path and root in target.parents and target.is_file():
+            cache = "public, max-age=31536000, immutable" if path.startswith("assets/") else "no-cache"
+            return FileResponse(target, headers={"Cache-Control": cache})
+        return FileResponse(root / "index.html", headers={"Cache-Control": "no-cache"})
+
+    return app
+
+
+def _goal(session: Session) -> float | None:
+    setting = session.get(AppSetting, WEIGHT_GOAL_KEY)
+    return float(setting.value) if setting else None
+
+
+def _active_source(session: Session) -> str:
+    garmin = session.get(Source, "garmin")
+    return "garmin" if garmin and garmin.last_synced_at else "demo"
+
+
+def _weight_summary(session: Session, today: date) -> weight_analytics.WeightSummary:
+    rows = session.execute(
+        select(WeightReading.local_date, func.avg(WeightReading.weight_kg))
+        .where(WeightReading.source_id == _active_source(session))
+        .group_by(WeightReading.local_date)
+        .order_by(WeightReading.local_date)
+    ).all()
+    return weight_analytics.summarize([(d, w) for d, w in rows], today, _goal(session))
+
+
+def _raw_meta(raw: vault_model) -> dict:
+    return {
+        "id": raw.id,
+        "dataset": raw.dataset,
+        "request_key": raw.request_key,
+        "window_start": raw.window_start,
+        "window_end": raw.window_end,
+        "fetched_at": raw.fetched_at,
+        "status": raw.status_code,
+        "final": raw.final,
+        "item_count": raw.item_count,
+        "body_bytes": raw.body_bytes,
+        "stored_bytes": raw.stored_bytes,
+        "is_file": raw.file_path is not None,
+    }
+
+
+def _run_dict(run: SyncRun) -> dict:
+    return {
+        "id": run.id,
+        "source_id": run.source_id,
+        "status": run.status,
+        "started_at": run.started_at,
+        "finished_at": run.finished_at,
+        "records_written": run.records_written,
+        "error": run.error,
+        "mode": run.mode,
+        "requests_made": run.requests_made,
+        "message": run.message,
+    }
+
+
+def _activity_dict(a: Activity, verdicts: dict[int, dict] | None = None, mix: dict[int, dict] | None = None) -> dict:
+    return {
+        "id": a.id,
+        "source_id": a.source_id,
+        "start_time_utc": a.start_time_utc,
+        "timezone": a.timezone,
+        "local_date": a.local_date,
+        "type": a.activity_type,
+        "family": activity_family(a.activity_type),
+        "name": a.name,
+        "duration_s": a.duration_s,
+        "distance_m": a.distance_m,
+        "avg_hr": a.avg_hr,
+        "max_hr": a.max_hr,
+        "elevation_gain_m": a.elevation_gain_m,
+        "calories": a.calories,
+        "training_load": a.training_load,
+        "moving_duration_s": a.moving_duration_s,
+        "avg_speed_mps": a.avg_speed_mps,
+        "vo2max": a.vo2max,
+        "aerobic_te": a.aerobic_te,
+        "verdict": (verdicts or {}).get(a.id),
+        "intensity": (mix or {}).get(a.id),
+    }
+
+
+def app_factory() -> FastAPI:
+    return create_app()

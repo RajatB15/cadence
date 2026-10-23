@@ -1,0 +1,43 @@
+# Cadence
+
+Single-user, local-first health and training coach: Garmin data in a local SQLite vault → analytics → React web app (also served to an iPhone). Plus Python BLE research tooling for the Dr Trust 526 Legend scale. See [README.md](README.md) for user-facing docs.
+
+## Rules
+
+- Read [plan.md](plan.md) before planning or implementing project changes. It is the source of truth for scope, stack, roadmap, and acceptance criteria; update its checklist (and the "Current State" entry) when milestones are verified.
+- Build the local-first web experience first, package for macOS after functionality is validated, and implement LLM integration last.
+- Preserve the existing BLE research tools and tests. Do not assume the scale protocol or Garmin API capabilities are verified. Body-composition values are never presented as measured unless the protocol confirms the scale transmits them.
+- Store everything, surface what matters: keep every imported response in the vault (never drop data at import), but product pages show curated, meaningful views and derived insights rather than raw field dumps. Raw records stay inspectable through the Vault data explorer.
+- Local Garmin credentials are in `.secrets/garmin.env`. Load them directly in the backend process when needed; never print, copy into prompts, put in frontend bundles, log, or commit them. Do not request the key again while this file is available. Never Read or cat this file; only reference it from code.
+- Credential expiry metadata lives alongside the key. Implement the renewal reminder specified in plan.md; never infer expiry from the token format.
+- Do not make authenticated network requests merely to inspect credentials. Verify official endpoint documentation before using the key; never invent endpoints.
+- `data/` (SQLite vault, FIT archive, VAPID key) and `captures/` hold personal health data. Never read them into the conversation beyond aggregate counts/schema, never commit them, never put real records in tests or logs. Tests use synthetic fixtures (`app/backend/tests/fake_garmin.py`, demo connector).
+- Analytics are transparent and cautious: show sample sizes and uncertainty, enforce minimum-data rules, no causal or medical claims. Keep pure algorithms (`analytics/athlete.py`, `performance.py`, `recovery.py`, `plan.py`, `score.py`) separate from loading/assembly (`insights.py`: `context()` loads, `assemble()` is pure and is what tests use) and wording (`notes.py`). Every method cites its source in the module docstring and the Coach page's "How the coach works".
+- Distinguish missing data from zero. UI changes need empty, loading, error and unsupported-capability states, and must work at desktop and phone widths.
+- Never claim data is encrypted unless it is. The local service binds to loopback; the phone share server (port 8766) is read-only apart from `/api/push/*`.
+
+## Commands
+
+| Task | Command |
+| --- | --- |
+| Backend tests | `cd app/backend && .venv/bin/pytest` (single: `.venv/bin/pytest tests/test_api.py -k name`) |
+| Frontend tests / types | `cd app/web && npm test` / `npm run typecheck` |
+| Research (BLE) tests | `cd research && .venv/bin/pytest` |
+| Backend dev server (:8765) | `cd app/backend && .venv/bin/cadence-app` |
+| Frontend dev server (:5173) | `cd app/web && npm run dev` |
+| Build frontend | `npm --prefix app/web run build` (typechecks first) |
+| Login service | `scripts/cadence-service.sh install\|restart\|status\|logs\|uninstall` |
+
+Run focused tests for changed behavior. The running LaunchAgent serves the built `app/web/dist` and the installed backend: after frontend changes rebuild, after backend changes restart the service (see the `ship-local` skill).
+
+## Layout
+
+- `app/backend/cadence_app/` — FastAPI app: `server.py`/`main.py` (routes), `sync.py` + `garmin/` (vault sync engine), `importer.py`, `models.py` + `migrations/` (Alembic: schema changes need a migration), `analytics/`, `push.py` (Web Push), `share.py` (phone server), `credentials.py`/`secrets.py`.
+- `app/web/src/` — React 19 + Vite + Tailwind 4 + ECharts + MapLibre; `pages/`, `components/`, `lib/` (API client, formatting, metrics). Tests are Vitest (`*.test.ts`).
+- `research/cadence_ble/` — Bleak CLI (`cadence scan|inspect|capture|analyze`), `docs/protocol-investigation.md`.
+
+## Conventions
+
+- Match surrounding code style; the repo has no linter config, so follow existing idioms.
+- Garmin sync must stay idempotent, resumable and rate-limit aware (1 req/s, back off on 429). Settled days (>3 days old) are fetched once; rebuilds from the vault make zero API calls — keep it that way (see the `garmin-vault` skill).
+- Rename leftovers: the project was previously "WeighIn"; use `cadence_*`, `X-Cadence-Request`, `CADENCE_*`.

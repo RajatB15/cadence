@@ -1,0 +1,211 @@
+@import "tailwindcss";
+@import "@fontsource-variable/manrope";
+@import "@fontsource/instrument-serif/400.css";
+@import "@fontsource/instrument-serif/400-italic.css";
+@import "@fontsource-variable/jetbrains-mono";
+
+@theme {
+  --color-ink: #0b0b0c;
+  --color-coal: #121213;
+  --color-slate: #19191b;
+  --color-line: #262629;
+  --color-line-strong: #34343a;
+  --color-cream: #f2e8cf;
+  --color-paper: #ecebe6;
+  --color-mute: #8d8a82;
+  --color-dim: #5c5a55;
+  --color-gold: #d9b26a;
+  --color-lime: #c8f560;
+  --color-violet: #9b8cff;
+  --color-coral: #ff6a55;
+  --color-sky: #6cc7ff;
+  --color-amber: #ffbe55;
+  --color-mint: #5be3b0;
+
+  --font-sans: "Manrope Variable", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Instrument Serif", ui-serif, Georgia, serif;
+  --font-mono: "JetBrains Mono Variable", ui-monospace, monospace;
+
+  --ease-snap: cubic-bezier(0.2, 0.9, 0.1, 1);
+}
+
+@layer base {
+  html {
+    background: var(--color-ink);
+    color: var(--color-paper);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+  body {
+    min-height: 100dvh;
+    background:
+      radial-gradient(1200px 600px at 85% -10%, rgb(217 178 106 / 0.07), transparent 60%),
+      radial-gradient(900px 500px at -10% 110%, rgb(155 140 255 / 0.06), transparent 60%),
+      var(--color-ink);
+  }
+  /* Film grain keeps large dark surfaces from looking flat. */
+  body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 100;
+    opacity: 0.05;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+  ::selection {
+    background: var(--color-gold);
+    color: var(--color-ink);
+  }
+  :focus-visible {
+    outline: 2px solid var(--color-gold);
+    outline-offset: 3px;
+  }
+}
+
+@layer components {
+  .eyebrow {
+    font-size: 0.6875rem;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    font-weight: 600;
+    color: var(--color-mute);
+  }
+
+  .num {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.02em;
+  }
+
+  .surface {
+    position: relative;
+    background: linear-gradient(180deg, rgb(255 255 255 / 0.025), transparent 40%), var(--color-coal);
+    border: 1px solid var(--color-line);
+    box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.04);
+  }
+
+  .surface-hover {
+    transition: border-color 0.25s, transform 0.35s var(--ease-snap);
+  }
+  .surface-hover:hover {
+    border-color: var(--color-line-strong);
+    transform: translateY(-2px);
+  }
+
+  /* NeoPOP-style plunk button: a flat face with two skewed edges that collapse on press. */
+  .pop {
+    --depth: 5px;
+    --face: var(--color-cream);
+    --edge-right: #a89f86;
+    --edge-bottom: #7a7462;
+    --ink: var(--color-ink);
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    padding: 0.8rem 1.4rem;
+    background: var(--face);
+    color: var(--ink);
+    font-weight: 700;
+    font-size: 0.8125rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    transform: translate(0, 0);
+    transition: transform 0.12s var(--ease-snap);
+    user-select: none;
+    cursor: pointer;
+  }
+  .pop::before,
+  .pop::after {
+    content: "";
+    position: absolute;
+    transition: all 0.12s var(--ease-snap);
+  }
+  .pop::after {
+    top: 0;
+    right: calc(var(--depth) * -1);
+    width: var(--depth);
+    height: 100%;
+    background: var(--edge-right);
+    transform: skewY(45deg);
+    transform-origin: top left;
+  }
+  .pop::before {
+    left: 0;
+    bottom: calc(var(--depth) * -1);
+    width: 100%;
+    height: var(--depth);
+    background: var(--edge-bottom);
+    transform: skewX(45deg);
+    transform-origin: top left;
+  }
+  .pop:hover {
+    transform: translate(-1px, -1px);
+  }
+  .pop:active,
+  .pop[data-pressed="true"] {
+    transform: translate(var(--depth), var(--depth));
+  }
+  .pop:active::after,
+  .pop[data-pressed="true"]::after {
+    width: 0;
+    right: 0;
+  }
+  .pop:active::before,
+  .pop[data-pressed="true"]::before {
+    height: 0;
+    bottom: 0;
+  }
+  .pop:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+    transform: none;
+  }
+  .pop-lime {
+    --face: var(--color-lime);
+    --edge-right: #8fb33a;
+    --edge-bottom: #627d23;
+  }
+  .pop-coral {
+    --face: var(--color-coral);
+    --edge-right: #b84a3b;
+    --edge-bottom: #85352a;
+  }
+  .pop-ghost {
+    --face: var(--color-slate);
+    --edge-right: #2b2b30;
+    --edge-bottom: #050506;
+    --ink: var(--color-paper);
+    box-shadow: inset 0 0 0 1px var(--color-line-strong);
+  }
+
+  .chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.2rem 0.55rem;
+    border: 1px solid var(--color-line-strong);
+    font-size: 0.6875rem;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--color-mute);
+  }
+
+  .hairline {
+    background-image: linear-gradient(90deg, transparent, var(--color-line-strong), transparent);
+    height: 1px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+  }
+}

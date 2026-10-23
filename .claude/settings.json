@@ -1,0 +1,24 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cd app/backend && .venv/bin/pytest:*)",
+      "Bash(app/backend/.venv/bin/pytest:*)",
+      "Bash(research/.venv/bin/pytest:*)",
+      "Bash(npm --prefix app/web test:*)",
+      "Bash(npm --prefix app/web run typecheck:*)",
+      "Bash(npm --prefix app/web run build:*)",
+      "Bash(scripts/cadence-service.sh status:*)"
+    ],
+    "deny": [
+      "Read(./.secrets/**)",
+      "Read(./data/**)",
+      "Read(./captures/**)",
+      "Read(./.env*)",
+      "Edit(./.secrets/**)",
+      "Bash(cat .secrets/*)",
+      "Bash(cat ./.secrets/*)",
+      "Bash(source .secrets/*)",
+      "Bash(sqlite3 data/*)"
+    ]
+  }
+}

@@ -1,0 +1,215 @@
+from __future__ import annotations
+
+from datetime import date, datetime
+
+from sqlalchemy import (
+    Boolean,
+    Date,
+    DateTime,
+    Float,
+    ForeignKey,
+    Integer,
+    LargeBinary,
+    String,
+    Text,
+    UniqueConstraint,
+)
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+
+
+class Base(DeclarativeBase):
+    pass
+
+
+class Source(Base):
+    __tablename__ = "sources"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    name: Mapped[str] = mapped_column(String(100))
+    kind: Mapped[str] = mapped_column(String(32))  # demo | garmin | scale | manual
+    last_synced_at: Mapped[datetime | None] = mapped_column(DateTime)
+
+
+class DailyMetric(Base):
+    __tablename__ = "daily_metrics"
+    __table_args__ = (UniqueConstraint("source_id", "day", "metric"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    source_id: Mapped[str] = mapped_column(ForeignKey("sources.id"), index=True)
+    day: Mapped[date] = mapped_column(Date, index=True)
+    metric: Mapped[str] = mapped_column(String(48), index=True)
+    value: Mapped[float] = mapped_column(Float)
+    unit: Mapped[str] = mapped_column(String(16))
+    imported_at: Mapped[datetime] = mapped_column(DateTime)
+
+
+class Activity(Base):
+    __tablename__ = "activities"
+    __table_args__ = (UniqueConstraint("source_id", "source_record_id"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    source_id: Mapped[str] = mapped_column(ForeignKey("sources.id"), index=True)
+    source_record_id: Mapped[str] = mapped_column(String(64))
+    # Naive UTC instant; local_date and timezone keep the source's calendar semantics.
+    start_time_utc: Mapped[datetime] = mapped_column(DateTime, index=True)
+    timezone: Mapped[str] = mapped_column(String(64))
+    local_date: Mapped[date] = mapped_column(Date, index=True)
+    activity_type: Mapped[str] = mapped_column(String(48))
+    name: Mapped[str] = mapped_column(String(200))
+    duration_s: Mapped[float] = mapped_column(Float)
+    distance_m: Mapped[float | None] = mapped_column(Float)
+    avg_hr: Mapped[float | None] = mapped_column(Float)
+    max_hr: Mapped[float | None] = mapped_column(Float)
+    elevation_gain_m: Mapped[float | None] = mapped_column(Float)
+    calories: Mapped[float | None] = mapped_column(Float)
+    training_load: Mapped[float | None] = mapped_column(Float)
+    moving_duration_s: Mapped[float | None] = mapped_column(Float)
+    avg_speed_mps: Mapped[float | None] = mapped_column(Float)
+    vo2max: Mapped[float | None] = mapped_column(Float)
+    aerobic_te: Mapped[float | None] = mapped_column(Float)
+    imported_at: Mapped[datetime] = mapped_column(DateTime)
+
+
+class WeightReading(Base):
+    __tablename__ = "weight_readings"
+    __table_args__ = (UniqueConstraint("source_id", "source_record_id"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    source_id: Mapped[str] = mapped_column(ForeignKey("sources.id"), index=True)
+    source_record_id: Mapped[str] = mapped_column(String(64))
+    measured_at_utc: Mapped[datetime] = mapped_column(DateTime, index=True)
+    timezone: Mapped[str] = mapped_column(String(64))
+    local_date: Mapped[date] = mapped_column(Date, index=True)
+    weight_kg: Mapped[float] = mapped_column(Float)
+    body_fat_pct: Mapped[float | None] = mapped_column(Float)
+    bmi: Mapped[float | None] = mapped_column(Float)
+    body_water_pct: Mapped[float | None] = mapped_column(Float)
+    muscle_mass_kg: Mapped[float | None] = mapped_column(Float)
+    bone_mass_kg: Mapped[float | None] = mapped_column(Float)
+    visceral_fat: Mapped[float | None] = mapped_column(Float)
+    metabolic_age: Mapped[float | None] = mapped_column(Float)
+    imported_at: Mapped[datetime] = mapped_column(DateTime)
+
+
+class Tag(Base):
+    __tablename__ = "tags"
+    __table_args__ = (UniqueConstraint("day", "label"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    day: Mapped[date] = mapped_column(Date, index=True)
+    label: Mapped[str] = mapped_column(String(48))
+    created_at: Mapped[datetime] = mapped_column(DateTime)
+
+
+class SyncRun(Base):
+    __tablename__ = "sync_runs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    source_id: Mapped[str] = mapped_column(ForeignKey("sources.id"), index=True)
+    started_at: Mapped[datetime] = mapped_column(DateTime)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime)
+    status: Mapped[str] = mapped_column(String(16))  # running | succeeded | failed | stopped | paused
+    records_written: Mapped[int] = mapped_column(Integer, default=0)
+    error: Mapped[str | None] = mapped_column(Text)
+    mode: Mapped[str | None] = mapped_column(String(16))
+    requests_made: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    message: Mapped[str | None] = mapped_column(Text)
+    cancel_requested: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
+
+
+class RawResponse(Base):
+    """Vault of every upstream response, so normalized data can be rebuilt with zero API calls."""
+
+    __tablename__ = "raw_responses"
+    __table_args__ = (UniqueConstraint("source_id", "request_key"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    source_id: Mapped[str] = mapped_column(ForeignKey("sources.id"), index=True)
+    dataset: Mapped[str] = mapped_column(String(48), index=True)
+    request_key: Mapped[str] = mapped_column(String(160))
+    path: Mapped[str] = mapped_column(String(300))
+    params: Mapped[str] = mapped_column(Text)
+    window_start: Mapped[date | None] = mapped_column(Date)
+    window_end: Mapped[date | None] = mapped_column(Date)
+    status_code: Mapped[int] = mapped_column(Integer)
+    content_type: Mapped[str | None] = mapped_column(String(100))
+    fetched_at: Mapped[datetime] = mapped_column(DateTime, index=True)
+    # Final responses cover settled days and are never requested again.
+    final: Mapped[bool] = mapped_column(Boolean, default=False)
+    item_count: Mapped[int] = mapped_column(Integer, default=0)
+    body: Mapped[bytes | None] = mapped_column(LargeBinary)  # zlib-compressed
+    body_bytes: Mapped[int] = mapped_column(Integer, default=0)
+    stored_bytes: Mapped[int] = mapped_column(Integer, default=0)
+    sha256: Mapped[str | None] = mapped_column(String(64))
+    file_path: Mapped[str | None] = mapped_column(String(300))
+
+
+class ActivityAnalysis(Base):
+    """Expensive per-activity derivations (FIT stream analysis), computed once per calculation version."""
+
+    __tablename__ = "activity_analyses"
+
+    activity_id: Mapped[int] = mapped_column(ForeignKey("activities.id", ondelete="CASCADE"), primary_key=True)
+    version: Mapped[int] = mapped_column(Integer)
+    computed_at: Mapped[datetime] = mapped_column(DateTime)
+    data: Mapped[str] = mapped_column(Text)
+
+
+class DatasetState(Base):
+    __tablename__ = "dataset_states"
+
+    source_id: Mapped[str] = mapped_column(ForeignKey("sources.id"), primary_key=True)
+    dataset: Mapped[str] = mapped_column(String(48), primary_key=True)
+    window_days: Mapped[int | None] = mapped_column(Integer)
+    # Days <= final_until were fetched after they settled.
+    final_until: Mapped[date | None] = mapped_column(Date)
+    # Backfill has covered every day >= oldest_fetched.
+    oldest_fetched: Mapped[date | None] = mapped_column(Date)
+    oldest_with_data: Mapped[date | None] = mapped_column(Date)
+    newest_with_data: Mapped[date | None] = mapped_column(Date)
+    empty_days_streak: Mapped[int] = mapped_column(Integer, default=0)
+    backfill_done: Mapped[bool] = mapped_column(Boolean, default=False)
+    unsupported: Mapped[bool] = mapped_column(Boolean, default=False)
+    calls: Mapped[int] = mapped_column(Integer, default=0)
+    last_fetched_at: Mapped[datetime | None] = mapped_column(DateTime)
+    last_error: Mapped[str | None] = mapped_column(Text)
+
+
+class AppSetting(Base):
+    __tablename__ = "app_settings"
+
+    key: Mapped[str] = mapped_column(String(64), primary_key=True)
+    value: Mapped[str] = mapped_column(Text)
+
+
+class ReminderDismissal(Base):
+    __tablename__ = "reminder_dismissals"
+
+    key: Mapped[str] = mapped_column(String(64), primary_key=True)
+    dismissed_at: Mapped[datetime] = mapped_column(DateTime)
+
+
+class PushSubscription(Base):
+    __tablename__ = "push_subscriptions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    endpoint: Mapped[str] = mapped_column(String(1024), unique=True)
+    p256dh: Mapped[str] = mapped_column(String(256))
+    auth: Mapped[str] = mapped_column(String(64))
+    label: Mapped[str] = mapped_column(String(120))
+    created_at: Mapped[datetime] = mapped_column(DateTime)
+    last_sent_at: Mapped[datetime | None] = mapped_column(DateTime)
+    failures: Mapped[int] = mapped_column(Integer, default=0)
+
+
+class NotificationLog(Base):
+    """One row per notification decision so each one fires at most once."""
+
+    __tablename__ = "notification_log"
+
+    key: Mapped[str] = mapped_column(String(128), primary_key=True)
+    kind: Mapped[str] = mapped_column(String(32), index=True)
+    title: Mapped[str] = mapped_column(String(200))
+    body: Mapped[str] = mapped_column(Text)
+    sent_at: Mapped[datetime] = mapped_column(DateTime)
+    delivered: Mapped[int] = mapped_column(Integer, default=0)
