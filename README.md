@@ -57,15 +57,14 @@ rather their health data stayed on their own machine.
 | **Weather** | Hot/cold/windy session notes, a personal heat cost on efficiency, forecasts with a cooler-hour suggestion for planned sessions. |
 | **Reviews** | Weekly and monthly reviews — training, plan adherence, fitness, recovery, sleep, habits, highlights — each with one focus for next period. |
 | **All-day strain** | Banister TRIMP from all-day heart rate, split into workout vs everyday movement, against a daily target band. |
-| **BLE scale bridge** | Weight from a reverse-engineered Dr Trust USA 526 Legend, read locally over Bluetooth (opt-in, macOS) and blended into your weight trend — no cloud, no official app. A live **Weigh in** view shows the reading settle in real time. |
-| **Body composition (estimated)** | BMI, estimated body fat %, fat/lean mass and BMR from your weight and a stored profile — published, cited formulas, always labelled as estimates, never presented as a scale measurement. |
+| **Weight log** | Log your weight by hand from the Mac or your iPhone (one entry per day, editable), blended with Garmin weigh-ins into a smoothed trend with a 95% band and a goal projection. |
+| **Body stats (estimated)** | From your height, age and sex: BMI gauge, healthy weight range, estimated body fat and fat/lean mass, BMR and daily energy ranges, body surface area — published, cited formulas, always labelled as estimates, never presented as a measurement. |
 | **Vault** | Every Garmin response is kept, compressed, forever. Dashboards rebuild from the vault with zero API calls. |
 | **Your iPhone** | A read-only (apart from its own check-ins) share server with QR pairing, installable as a Home Screen app, with Web Push notifications. |
 
-> **Scale status: weight confirmed, body composition is not.** Cadence includes Python research tools for the Dr
-> Trust USA 526 Legend BLE body-composition scale (see [BLE scale research](#ble-scale-research) below) and an
-> opt-in bridge that imports weight into the app. Body-composition values are never presented as measured — this
-> scale doesn't transmit them, only its own app computes them from your profile.
+> **No Bluetooth scale in the app.** An experiment reading the Dr Trust USA 526 Legend over BLE was removed: the
+> decoded weight did not match the scale's display. Weight comes from Garmin or manual entry. The BLE capture
+> tools remain under [research/](research/) (see [BLE scale research](#ble-scale-research)).
 
 ## Quick start (try it with demo data)
 
@@ -199,37 +198,11 @@ Capture format: versioned JSON (`format: "cadence-capture"`, `schema_version: 1`
 | Scale identity on BLE | **Confirmed.** Device named `SSW526` (service UUID `0xffb0`, manufacturer company ID `0x27ac`) connects live and its weight stream matches real weigh-ins (see below) — two independent sessions, two plausible weights. |
 | Standard Weight Scale / Body Composition service | **Confirmed absent.** `inspect-20261023-171705.json`: one vendor-specific service `0xffb0` only — `0xffb2` (notify) and `0xffb1` (write); no standard SIG `0x181D`/`0x181B`. Fully proprietary protocol. |
 | Measurement transport (notifications vs advertisements) | **Confirmed: notifications, no write needed.** `0xffb2` streams ~20-byte packets within ~2 s of connecting; nothing is ever written to `0xffb1` — `cadence capture` only subscribes. |
-| Weight decode | **Confirmed.** 20-byte packet `ac 27 00 [B3] [B4 B5] 00×11 03 d5 [checksum]`. `B3` is a stability flag (`0x68` settling, `0x69` locked). `weight_kg = uint16_be(B4,B5) / 120`. Verified against the official app's reading, exact match (capture `20261023`, session 2); a second independent session landed on a plausible, slightly different weight (session 1). Not yet tested for a fixed offset (needs the "hold a known object" capture from the guide) or across a wider weight range. |
+| Weight decode | **Packet shape confirmed, kg conversion not.** 20-byte packet `ac 27 00 [B3] [B4 B5] 00×11 03 d5 [checksum]`; `B3` is a settling/locked flag (`0x68`/`0x69`). `uint16_be(B4,B5) / 120` matched one app reading but decoded about 2 kg below the scale's display in later live use (72.0–72.4 vs 74.2 kg), so it is **not reliable** and was not used. The cause (offset, divisor or layout) was not found. |
 | Which of the other 13 display metrics are transmitted vs app-calculated | **Likely all app-calculated, not yet proven.** Bytes 6–16 stayed zero across both full captures, including a 26 s silent window before the scale's own disconnect — right when the display would be cycling through them. The official app's own UI labels this screen "based on your initial info" (stored profile), consistent with client-side computation from weight + profile, not scale-transmitted data. Cadence will not present these as measured unless a future capture shows otherwise. |
 
 The tools never write to the scale; a write would only be added deliberately with captured justification. See
 [docs/protocol-investigation.md](docs/protocol-investigation.md) for the full capture workflow.
-
-### Using the scale in the app
-
-With the weight formula confirmed, the main backend can import it directly — `cadence_app/scale.py` is a
-background listener (opt-in, macOS/Bluetooth only) that connects, debounces a stream of packets down to one
-accepted reading per weigh-in, and stores it in your local vault (blended into your weight trend alongside
-Garmin or demo data). Nothing here reimplements the protocol; it imports the tested
-[`cadence_ble.ssw526`](research/cadence_ble/ssw526.py) decoder. To turn it on, install the research package
-into the backend's own venv too:
-
-```sh
-cd app/backend && .venv/bin/pip install -e '.[test]' -e ../../research
-```
-
-Then enable it from **Settings → Bluetooth scale** in the app. Without that extra install, the backend runs
-and tests exactly as before — this is entirely optional, and the feature reports itself as unavailable
-rather than failing. **Weigh in** from the Weight page or Home opens a live, mobile-friendly view of the
-same background listener — connecting, settling, locked and saved — the whole reason to still open the
-official app.
-
-**Body composition** stays separate from weight on purpose: this scale hasn't been shown to transmit it at
-all, so Cadence computes BMI (exact) plus body-fat %, fat/lean mass and BMR as published-formula *estimates*
-from a body profile (height, birth date, biological sex — Settings → Body profile), clearly labelled as such
-on the Weight page along with their sources and error margins. Muscle %, bone mass, visceral fat, water %
-and metabolic age aren't shown — no credible formula derives them from weight and profile alone, and this
-project doesn't fabricate values it can't stand behind.
 
 ## Privacy
 

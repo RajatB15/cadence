@@ -32,8 +32,8 @@ COOKIE_MAX_AGE = 180 * 86400
 BLOCKED_API = ("/api/share",)
 # The only writes a paired phone may make: its own notifications and an on-demand Garmin refresh.
 PHONE_WRITES = {"/api/push/subscribe", "/api/push/unsubscribe", "/api/push/test", "/api/push/prefs", "/api/garmin/sync"}
-# The journal check-in is made on the phone, so its routes accept writes from paired devices too.
-PHONE_WRITE_PREFIXES = ("/api/journal/", "/api/strength/", "/api/planner")
+# The journal check-in and weight logging happen on the phone, so those routes accept writes from paired devices too.
+PHONE_WRITE_PREFIXES = ("/api/journal/", "/api/strength/", "/api/planner", "/api/weight/entries")
 READ_ONLY_META = '<meta name="cadence-mode" content="read-only" />'
 TAILSCALE_APP_CLI = "/Applications/Tailscale.app/Contents/MacOS/Tailscale"
 SECURITY_HEADERS = [

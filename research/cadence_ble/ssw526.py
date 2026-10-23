@@ -2,8 +2,9 @@
 
 Evidence and the full methodology live in docs/protocol-investigation.md ("Confirmed decodes"). In short:
 characteristic 0xffb2 streams a fixed 20-byte packet with no write required; byte 3 is a settling/locked
-flag and bytes 4-5 are the weight as a big-endian uint16, confirmed against the official app's displayed
-weight. Nothing else in the packet is decoded yet (the trailing byte looks like a checksum of some kind;
+flag and bytes 4-5 are the weight as a big-endian uint16. The /120 conversion matched one app reading but
+read about 2 kg low against the scale's display in later live use, so treat the kg value as unverified
+(see the retraction in docs/protocol-investigation.md). Nothing else in the packet is decoded yet (the trailing byte looks like a checksum of some kind;
 the algorithm is unconfirmed, so it is reported but not validated).
 
 This module only decodes bytes already proven to mean something. It must not grow a field that analyze.py

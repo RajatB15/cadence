@@ -745,6 +745,11 @@ export interface BodyEstimate {
   fat_mass_kg: number;
   lean_mass_kg: number;
   bmr_kcal: number;
+  healthy_min_kg: number;
+  healthy_max_kg: number;
+  to_healthy_kg: number;
+  bsa_m2: number;
+  energy_kcal: { light: number; active: number; vigorous: number };
 }
 
 export interface BodyProfile {
@@ -854,14 +859,9 @@ export interface MetricSeries {
   points: Point[];
 }
 
-export interface ScaleStatus {
-  available: boolean;
-  enabled: boolean;
-  running: boolean;
-  connected: boolean;
-  last_error: string | null;
-  last_reading: { weight_kg: number; local_date: string; accepted_at: string } | null;
-  live: { weight_kg: number; stable: boolean; seen_at: string } | null;
+export interface WeightEntries {
+  entries: { day: string; weight_kg: number }[];
+  today: string;
 }
 
 export interface SourceInfo {

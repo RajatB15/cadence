@@ -1,12 +1,14 @@
 import * as Dialog from "@radix-ui/react-dialog";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Info, Ruler, Target, X } from "lucide-react";
+import { Info, Scale, Target, X } from "lucide-react";
 import { useCallback, useMemo, useState, type FormEvent } from "react";
 import { Chart, chartBase, type ChartOption } from "../components/Chart";
 import { NoteGrid } from "../components/CoachNotes";
 import { CountUp } from "../components/CountUp";
 import { ErrorBlock, LoadingBlock, PageHeader, Segmented } from "../components/Shell";
-import { Link } from "react-router-dom";
+import { useSearchParams } from "react-router-dom";
+import { BodyStats } from "../components/BodyStats";
+import { LogWeightDialog } from "../components/LogWeightDialog";
 import { api } from "../lib/api";
 import { formatDate, formatShortDate, projectionCopy } from "../lib/format";
 import type { WeightResponse } from "../lib/types";
@@ -20,11 +22,12 @@ const RANGES = [
 export function WeightPage() {
   const [days, setDays] = useState(180);
   const query = useQuery({ queryKey: ["weight", days], queryFn: () => api.weight(days) });
+  const [params] = useSearchParams();
 
   return (
     <>
       <PageHeader eyebrow="Body composition" title={<>Weight, <em className="text-gold">smoothed.</em></>}>
-        <Link to="/weigh-in" className="pop pop-lime"><Target size={16} /> Weigh in now</Link>
+        <LogWeightDialog hintKg={query.data?.latest_trend_kg} defaultOpen={params.get("log") === "1"} />
         <Segmented label="Range" options={RANGES} value={days} onChange={setDays} />
         {query.data && <GoalDialog current={query.data.goal_kg} />}
       </PageHeader>
@@ -33,7 +36,14 @@ export function WeightPage() {
       ) : query.isError ? (
         <ErrorBlock error={query.error} retry={() => query.refetch()} />
       ) : query.data.points.length === 0 ? (
-        <p className="border-y border-line py-12 text-mute">No weigh-ins in your history yet. Readings from a Garmin scale or manual entries in Garmin Connect will appear here after a sync.</p>
+        <div className="surface flex flex-col items-center gap-3 p-12 text-center">
+          <Scale size={28} className="text-gold" />
+          <p className="font-display text-3xl text-cream">No weigh-ins yet</p>
+          <p className="max-w-md text-sm text-mute">
+            Log today's weight with the button above, or weigh in with the Garmin app — those sync in automatically. A smoothed trend, your BMI and
+            body estimates appear after the first reading.
+          </p>
+        </div>
       ) : (
         <WeightBody data={query.data} />
       )}
@@ -61,7 +71,7 @@ function WeightBody({ data }: { data: WeightResponse }) {
           if (!p) return "";
           return `<div style="font-weight:600;margin-bottom:6px">${formatDate(p.day)}</div>
             <div>Trend <b style="color:#d9b26a">${p.trend_kg.toFixed(2)} kg</b> ± ${p.band_kg.toFixed(2)}</div>
-            <div style="color:#8d8a82">Scale ${p.weight_kg.toFixed(2)} kg</div>`;
+            <div style="color:#8d8a82">Logged ${p.weight_kg.toFixed(2)} kg</div>`;
         },
       },
       series: [
@@ -76,7 +86,7 @@ function WeightBody({ data }: { data: WeightResponse }) {
           silent: true,
         },
         {
-          name: "Scale",
+          name: "Reading",
           type: "scatter",
           data: data.points.map((p) => [p.day, p.weight_kg]),
           symbolSize: 5,
@@ -105,6 +115,8 @@ function WeightBody({ data }: { data: WeightResponse }) {
   }, [data]);
 
   const p = data.projection;
+  const latestBody = [...data.points].reverse().find((pt) => pt.body)?.body ?? null;
+  const fat = data.latest_body_fat_pct ?? latestBody?.body_fat_pct ?? null;
   return (
     <div className="space-y-6">
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -126,13 +138,14 @@ function WeightBody({ data }: { data: WeightResponse }) {
             </>
           )}
         </Stat>
-        <Stat label="Body fat (scale est.)">
-          {data.latest_body_fat_pct == null ? (
+        <Stat label="Body fat">
+          {fat == null ? (
             <span className="text-mute">—</span>
           ) : (
             <>
-              <span className="num text-5xl text-paper">{data.latest_body_fat_pct.toFixed(1)}</span>
+              <span className="num text-5xl text-paper">{fat.toFixed(1)}</span>
               <span className="ml-2 text-mute">%</span>
+              <p className="mt-1 text-xs text-dim">{data.latest_body_fat_pct != null ? "from your Garmin scale" : "estimated, ±4 points"}</p>
             </>
           )}
         </Stat>
@@ -167,13 +180,13 @@ function WeightBody({ data }: { data: WeightResponse }) {
         <div className="mb-2 flex flex-wrap items-center gap-5 px-2 text-xs text-mute">
           <Legend color="#d9b26a" label="Trend" line />
           <Legend color="rgba(217,178,106,0.35)" label="95% band" />
-          <Legend color="rgba(236,235,230,0.6)" label="Scale reading" dot />
+          <Legend color="rgba(236,235,230,0.6)" label="Reading" dot />
           {data.goal_kg != null && <Legend color="#c8f560" label="Goal" line dashed />}
         </div>
         <Chart option={option} height={420} label="Weight trend chart" />
       </section>
 
-      <BodyComposition data={data} />
+      <BodyStats body={latestBody} weightKg={data.latest_trend_kg} goalKg={data.goal_kg} hasProfile={data.body_profile != null} />
 
       {data.coach.length > 0 && (
         <section>
@@ -200,74 +213,6 @@ function WeightBody({ data }: { data: WeightResponse }) {
         </div>
       </details>
     </div>
-  );
-}
-
-const CATEGORY_COLOR: Record<string, string> = { underweight: "#6cc7ff", normal: "#c8f560", overweight: "#ffbe55", obese: "#ff6a55" };
-
-function BodyComposition({ data }: { data: WeightResponse }) {
-  if (!data.body_profile) {
-    return (
-      <Link to="/settings" className="surface surface-hover flex items-center gap-4 p-6">
-        <Ruler size={20} className="shrink-0 text-gold" />
-        <div>
-          <p className="font-semibold text-paper">Set up your body profile to see estimated body composition</p>
-          <p className="mt-1 text-sm text-mute">Height, birth date and sex → Settings. Takes ten seconds.</p>
-        </div>
-      </Link>
-    );
-  }
-  const latest = [...data.points].reverse().find((p) => p.body)?.body;
-  if (!latest) return null;
-  const items: { label: string; value: string; color?: string }[] = [
-    { label: "BMI", value: latest.bmi.toFixed(1), color: CATEGORY_COLOR[latest.bmi_category] },
-    { label: "Category", value: latest.bmi_category },
-    { label: "Body fat", value: `${latest.body_fat_pct.toFixed(1)}%` },
-    { label: "Fat mass", value: `${latest.fat_mass_kg.toFixed(1)} kg` },
-    { label: "Lean mass", value: `${latest.lean_mass_kg.toFixed(1)} kg` },
-    { label: "BMR", value: `${latest.bmr_kcal.toLocaleString()} kcal/day` },
-  ];
-  return (
-    <section className="surface p-6 sm:p-8">
-      <div className="mb-6 flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <p className="eyebrow mb-2">Estimated, not measured — see "how this is calculated" below</p>
-          <h2 className="font-display text-3xl text-cream">Body composition</h2>
-        </div>
-        <Link to="/settings" className="eyebrow hover:text-paper">Edit profile →</Link>
-      </div>
-      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-6">
-        {items.map((it) => (
-          <div key={it.label}>
-            <p className="eyebrow mb-1">{it.label}</p>
-            <p className="num text-2xl capitalize" style={{ color: it.color ?? "#ecebe6" }}>{it.value}</p>
-          </div>
-        ))}
-      </div>
-      <details className="group mt-6 text-sm text-mute">
-        <summary className="flex cursor-pointer list-none items-center gap-2 font-semibold text-paper">
-          <Info size={14} className="text-gold" /> How this is calculated
-        </summary>
-        <div className="mt-3 max-w-3xl space-y-2 text-xs leading-relaxed">
-          <p>
-            BMI is exact arithmetic (weight ÷ height²). Everything else here is a published formula from weight, height, age and sex — not a
-            scale measurement. This scale hasn't been shown to transmit body composition at all.
-          </p>
-          <p>
-            Body fat %: Deurenberg et al. (1991), age- and sex-specific prediction from BMI. Typical error is about ±4 percentage points, and it
-            tends to run high for very lean or muscular people. Fat and lean mass are this percentage applied to your weight.
-          </p>
-          <p>
-            BMR: Mifflin–St Jeor (1990), one of the better-validated resting-energy equations — typically accurate to within about ±10% for an
-            individual.
-          </p>
-          <p>
-            Muscle %, bone mass, visceral fat, water % and metabolic age aren't shown: no credible formula derives them from weight and profile
-            alone, and inventing one isn't something this app does.
-          </p>
-        </div>
-      </details>
-    </section>
   );
 }
 

@@ -24,6 +24,21 @@ def test_estimate_matches_hand_computed_reference_values():
     assert e.bmr_kcal == 1649
 
 
+def test_healthy_range_surface_area_and_energy_are_hand_checkable():
+    e = body.estimate(70.0, MALE_30, date(2026, 10, 24))
+    assert (e.healthy_min_kg, e.healthy_max_kg) == (56.7, 76.3)  # BMI 18.5 / 24.9 at 1.75 m
+    assert e.to_healthy_kg == 0.0
+    assert e.bsa_m2 == 1.84  # Mosteller: sqrt(175 * 70 / 3600)
+    assert e.energy_kcal == {"light": 2308, "active": 2803, "vigorous": 3298}  # BMR ~1648.75 x 1.4 / 1.7 / 2.0
+
+
+def test_distance_to_the_healthy_range_is_signed():
+    heavy = body.estimate(90.0, MALE_30, date(2026, 10, 24))
+    light = body.estimate(50.0, MALE_30, date(2026, 10, 24))
+    assert heavy.to_healthy_kg == -13.7  # kg to lose to reach the top of the range
+    assert light.to_healthy_kg == 6.7  # kg to gain to reach the bottom
+
+
 def test_sex_changes_both_formulas_in_the_expected_direction():
     male = body.estimate(70.0, MALE_30, date(2026, 10, 24))
     female = body.estimate(70.0, {**MALE_30, "sex": "female"}, date(2026, 10, 24))

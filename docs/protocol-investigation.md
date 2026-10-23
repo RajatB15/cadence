@@ -127,48 +127,60 @@ ac 27 00 [B3] [B4 B5] 00 00 00 00 00 00 00 00 00 00 00 03 d5 [B19]
 
 - `ac 27 00` / `03 d5` — fixed header/trailer, unchanged across every capture so far.
 - `B3` — a one-byte flag: `0x68` while the reading is settling, `0x69` once it locks. Confirmed
-  independently in two captures (the value flips exactly when `B4 B5` stops moving).
+  independently in two captures (the value flips exactly when `B4 B5` stops moving) — **but** `0x69` turns
+  on several seconds before `B4 B5` is actually done moving (seen clearly in the 2026-10-23 capture: `B3`
+  flips to `0x69` at ~11s while `B4 B5` keeps wobbling until ~18s). A consumer debouncing on raw-value
+  repeats needs a window long enough to outlast that wobble, not just the flag transition.
 - `B4 B5` (big-endian uint16) — the weight field. Settles with visible overshoot/damping (classic
   load-cell ADC settling), matching the "locked" state of `B3`.
 - Bytes 6–16 — zero in every packet captured so far, in both idle and locked states.
 - `B19` — changes only when `B4 B5`/`B3` do; almost certainly a checksum over the payload. Not reverse
   engineered.
 
-**Weight formula — confirmed:**
+**Weight formula — NOT reliable (retracted 2026-10-23):**
 
 ```
-weight_kg = uint16_be(B4, B5) / 120
+weight_kg = uint16_be(B4, B5) / 120      # matched one app reading, then failed live use
 ```
 
-Verified against the official Dr Trust app's displayed weight for one capture session: the raw value
-divided by 120 matched the app's reading exactly (to the app's own two decimal places). A second,
-independent capture session landed on a different but equally plausible weight using the same formula —
-consistent with two real, separate weigh-ins rather than a coincidence.
+This matched the official app's reading in one early session, but live use disproved it: repeated weigh-ins
+decoded to roughly 72.0-72.4 kg while the scale's own display settled at 74.2 kg (about 2 kg apart, same
+direction each time). A "hold a known object" check (display: 74.2 kg alone, about 75.6 kg holding a laptop)
+was started but never paired with matching decoded values, so it did not show whether the error is an
+offset, a different divisor, or a different byte layout. The investigation was stopped there: weight is now
+entered manually. Treat `decode_weight_packet`'s weight as unverified; the stability flag and packet shape
+are still well supported.
 
-Not yet established:
-- Whether there's a small additive offset the single confirmed data point can't rule out (the "hold a
-  known object" variation in Step 3c would settle this — a known weight added should shift the raw value
-  by exactly `object_kg × 120`, from the same baseline).
-- Behaviour across a wider weight range; only one person's weight has been confirmed so far.
+Not established:
+- The correct weight conversion (offset vs divisor vs layout), and whether the stream carries a fully
+  settled value at all.
 - What, if anything, `B19` encodes, and what `0xffb1` is for.
 
 **Body composition — not observed on the wire.** Bytes 6–16 never populated with anything beyond zero
-across two full capture sessions, including a ~26 s silent window before the scale disconnected on its
-own — the point at which the display would be cycling through body-fat/BMI/etc. The official app's own UI
-for these values is headed "based on your initial info" (the stored age/height/sex profile), consistent
-with the app computing them client-side from weight plus profile rather than reading them from the scale.
-Per the project's own rule, Cadence will not present body-composition values as *measured* unless a future
-capture shows the scale actually transmitting them — right now the evidence points the other way.
+across three full capture sessions now, including a third capture (2026-10-23) that stayed connected
+deliberately through the scale's weight-locked state and its full display cycle (the point where it would
+show body-fat/BMI/etc. on-device) without disconnecting early. That session produced zero additional
+notifications past the point the weight locked — the scale went silent on `0xffb2` rather than sending a
+second packet shape — then stayed silent through to step-off. The official app's own UI for these values
+is headed "based on your initial info" (the stored age/height/sex profile), consistent with the app
+computing them client-side from weight plus profile rather than reading them from the scale.
 
-**In the app.** The weight formula above is live in `app/backend/cadence_app/scale.py` — an opt-in background
-listener (Settings → Bluetooth scale) that imports `decode_weight_packet` directly from this package rather
-than reimplementing it, debounces a stream of packets down to one accepted reading per weigh-in, and stores
-it in the local vault. See that module's docstring for the debounce policy. Verified end-to-end against real
-hardware on 2026-10-23: enabled in Settings, a real weigh-in connected, locked, debounced and appeared in
-the weight trend with no manual steps beyond standing on the scale.
+This is conclusive enough to stop chasing on this characteristic: either the scale doesn't measure body
+composition at all, or it measures but never exposes it over `0xffb2` in a normal connect-and-stream
+session. Settling which of those two would require either writing an unknown "request" command to the
+untested `0xffb1` characteristic, or packet-sniffing the official app's own pairing/handshake traffic —
+both bigger asks than this investigation's evidence bar justifies for a question that only ever downgrades
+back to "still unmeasured." Per the project's own rule, Cadence will not present body-composition values
+as *measured* unless a future capture shows the scale actually transmitting them — right now the evidence
+points the other way, and this investigation is considered closed unless new evidence surfaces.
+
+**In the app.** Not used. A background listener existed briefly (2026-10-23) and was removed the same day
+because the decoded weight did not match the scale's display (see above). The app logs weight manually or
+takes it from Garmin; this package is kept only as research tooling.
 
 **Next useful captures**, in order of value:
-1. Step on holding (or not holding) a known small weight, to test for an offset in the weight formula.
+1. Redo the known-object test properly: for each of two known loads, record the display value and the
+   decoded raw value together, then solve for offset and divisor.
 2. A capture that stays connected through the scale's full auto-cycle and display sequence without
    stepping off early, to settle whether body-comp data ever crosses `0xffb2` under any circumstance.
 3. If a packet sniffer (nRF Connect on iPhone, or Apple PacketLogger) is available, observing what the

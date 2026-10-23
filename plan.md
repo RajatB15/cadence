@@ -103,73 +103,33 @@ Gate: repeated imports do not duplicate records (verified); interrupted sync res
 
 Gate: connect or import, backfill, browse, tag, and export work end to end. Missing data is explicitly distinguished from zero.
 
-### Stage 3: Scale Bridge (Idea 1)
+### Stage 3: Weight Logging and Body Stats (revised 2026-10-23)
 
-- [x] Verify the BLE protocol with captures and measurement fixtures. Weight confirmed (see
-  docs/protocol-investigation.md and `research/cadence_ble/ssw526.py`); body composition is not
-  transmitted (see Stage findings) — never persisted or presented as measured.
-- [x] Establish whether Garmin writes are supported: no (Personal API is "Pull only"; 26 published
-  endpoints, all reads, no weight-upload endpoint). Garmin upload is permanently out of scope for this
-  credential, not just deferred; readings live only in Cadence's own vault.
-- [x] Persist readings locally with duplicate protection and source provenance. Verified end-to-end on
-  2026-10-23: enabled in Settings, a real weigh-in connected, locked, debounced and landed in the weight
-  trend on the first attempt — no manual intervention beyond stepping on the scale.
-  - `cadence_app/scale.py`: platform/opt-in-gated (`available()` checks `cadence_ble` is importable;
-    `enabled()` is a Settings toggle, off by default — this needs real hardware present, unlike weather).
-    A background thread with its own asyncio loop (bleak is async-native; this mirrors the existing
-    Scheduler/AnalysisWorker thread pattern so it never touches the main request loop and is fully opt-in
-    in tests).
-  - `Debouncer`: a stream of decoded packets becomes at most one accepted reading per physical weigh-in —
-    requires N consecutive identical *locked* (stability-flag) raw values, then a cooldown before the next
-    acceptance. Pure, unit-tested logic, independent of the BLE I/O.
-  - Storage: reuses `WeightReading`/`write_batch` with `source_id="scale"`; the existing
-    `UniqueConstraint(source_id, source_record_id)` is the duplicate guard. `source_record_id` is derived
-    from the acceptance timestamp. Local date/timezone from the Mac's own clock (the scale has none).
-  - The weight page/summary blends `source_id IN (active_source, "scale")` — scale readings are
-    supplementary to whichever primary source is active, not a competing "source" in the single-source
-    sense used elsewhere.
-  - Install: the backend venv additionally installs `research` editable (`pip install -e '.[test]' -e
-    ../../research`) to reuse `cadence_ble.ssw526`'s confirmed, tested decoder — never reimplemented.
-    Entirely optional; the backend runs and tests fully without it (Linux CI has no Bluetooth and does not
-    install it).
-  - Settings: a "Bluetooth scale" card — available/not on this platform, enabled toggle, connected status,
-    last accepted reading.
+The Bluetooth scale bridge was built, run against real hardware, and **retired the same day**. Garmin has no
+weight-upload API (Personal API is "Pull only": 26 published endpoints, all reads), so readings could only
+live in Cadence's vault. The BLE weight decode (`uint16_be / 120`) matched one app reading but then read
+about 2 kg below the scale's own display in live use (72.0-72.4 vs 74.2 kg) and the cause was not found.
+Body composition was never transmitted (bytes 6-16 stayed zero through a full display cycle). Decision: log
+weight by hand or via the Garmin app; keep the capture tooling under `research/` as research only.
 
-Gate: no silent overwrites (upsert, never duplicate on reconnect/repeat notifications); distinguish
-transmitted measurements (weight) from calculated estimates (body composition, never stored from this
-scale).
+- [x] Protocol research and findings recorded in docs/protocol-investigation.md (weight conversion marked
+  unreliable; body composition not on the wire).
+- [x] Removed `cadence_app/scale.py`, its API routes, Settings card, Weigh-in page and tests; deleted the six
+  uncalibrated scale readings from the local vault.
+- [x] Manual weight log (`cadence_app/weightlog.py`, source `manual`): one entry per day, re-logging a day
+  corrects it, `GET/POST /api/weight/entries` and `DELETE /api/weight/entries/{day}`, blended with the active
+  source in the trend. Paired phones may write `/api/weight/entries`. Log dialog on the Weight page and a
+  "Log weight" chip on Home.
+- [x] Body profile (`profile.py`): height, birth date, sex - used only by the estimates below.
+- [x] `analytics/body.py`, all labelled as estimates with sources in the UI: BMI (exact) with WHO categories,
+  healthy weight range (BMI 18.5-24.9), Deurenberg (1991) body fat %, fat/lean mass, Mifflin-St Jeor (1990)
+  BMR, daily energy ranges (BMR x FAO/WHO/UNU 2004 activity bands 1.4/1.7/2.0), Mosteller (1987) body surface
+  area. Muscle %, bone mass, visceral fat, water % and metabolic age are not computed.
+- [x] Weight page "Body stats": BMI gauge, healthy-range bar with goal marker, fat vs lean bar, energy bars;
+  empty, loading, no-profile and phone-width states.
+- [ ] Revisit a smart scale only if its data can be verified against its display or arrives through Garmin.
 
-### Stage 3b: Body Composition Estimates and a Live Weigh-In Flow (2026-10-24)
-
-The user wants to stop using the Dr Trust app entirely. Weight is a real transmitted measurement; body
-composition is not (confirmed — two full captures show nothing but zeros where it would be). Whether the
-scale *measures* impedance and just doesn't send it, or doesn't measure it at all, is still open — one more
-capture (staying connected through the full auto-cycle) would settle it. Until/unless that's confirmed:
-
-- [x] Body profile (`cadence_app/profile.py`, `AppSetting`-backed like the training goal): height (cm),
-  birth date, biological sex (used only for the formulas below, not a general identity field) — Settings
-  form.
-- [x] `analytics/body.py`: BMI (exact arithmetic, not an estimate) + Deurenberg (1991) body-fat-%
-  estimate from BMI/age/sex + derived fat/lean mass + Mifflin-St Jeor (1990) BMR estimate. Every value
-  labeled "estimated" in the UI, with the formula and its known error margin in "how this is calculated" —
-  the same transparency standard as every other Cadence score. Muscle %, bone mass, visceral fat, water %
-  and metabolic age are **not** computed: no credible formula derives them from weight/height/age/sex alone,
-  and fabricating them would violate the project's own measured-vs-calculated rule. They stay unavailable
-  until/unless the scale is shown to transmit real impedance data.
-- [x] Weight page: estimated BMI/body-fat/lean-mass/BMR shown alongside the weight trend, computed for every
-  historical point using the *current* profile (explicitly labeled as a simplification — height/age drift
-  over years isn't modelled).
-- [x] Live "Weigh-in" page/flow: a button that shows the background listener's real-time state (searching →
-  connected → settling, with the live raw value → locked and saved), not just the passive background
-  behaviour already verified. `ScaleListener` gains a `live` field (latest decoded reading, debounced or
-  not) alongside `last_reading` (accepted only) for this.
-- [ ] Investigate whether impedance is transmitted: one more guided capture, staying connected through the
-  scale's full display cycle without early disconnect (see docs/protocol-investigation.md "Next useful
-  captures"). If found and decoded with the same evidence standard as weight, upgrade the relevant fields
-  from estimated to measured.
-
-Gate: nothing presented as measured that isn't; every formula cited with its source and limitations; no
-fabricated fields.
+Gate: nothing presented as measured that isn't; every formula cited with its source and limitations.
 
 ### Stage 4: Personal Analytics (Ideas 3-6)
 

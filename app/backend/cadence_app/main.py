@@ -16,7 +16,7 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from cadence_app import days, journal, ocr, planner_store, profile as profile_store, push, scale, strength, weather
+from cadence_app import days, journal, ocr, planner_store, profile as profile_store, push, strength, weather, weightlog
 from cadence_app.analytics import exercises
 from cadence_app.analytics import body as body_analytics
 from cadence_app.analytics import plan as training_plan
@@ -140,8 +140,9 @@ class WeatherSetting(BaseModel):
     enabled: bool
 
 
-class ScaleSetting(BaseModel):
-    enabled: bool
+class WeightEntryRequest(BaseModel):
+    day: date
+    weight_kg: float = Field(ge=weightlog.MIN_KG, le=weightlog.MAX_KG)
 
 
 class ProfileRequest(BaseModel):
@@ -199,7 +200,6 @@ def create_app(
     analysis = insights_service.AnalysisWorker(
         factory, settings.archive_dir, (lambda: weather.refresh(factory, clock.today(), clock.now())) if settings.weather else None
     )
-    scale_listener = scale.ScaleListener(factory)
 
     def current_credential():
         return credential_status(read_env_file(settings.secrets_file), clock.today())
@@ -220,12 +220,8 @@ def create_app(
         share.resume()
         if settings.scheduler:
             scheduler.start()
-        with factory() as session:
-            if scale.enabled(session):
-                scale_listener.start()
         yield
         scheduler.stop()
-        scale_listener.stop()
         share.stop(remember=False)
         analysis.stop()
         garmin_jobs.close()
@@ -234,7 +230,7 @@ def create_app(
     app = FastAPI(title="Cadence", lifespan=lifespan, docs_url=None, redoc_url=None)
     share = ShareServer(app, factory, settings.web_dist, settings.share_port)
     app.state.share = share
-    app.state.notifier, app.state.scheduler, app.state.scale_listener = notifier, scheduler, scale_listener
+    app.state.notifier, app.state.scheduler = notifier, scheduler
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=ALLOWED_HOSTS)
 
     @app.middleware("http")
@@ -353,12 +349,6 @@ def create_app(
         )
         cred = current_credential()
         garmin = session.get(Source, "garmin")
-        scale_status = (
-            "unavailable" if not scale.available() else
-            "connected" if scale_listener.connected else
-            "listening" if scale.enabled(session) else
-            "off"
-        )
         return [
             {
                 "id": "demo",
@@ -373,14 +363,6 @@ def create_app(
                 "status": "ready" if garmin and garmin.last_synced_at else "not_synced" if cred.configured else "not_configured",
                 "last_synced_at": garmin.last_synced_at if garmin else None,
                 "detail": "Full-history sync into a local vault. Every response is stored, so history is fetched once.",
-            },
-            {
-                "id": "scale",
-                "name": "Bluetooth scale",
-                "status": scale_status,
-                "last_synced_at": None,
-                "detail": "Weight readings from the SSW526 (Dr Trust USA 526 Legend); see Settings to turn it on. "
-                          "Body composition isn't transmitted by this scale and is never imported.",
             },
         ]
 
@@ -942,7 +924,7 @@ def create_app(
         body_profile = profile_store.load(session)
         latest_fat = session.scalar(
             select(WeightReading.body_fat_pct)
-            .where(WeightReading.source_id.in_((_active_source(session), scale.SOURCE_ID)), WeightReading.body_fat_pct.is_not(None))
+            .where(WeightReading.source_id.in_((_active_source(session), weightlog.SOURCE_ID)), WeightReading.body_fat_pct.is_not(None))
             .order_by(WeightReading.measured_at_utc.desc())
             .limit(1)
         )
@@ -1009,19 +991,6 @@ def create_app(
             raise HTTPException(404, "Unknown habit")
         return journal.behaviour_dict(b)
 
-    @app.get("/api/scale/status")
-    def scale_status(session: Session = Depends(get_session)) -> dict:
-        lr, live = scale_listener.last_reading, scale_listener.live
-        return {
-            "available": scale.available(),
-            "enabled": scale.enabled(session),
-            "running": scale_listener.running,
-            "connected": scale_listener.connected,
-            "last_error": scale_listener.last_error,
-            "last_reading": {"weight_kg": lr.weight_kg, "local_date": lr.local_date, "accepted_at": lr.accepted_at} if lr else None,
-            "live": {"weight_kg": live.weight_kg, "stable": live.stable, "seen_at": live.seen_at} if live else None,
-        }
-
     @app.get("/api/settings/profile")
     def get_profile(session: Session = Depends(get_session)) -> dict:
         return {"profile": profile_store.load(session)}
@@ -1034,14 +1003,22 @@ def create_app(
             raise HTTPException(400, str(exc)) from None
         return {"profile": p}
 
-    @app.put("/api/settings/scale")
-    def set_scale_setting(body: ScaleSetting, session: Session = Depends(get_session)) -> dict:
-        scale.set_enabled(session, body.enabled)
-        if body.enabled:
-            scale_listener.start()
-        else:
-            scale_listener.stop()
-        return {"enabled": body.enabled, "available": scale.available()}
+    @app.get("/api/weight/entries")
+    def weight_entries(session: Session = Depends(get_session)) -> dict:
+        return {"entries": weightlog.entries(session), "today": clock.today()}
+
+    @app.post("/api/weight/entries")
+    def weight_entry_add(body: WeightEntryRequest, session: Session = Depends(get_session)) -> dict:
+        try:
+            return weightlog.add(session, body.day, body.weight_kg, clock.today(), clock.now())
+        except ValueError as exc:
+            raise HTTPException(400, str(exc)) from None
+
+    @app.delete("/api/weight/entries/{day}")
+    def weight_entry_delete(day: date, session: Session = Depends(get_session)) -> dict:
+        if not weightlog.remove(session, day):
+            raise HTTPException(404, "No manual entry for that day")
+        return {"deleted": day}
 
     @app.get("/api/settings/weather")
     def weather_setting(session: Session = Depends(get_session)) -> dict:
@@ -1104,7 +1081,7 @@ def _active_source(session: Session) -> str:
 def _weight_summary(session: Session, today: date) -> weight_analytics.WeightSummary:
     rows = session.execute(
         select(WeightReading.local_date, func.avg(WeightReading.weight_kg))
-        .where(WeightReading.source_id.in_((_active_source(session), scale.SOURCE_ID)))
+        .where(WeightReading.source_id.in_((_active_source(session), weightlog.SOURCE_ID)))
         .group_by(WeightReading.local_date)
         .order_by(WeightReading.local_date)
     ).all()

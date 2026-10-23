@@ -5,7 +5,7 @@ import type {
   PlanOption,
   Review,
   BodyProfile,
-  ScaleStatus,
+  WeightEntries,
   PlannedSessionView,
   PlannerWeek,
   Sport,
@@ -42,7 +42,7 @@ export class ApiError extends Error {
 export const READ_ONLY =
   typeof document !== "undefined" &&
   document.querySelector('meta[name="cadence-mode"]')?.getAttribute("content") === "read-only";
-const PHONE_WRITES = ["/api/push/", "/api/garmin/sync", "/api/journal/", "/api/strength/", "/api/planner"];
+const PHONE_WRITES = ["/api/push/", "/api/garmin/sync", "/api/journal/", "/api/strength/", "/api/planner", "/api/weight/entries"];
 
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const method = init.method ?? "GET";
@@ -142,12 +142,13 @@ export const api = {
   weatherSetting: () => request<{ enabled: boolean; available: boolean }>("/api/settings/weather"),
   setWeather: (enabled: boolean) =>
     request<{ enabled: boolean; available: boolean }>("/api/settings/weather", { method: "PUT", body: JSON.stringify({ enabled }) }),
-  scaleStatus: () => request<ScaleStatus>("/api/scale/status"),
   bodyProfile: () => request<{ profile: BodyProfile | null }>("/api/settings/profile"),
   setBodyProfile: (profile: { height_cm: number; birth_date: string; sex: "male" | "female" }) =>
     request<{ profile: BodyProfile }>("/api/settings/profile", { method: "PUT", body: JSON.stringify(profile) }),
-  setScale: (enabled: boolean) =>
-    request<{ enabled: boolean; available: boolean }>("/api/settings/scale", { method: "PUT", body: JSON.stringify({ enabled }) }),
+  weightEntries: () => request<WeightEntries>("/api/weight/entries"),
+  addWeight: (day: string, weight_kg: number) =>
+    request<{ day: string; weight_kg: number }>("/api/weight/entries", { method: "POST", body: JSON.stringify({ day, weight_kg }) }),
+  deleteWeight: (day: string) => request<{ deleted: string }>(`/api/weight/entries/${day}`, { method: "DELETE" }),
   setGoal: (goal: { distance: GoalDistance; date: string; target_s: number | null } | null) =>
     request<{ goal: TrainingGoal | null }>("/api/settings/goal", { method: "PUT", body: JSON.stringify(goal ?? {}) }),
   sources: () => request<SourceInfo[]>("/api/sources"),

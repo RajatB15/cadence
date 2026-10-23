@@ -1,12 +1,12 @@
 # Cadence
 
-Single-user, local-first health and training coach: Garmin data in a local SQLite vault → analytics → React web app (also served to an iPhone). Plus Python BLE research tooling for the Dr Trust 526 Legend scale. See [README.md](README.md) for user-facing docs.
+Single-user, local-first health and training coach: Garmin data in a local SQLite vault → analytics → React web app (also served to an iPhone). Plus Python BLE research tooling for the Dr Trust 526 Legend scale (research only; the app logs weight manually or via Garmin). See [README.md](README.md) for user-facing docs.
 
 ## Rules
 
 - Read [plan.md](plan.md) before planning or implementing project changes. It is the source of truth for scope, stack, roadmap, and acceptance criteria; update its checklist (and the "Current State" entry) when milestones are verified.
 - Build the local-first web experience first, package for macOS after functionality is validated, and implement LLM integration last.
-- Preserve the existing BLE research tools and tests. Do not assume the scale protocol or Garmin API capabilities are verified. Body-composition values are never presented as measured unless the protocol confirms the scale transmits them.
+- Preserve the existing BLE research tools and tests. Do not assume the scale protocol or Garmin API capabilities are verified. Body-composition values are formula estimates and are never presented as measured.
 - Store everything, surface what matters: keep every imported response in the vault (never drop data at import), but product pages show curated, meaningful views and derived insights rather than raw field dumps. Raw records stay inspectable through the Vault data explorer.
 - Local Garmin credentials are in `.secrets/garmin.env`. Load them directly in the backend process when needed; never print, copy into prompts, put in frontend bundles, log, or commit them. Do not request the key again while this file is available. Never Read or cat this file; only reference it from code.
 - Credential expiry metadata lives alongside the key. Implement the renewal reminder specified in plan.md; never infer expiry from the token format.
@@ -32,7 +32,7 @@ Run focused tests for changed behavior. The running LaunchAgent serves the built
 
 ## Layout
 
-- `app/backend/cadence_app/` — FastAPI app: `server.py`/`main.py` (routes), `sync.py` + `garmin/` (vault sync engine), `importer.py`, `models.py` + `migrations/` (Alembic: schema changes need a migration), `analytics/`, `journal.py` (habit check-ins), `strength.py` (named classes), `scale.py` (BLE weight bridge — opt-in, platform-gated via `available()`, never reimplements the protocol; imports `cadence_ble.ssw526` from `research/`, installed separately), `profile.py` (height/birth date/sex, used only by `analytics/body.py`'s cited body-composition estimates — never presented as scale-measured), `push.py` (Web Push), `share.py` (phone server; paired phones may write only push, `/api/journal/*` and `/api/strength/*`), `credentials.py`/`secrets.py`.
+- `app/backend/cadence_app/` — FastAPI app: `server.py`/`main.py` (routes), `sync.py` + `garmin/` (vault sync engine), `importer.py`, `models.py` + `migrations/` (Alembic: schema changes need a migration), `analytics/`, `journal.py` (habit check-ins), `strength.py` (named classes), `weightlog.py` (manual weight entries, one per day, source `manual`), `profile.py` (height/birth date/sex, used only by `analytics/body.py`'s cited body estimates — never presented as measured), `push.py` (Web Push), `share.py` (phone server; paired phones may write only push, `/api/journal/*`, `/api/strength/*`, `/api/planner*` and `/api/weight/entries`), `credentials.py`/`secrets.py`.
 - `analytics/`: `athlete.py` (load, readiness, efficiency, effects), `performance.py` (critical speed, FIT run analysis), `recovery.py` (HRV-guided, recovery cost, sleep need/tonight), `plan.py` (periodisation), `habits.py` (journal effects), `exercises.py` (class parsing, HR block segmentation), `strain.py` (all-day strain), `score.py`, `insights.py` (loading + `assemble()`), `notes.py` (wording).
 - User-entered data (journal, strength labels, goals) is keyed so an offline rebuild never loses it (strength labels by Garmin activity id, not row id).
 - `app/web/src/` — React 19 + Vite + Tailwind 4 + ECharts + MapLibre; `pages/`, `components/`, `lib/` (API client, formatting, metrics). Tests are Vitest (`*.test.ts`).
