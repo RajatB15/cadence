@@ -193,9 +193,9 @@ Capture format: versioned JSON (`format: "cadence-capture"`, `schema_version: 1`
 
 | Item | Status |
 |---|---|
-| Scale identity on BLE | **Unconfirmed (likely).** Device named `SSW526` (service UUID `0xffb0`, manufacturer company ID `0x27ac`). Advertises in bursts then sleeps; not yet correlated with a wake event on the physical scale. |
-| Standard Weight Scale / Body Composition service | Unknown — needs `cadence inspect`. |
-| Measurement transport (notifications vs advertisements) | Unknown — needs `cadence capture`. |
+| Scale identity on BLE | **Likely, strengthened.** Device named `SSW526` (service UUID `0xffb0`, manufacturer company ID `0x27ac`) accepted a live GATT connection (`inspect-20261023-171705.json`). Still not correlated with a controlled wake/step-on event, so not fully confirmed. |
+| Standard Weight Scale / Body Composition service | **Confirmed absent.** `inspect-20261023-171705.json`: one vendor-specific service `0xffb0` only — `0xffb2` (notify) and `0xffb1` (write); no standard SIG `0x181D`/`0x181B`. Fully proprietary protocol; decoding needs captures, not a spec. |
+| Measurement transport (notifications vs advertisements) | Unknown — `0xffb2` notify exists but nothing has been captured during a weigh-in yet. `0xffb1` is writable; whether the scale needs a write to start streaming, or pushes data on its own once stood on, is untested. No write has been sent (`cadence capture` only subscribes, never writes). |
 | Which of the 14 display metrics are transmitted vs app-calculated | Unknown — needs captures compared with the display. |
 
 The tools never write to the scale; a write would only be added deliberately with captured justification. See
