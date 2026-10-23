@@ -3,6 +3,7 @@ import { clsx } from "clsx";
 import {
   ArrowUpRight,
   BedDouble,
+  CalendarCheck,
   CheckCircle2,
   ChevronDown,
   ChevronRight,
@@ -123,6 +124,8 @@ function Dashboard({ data }: { data: Extract<Overview, { has_data: true }> }) {
           <CheckInCard day={data.journal.day} done={data.journal.done} count={data.journal.behaviours.length} autoOpen={params.get("checkin") === "1"} />
         </motion.section>
       )}
+
+      <PlannedToday plans={data.planned_today ?? []} />
 
       {coach && <TodayCall coach={coach} />}
 
@@ -408,6 +411,37 @@ const hhmm = (m: number) => {
   const v = ((Math.round(m) % 1440) + 1440) % 1440;
   return `${String(Math.floor(v / 60)).padStart(2, "0")}:${String(v % 60).padStart(2, "0")}`;
 };
+
+function PlannedToday({ plans }: { plans: NonNullable<Extract<Overview, { has_data: true }>["planned_today"]> }) {
+  if (!plans.length) {
+    return (
+      <motion.section variants={rise}>
+        <Link to="/plan" className="chip text-mute hover:text-paper pointer-coarse:py-2">
+          <CalendarCheck size={12} className="text-gold" /> Plan today's session and see what it will do
+        </Link>
+      </motion.section>
+    );
+  }
+  return (
+    <motion.section variants={rise} className="space-y-3">
+      {plans.map((p) => (
+        <Link key={p.id} to={p.activity ? `/activities/${p.activity.id}` : "/plan"} className="surface surface-hover flex items-center gap-4 p-5"
+          style={{ borderLeft: `3px solid ${p.status === "done" ? "#c8f560" : "#d9b26a"}` }}>
+          <CalendarCheck size={20} className={clsx("shrink-0", p.status === "done" ? "text-lime" : "text-gold")} />
+          <div className="min-w-0 flex-1">
+            <p className="eyebrow mb-0.5">{p.status === "done" ? "Planned · done" : "Planned today"}</p>
+            <p className="truncate text-paper">{p.title}</p>
+            <p className="text-xs text-dim">
+              Predicted load {p.predicted.load}
+              {p.activity?.load != null ? ` · actual ${Math.round(p.activity.load)}` : p.predicted.recovery_days ? ` · recovered in ~${p.predicted.recovery_days} d` : ""}
+            </p>
+          </div>
+          <ChevronRight size={16} className="shrink-0 text-dim" />
+        </Link>
+      ))}
+    </motion.section>
+  );
+}
 
 function StrainRow({ s }: { s: NonNullable<Brief["strain"]> }) {
   const b = s.band;

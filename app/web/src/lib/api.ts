@@ -2,6 +2,10 @@ import type {
   ActivityDetail,
   Behaviour,
   JournalView,
+  PlanOption,
+  PlannedSessionView,
+  PlannerWeek,
+  Sport,
   StrengthLabel,
   ActivityItem,
   ActivityLog,
@@ -35,7 +39,7 @@ export class ApiError extends Error {
 export const READ_ONLY =
   typeof document !== "undefined" &&
   document.querySelector('meta[name="cadence-mode"]')?.getAttribute("content") === "read-only";
-const PHONE_WRITES = ["/api/push/", "/api/garmin/sync", "/api/journal/", "/api/strength/"];
+const PHONE_WRITES = ["/api/push/", "/api/garmin/sync", "/api/journal/", "/api/strength/", "/api/planner"];
 
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const method = init.method ?? "GET";
@@ -121,6 +125,15 @@ export const api = {
   saveStrength: (id: number, text: string, template: string | null) =>
     request<StrengthLabel>(`/api/strength/${id}`, { method: "PUT", body: JSON.stringify({ text, template }) }),
   deleteStrength: (id: number) => request<{ deleted: boolean }>(`/api/strength/${id}`, { method: "DELETE" }),
+  plannerWeek: () => request<PlannerWeek>("/api/planner"),
+  plannerOptions: (day: string, sport: Sport, strengthText?: string) => {
+    const q = new URLSearchParams({ day, sport });
+    if (strengthText) q.set("strength_text", strengthText);
+    return request<{ day: string; sport: Sport; options: PlanOption[] }>(`/api/planner/options?${q}`);
+  },
+  createPlan: (day: string, sport: Sport, optionKey: string, strengthText?: string) =>
+    request<PlannedSessionView>("/api/planner", { method: "POST", body: JSON.stringify({ day, sport, option_key: optionKey, strength_text: strengthText ?? null }) }),
+  deletePlan: (id: number) => request<{ deleted: boolean }>(`/api/planner/${id}`, { method: "DELETE" }),
   setGoal: (goal: { distance: GoalDistance; date: string; target_s: number | null } | null) =>
     request<{ goal: TrainingGoal | null }>("/api/settings/goal", { method: "PUT", body: JSON.stringify(goal ?? {}) }),
   sources: () => request<SourceInfo[]>("/api/sources"),

@@ -33,7 +33,7 @@ BUILDS = {
     "recovery": "Circulation and an easier tomorrow; no fitness gain, and that's the point.",
     "easy": "Aerobic base: mitochondria, capillaries and fat use. Most of your fitness comes from these.",
     "long": "Durability and endurance: holding pace late, fuelling, tendons ready for longer efforts.",
-    "threshold": "Lactate threshold: the pace you can hold for ~an hour. Raises your critical speed most directly.",
+    "threshold": "Lactate threshold: the effort you can hold for about an hour.",
     "vo2": "VO₂max: your aerobic ceiling, which lifts every pace beneath it.",
     "hills": "Power and running economy, with little fatigue.",
     "specific": "Race-pace confidence and economy at goal pace.",
@@ -297,7 +297,7 @@ def predict(c: dict, model: dict, day: date, option: dict, planned: list[dict]) 
         "readiness_load": [round(A.load_score(before)), round(A.load_score(after))] if after and before and after["fitness"] > 5 else None,
         "recovery_days": rec.get("days"),
         "recovery_personal": bool(rec.get("personal")),
-        "builds": BUILDS.get(kind, BUILDS.get(_effort(kind), "")),
+        "builds": BUILDS.get(kind, BUILDS.get(_effort(kind), "")) + (" Raises your critical speed most directly." if sport == "run" and kind == "threshold" else ""),
         "basis": basis,
         "confidence": "personal" if basis in ("similar", "model", "other sports") else "general",
     }
@@ -320,6 +320,8 @@ def rank(c: dict, day: date, options: list[dict], planned: list[dict], readiness
     spacing = (c.get("recovery") or {}).get("hard_spacing_days", 2)
     hard_days = _hard_days(c, planned)
     near_hard = any(abs((d - day).days) < spacing and d != day for d in hard_days)
+    same_day_hard = any(p["day"] == day and (_effort(p["kind"]) == "hard" or p.get("heavy_lower")) for p in planned) \
+        or any(a.day == day and A.is_hard(a) for a in c["acts"])
     ws = A.week_start(day)
     week_hard = sum(1 for d in hard_days if ws <= d < ws + timedelta(days=7))
     week_long = any(a.family == "run" and ws <= a.day < ws + timedelta(days=7) and (a.moving_s or 0) >= (t.get("long_min") or 75) * 0.9 * 60 for a in c["acts"]) \
@@ -340,6 +342,9 @@ def rank(c: dict, day: date, options: list[dict], planned: list[dict], readiness
             if warn or hrv_low or (score is not None and score < 70):
                 s -= 60
                 caution = "Recovery signals are low today: keep intensity for a better day."
+            elif same_day_hard:
+                s -= 50
+                caution = "There's already a hard session on this day: one is enough."
             elif near_hard:
                 s -= 40
                 caution = f"Less than {spacing} days from another hard session."
@@ -356,6 +361,9 @@ def rank(c: dict, day: date, options: list[dict], planned: list[dict], readiness
             if warn:
                 s -= 40
                 caution = "Not on a day your body is flagging illness or overreaching."
+            elif same_day_hard:
+                s -= 45
+                caution = "There's already a hard session on this day: save the long one for another."
             elif not week_long and o["sport"] == "run" and t.get("long_min"):
                 s += 20 + (10 if day.weekday() >= 5 else 0)
                 why.append("This week's long run is still open.")

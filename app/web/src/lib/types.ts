@@ -88,6 +88,7 @@ export interface ActivityDetail {
   stored: Record<string, { fetched_at: string; status: number; bytes: number }>;
   coach: SessionCoach | null;
   strength: { label: StrengthLabel | null; templates: { id: number; name: string; text: string }[] } | null;
+  planned: PlannedSessionView | null;
 }
 
 export interface StrengthExercise {
@@ -348,6 +349,63 @@ export interface WeekSummary {
   moderate_pct: number | null;
   hard_pct: number | null;
   complete: boolean;
+}
+
+export type Sport = "run" | "ride" | "swim" | "strength";
+
+export interface Prediction {
+  load: number;
+  load_range: [number, number] | null;
+  similar_n: number;
+  similar_load: number | null;
+  aerobic_te: number | null;
+  day_strain: number | null;
+  fitness: [number, number] | null;
+  form_tomorrow: number | null;
+  acwr_tomorrow: number | null;
+  readiness_load: [number, number] | null;
+  recovery_days: number | null;
+  recovery_personal: boolean;
+  builds: string;
+  basis: "similar" | "other sports" | "model" | "general";
+  confidence: "personal" | "general";
+}
+
+export interface PlanOption {
+  key: string;
+  sport: Sport;
+  kind: string;
+  title: string;
+  minutes: number;
+  detail: string;
+  heavy_lower?: boolean;
+  blocks?: StrengthBlock[];
+  predicted: Prediction;
+  recommended: boolean;
+  why: string | null;
+  caution: string | null;
+}
+
+export interface PlannedSessionView {
+  id: number;
+  day: string;
+  sport: Sport;
+  kind: string;
+  title: string;
+  detail: string;
+  minutes: number;
+  predicted: Prediction;
+  heavy_lower: boolean;
+  blocks: StrengthBlock[];
+  status: "planned" | "done" | "missed";
+  activity: { id: number; name: string; load: number | null; minutes: number } | null;
+}
+
+export interface PlannerWeek {
+  today: string;
+  days: { day: string; plans: PlannedSessionView[] }[];
+  projection: { fitness_now: number; fitness_4w: number; weekly_load: number } | null;
+  model: { n: number; r2: number; counts: Record<string, number> } | null;
 }
 
 export interface StrainToday {
@@ -652,6 +710,7 @@ export type Overview =
       coach: Brief | null;
       score: ScoreSummary | null;
       journal: { day: string; done: boolean; behaviours: Behaviour[] };
+      planned_today: PlannedSessionView[];
       metrics: MetricSummary[];
       week: {
         start: string;

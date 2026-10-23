@@ -75,6 +75,7 @@ export function ActivityPage() {
       )}
       <HeadlineStats d={d} />
       {d.coach && (d.coach.notes.length > 0 || d.coach.verdict) && <SessionCoach coach={d.coach} />}
+      {d.planned && <PlannedVsActual d={d} />}
       <ClassContent d={d} />
       {d.fit?.error && <p className="text-sm text-coral">FIT file couldn't be decoded: {d.fit.error}</p>}
       <Zones d={d} />
@@ -83,6 +84,26 @@ export function ActivityPage() {
       <Splits d={d} />
       <Strength d={d} />
     </div>
+  );
+}
+
+function PlannedVsActual({ d }: { d: ActivityDetail }) {
+  const p = d.planned!;
+  const actual = d.activity.training_load;
+  const diff = actual != null && p.predicted.load ? (actual - p.predicted.load) / p.predicted.load : null;
+  const verdict = diff == null ? null : diff > 0.25 ? "Harder than planned" : diff < -0.25 ? "Easier than planned" : "As planned";
+  return (
+    <section className="surface flex flex-wrap items-center gap-x-8 gap-y-3 p-5 sm:p-6" style={{ borderLeft: "3px solid #d9b26a" }}>
+      <div className="min-w-0 flex-1">
+        <p className="eyebrow mb-1">Planned</p>
+        <p className="text-paper">{p.title}</p>
+      </div>
+      <div>
+        <p className="eyebrow mb-1">Load</p>
+        <p className="num text-xl text-cream">{actual != null ? Math.round(actual) : "—"} <span className="text-sm text-dim">vs {p.predicted.load} predicted</span></p>
+      </div>
+      {verdict && <span className={clsx("chip", verdict === "As planned" ? "text-lime" : "text-amber")}>{verdict}</span>}
+    </section>
   );
 }
 

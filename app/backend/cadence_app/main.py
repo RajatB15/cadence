@@ -533,8 +533,10 @@ def create_app(
 
         weight = _weight_summary(session, clock.today())
         journal.ensure_catalogue(session, clock.now())
+        today_plans = planner_store.reconcile(session, source_id, planner_store.listing(session, clock.today(), clock.today()), clock.today(), clock.now())
         return {
             "has_data": True,
+            "planned_today": today_plans,
             "journal": {**journal.checkin(session, clock.today()),
                         "behaviours": [journal.behaviour_dict(b) for b in journal.catalogue(session, include_inactive=False)]},
             "source_id": source_id,
@@ -660,6 +662,8 @@ def create_app(
         if ctx:
             streams = out["fit"].get("streams") if out["fit"] else None
             out["coach"] = coach_notes.session(ctx, a.id, streams, out["garmin_summary"])
+        day_plans = planner_store.reconcile(session, a.source_id, planner_store.listing(session, a.local_date, a.local_date), clock.today(), clock.now())
+        out["planned"] = next((p for p in day_plans if (p.get("activity") or {}).get("id") == a.id), None)
         if activity_family(a.activity_type) == "strength":
             label = strength.get(session, a)
             if label and out["fit"] and out["fit"].get("streams"):

@@ -1,6 +1,6 @@
 import * as Tooltip from "@radix-ui/react-tooltip";
 import { clsx } from "clsx";
-import { Activity, Archive, Gauge, LayoutGrid, Scale, Settings2 } from "lucide-react";
+import { Activity, Archive, CalendarCheck, Gauge, LayoutGrid, Scale, Settings2 } from "lucide-react";
 import { motion } from "motion/react";
 import type { ReactNode } from "react";
 import { NavLink, Outlet, useLocation, useMatch } from "react-router-dom";
@@ -10,9 +10,11 @@ import { ReminderBanner } from "./ReminderBanner";
 const NAV = [
   { to: "/", label: "Overview", icon: LayoutGrid },
   { to: "/coach", label: "Coach", icon: Gauge },
+  { to: "/plan", label: "Plan", icon: CalendarCheck },
   { to: "/weight", label: "Weight", icon: Scale },
   { to: "/activities", label: "Activities", icon: Activity },
-  { to: "/vault", label: "Vault", icon: Archive },
+  // The phone tab bar has room for six: the Vault stays one tap away in Settings.
+  { to: "/vault", label: "Vault", icon: Archive, desktopOnly: true },
   { to: "/settings", label: "Settings", icon: Settings2 },
 ];
 
@@ -98,7 +100,7 @@ export function Shell() {
           aria-label="Primary"
           className="fixed inset-x-0 bottom-0 z-40 grid grid-cols-6 border-t border-line bg-ink/90 pb-[env(safe-area-inset-bottom)] backdrop-blur md:hidden"
         >
-          {NAV.map(({ to, label, icon: Icon }) => (
+          {NAV.filter((item) => !("desktopOnly" in item)).map(({ to, label, icon: Icon }) => (
             <NavLink
               key={to}
               to={to}

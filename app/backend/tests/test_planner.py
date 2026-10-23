@@ -96,3 +96,15 @@ def test_plan_a_week_and_match_it(env):  # noqa: F811
     assert today_plan["status"] in ("done", "planned")
     assert client.delete(f"/api/planner/{today_plan['id']}", headers=MUTATE).json() == {"deleted": True}
     assert A.Act  # athlete import used for type context
+
+
+def test_a_second_hard_session_on_the_same_day_is_cautioned():
+    c = training_ctx()
+    day = c["as_of"] + timedelta(days=1)
+    planned = [{"id": 1, "day": day, "sport": "run", "kind": "threshold", "predicted_load": 90, "heavy_lower": False}]
+    swim = next(o for o in PL.rank(c, day, PL.swim_options(), planned, None) if o["kind"] == "threshold")
+    assert "already a hard session" in swim["caution"] and not swim["recommended"]
+    long_run = next(o for o in PL.rank(c, day, PL.run_options(c, None), planned, None) if o["kind"] == "long")
+    assert long_run["caution"] and not long_run["recommended"]
+    m = PL.load_model(c["acts"], c["as_of"])
+    assert "critical speed" not in PL.predict(c, m, day, swim, [])["builds"]
