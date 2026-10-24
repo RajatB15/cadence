@@ -1,0 +1,27 @@
+[Unit]
+Description=Cadence backend
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=cadence
+Group=cadence
+WorkingDirectory=/opt/cadence/app/backend
+EnvironmentFile=/etc/cadence/cadence.env
+ExecStart=/opt/cadence/app/backend/.venv/bin/python -m cadence_app.server
+Restart=always
+RestartSec=10
+Environment=PYTHONUNBUFFERED=1
+
+# The service only needs its own data directory.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/cadence
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+
+[Install]
+WantedBy=multi-user.target

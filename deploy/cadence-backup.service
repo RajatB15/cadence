@@ -1,0 +1,10 @@
+[Unit]
+Description=Cadence encrypted backup to Google Drive
+
+[Service]
+Type=oneshot
+User=cadence
+Group=cadence
+Environment=RCLONE_CONFIG=/var/lib/cadence/rclone.conf
+EnvironmentFile=/etc/cadence/cadence.env
+ExecStart=/opt/cadence/deploy/backup.sh

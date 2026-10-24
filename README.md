@@ -142,6 +142,7 @@ individually in Settings. The signing key is generated locally in `data/push-vap
 | [app/backend/cadence_app/](app/backend/cadence_app/) | FastAPI app: Garmin sync engine & vault, SQLite + Alembic migrations, journal, strength, planner, weather, push notifications |
 | [app/backend/cadence_app/analytics/](app/backend/cadence_app/analytics/) | Pure analytics: load/readiness, performance (critical speed), recovery, periodised plan, habits, strength parsing, all-day strain, score, weekly/monthly reviews |
 | [app/web/src/](app/web/src/) | React 19 + TypeScript + Vite + Tailwind + ECharts + MapLibre |
+| [deploy/](deploy/) · [docs/deploy-digitalocean.md](docs/deploy-digitalocean.md) | Run Cadence on a small Linux server (systemd, firewall, Tailscale-only access, encrypted Google Drive backups) |
 | [plan.md](plan.md) | Product roadmap, architecture notes, acceptance criteria |
 
 **Technology:** Python/FastAPI/SQLAlchemy backend, React/TypeScript frontend, SQLite persistence, NumPy/SciPy
