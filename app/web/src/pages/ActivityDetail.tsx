@@ -261,6 +261,10 @@ function Section({ icon, title, aside, children }: { icon: ReactNode; title: str
   );
 }
 
+function zoneName(zone: number): string {
+  return zone === 0 ? "Below Z1" : zone > 5 ? "Above Z5" : `Zone ${zone}`;
+}
+
 function Zones({ d }: { d: ActivityDetail }) {
   let zones = d.fit?.zones?.filter((z) => z.seconds > 0 || (z.zone >= 1 && z.zone <= 5)) ?? null;
   if (!zones?.length && d.garmin_summary) {
@@ -270,33 +274,101 @@ function Zones({ d }: { d: ActivityDetail }) {
   }
   if (!zones?.length) return null;
   const total = zones.reduce((s, z) => s + z.seconds, 0) || 1;
+  const longest = Math.max(...zones.map((z) => z.seconds), 1);
+  const hr = d.fit?.streams.heart_rate;
+  const t = d.fit?.streams.t;
   return (
     <Section icon={<HeartPulse size={22} />} title="Heart-rate zones" aside={<p className="eyebrow">{formatDuration(total)} with HR</p>}>
-      <div className="mb-6 flex h-4 overflow-hidden">
-        {zones.map((z) => (
-          <motion.div
-            key={z.zone}
-            initial={{ width: 0 }}
-            animate={{ width: `${(z.seconds / total) * 100}%` }}
-            transition={{ duration: 0.9, ease: [0.2, 0.9, 0.1, 1] }}
-            style={{ background: ZONE_COLORS[z.zone] ?? "#f2e8cf" }}
-          />
-        ))}
-      </div>
-      <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-5 xl:grid-cols-7">
-        {zones.map((z) => (
-          <div key={z.zone} className="border-l-2 pl-3" style={{ borderColor: ZONE_COLORS[z.zone] }}>
-            <p className="eyebrow">{z.zone === 0 ? "Below Z1" : z.zone > 5 ? "Above Z5" : `Zone ${z.zone}`}</p>
-            <p className="num mt-1 text-xl text-paper">{formatDuration(z.seconds)}</p>
-            <p className="text-xs text-dim">
-              {Math.round((z.seconds / total) * 100)}%
-              {z.low != null && z.high != null && ` · ${z.low}–${z.high} bpm`}
-              {z.low == null && z.high != null && ` · < ${z.high} bpm`}
+      <div className="space-y-2.5">
+        {[...zones].reverse().map((z) => (
+          <div key={z.zone} className="grid grid-cols-[4.75rem_1fr] items-center gap-3 sm:grid-cols-[9rem_1fr_7rem]">
+            <div>
+              <p className="text-sm text-paper">{zoneName(z.zone)}</p>
+              <p className="text-xs text-dim">
+                {z.low != null && z.high != null ? `${z.low}–${z.high} bpm` : z.low == null && z.high != null ? `< ${z.high} bpm` : "\u00a0"}
+              </p>
+            </div>
+            <div className="h-6 bg-slate">
+              <motion.div
+                className="h-full"
+                initial={{ width: 0 }}
+                animate={{ width: `${(z.seconds / longest) * 100}%` }}
+                transition={{ duration: 0.9, ease: [0.2, 0.9, 0.1, 1] }}
+                style={{ background: ZONE_COLORS[z.zone] ?? "#f2e8cf", minWidth: z.seconds > 0 ? 3 : 0 }}
+              />
+            </div>
+            <p className="num col-span-2 -mt-1 text-right text-sm text-paper sm:col-span-1 sm:mt-0">
+              {z.seconds > 0 ? formatDuration(z.seconds) : "—"} <span className="text-dim">{Math.round((z.seconds / total) * 100)}%</span>
             </p>
           </div>
         ))}
       </div>
+      {hr && t && <ZoneTimeline hr={hr} t={t} zones={zones} />}
     </Section>
+  );
+}
+
+/** Heart rate through the session, coloured by the zone it was in, so you see when the hard parts happened. */
+function ZoneTimeline({ hr, t, zones }: { hr: (number | null)[]; t: (number | null)[]; zones: { zone: number; low: number | null }[] }) {
+  const lows = useMemo(() => zones.filter((z) => z.low != null).sort((a, b) => a.low! - b.low!), [zones]);
+  const option = useMemo<ChartOption>(
+    () => ({
+      ...chartBase,
+      grid: { left: 8, right: 16, top: 12, bottom: 8, containLabel: true },
+      xAxis: {
+        type: "value",
+        min: "dataMin",
+        max: "dataMax",
+        axisLine: { lineStyle: { color: "#262629" } },
+        axisLabel: { color: "#5c5a55", fontSize: 10, formatter: (v: number) => formatDuration(v) },
+        splitLine: { show: false },
+      },
+      yAxis: {
+        type: "value",
+        scale: true,
+        axisLabel: { color: "#5c5a55", fontSize: 10 },
+        splitLine: { show: false },
+      },
+      visualMap: {
+        show: false,
+        dimension: 1,
+        pieces: [
+          { lt: lows[0].low!, color: ZONE_COLORS[0] },
+          ...lows.map((z, i) => ({ gte: z.low!, ...(lows[i + 1] ? { lt: lows[i + 1].low! } : {}), color: ZONE_COLORS[z.zone] ?? "#f2e8cf" })),
+        ],
+      },
+      tooltip: {
+        ...chartBase.tooltip,
+        formatter: (items: { value: [number, number] }[]) => {
+          const p = items[0]?.value;
+          return p && p[1] != null ? `<span style="color:#8d8a82">${formatDuration(p[0])}</span><br/><b>${Math.round(p[1])} bpm</b>` : "";
+        },
+      },
+      series: [
+        {
+          type: "line",
+          data: t.map((x, i) => [x, hr[i]]),
+          symbol: "none",
+          connectNulls: false,
+          lineStyle: { width: 2 },
+          markLine: {
+            symbol: "none",
+            silent: true,
+            label: { show: true, position: "insideEndTop", color: "#5c5a55", fontSize: 10, formatter: (p: { name: string }) => p.name },
+            lineStyle: { color: "#3a3a3f", type: "dashed" },
+            data: lows.slice(1).map((z) => ({ yAxis: z.low!, name: `Z${z.zone}` })),
+          },
+        },
+      ],
+    }),
+    [hr, t, lows],
+  );
+  if (!lows.length || !hr.some((v) => v != null)) return null;
+  return (
+    <div className="mt-6 border-t border-line/60 pt-4">
+      <p className="eyebrow mb-2">Heart rate by zone through the session</p>
+      <Chart option={option} height={170} label="Heart rate coloured by zone over the activity" />
+    </div>
   );
 }
 
@@ -548,7 +620,10 @@ const SPLIT_PRIORITY = [
 
 function Strength({ d }: { d: ActivityDetail }) {
   const fitSets = (d.fit?.messages.set_mesgs ?? []).filter((s) => s.set_type !== "rest");
-  const summarySets = (d.garmin_summary?.summarizedExerciseSets as Json[] | undefined) ?? [];
+  // Garmin reports a summarized set's duration in milliseconds; the table formats durations as seconds.
+  const summarySets = ((d.garmin_summary?.summarizedExerciseSets as Json[] | undefined) ?? []).map((s) =>
+    typeof s.duration === "number" ? { ...s, duration: s.duration / 1000 } : s,
+  );
   const workouts = Array.isArray(d.workouts) ? d.workouts : [];
   if (!fitSets.length && !summarySets.length && !workouts.length) return null;
   return (

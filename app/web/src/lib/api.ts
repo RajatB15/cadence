@@ -114,7 +114,7 @@ export const api = {
     request<Behaviour>(`/api/journal/behaviours/${encodeURIComponent(key)}`, { method: "PATCH", body: JSON.stringify(patch) }),
   parseStrength: (text: string) => request<StrengthLabel>("/api/strength/parse", { method: "POST", body: JSON.stringify({ text }) }),
   readScreenshot: async (file: Blob): Promise<StrengthLabel> => {
-    // Raw image body: the Mac reads it with Apple Vision; nothing is stored until you save.
+    // Raw image body: read on the Cadence machine; nothing is stored until you save.
     const res = await fetch("/api/strength/ocr", {
       method: "POST",
       body: file,

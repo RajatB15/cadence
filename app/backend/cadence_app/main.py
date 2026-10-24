@@ -775,7 +775,7 @@ def create_app(
 
     @app.post("/api/strength/ocr")
     async def strength_ocr(request: Request) -> dict:
-        """Reads a class screenshot on this Mac (Apple Vision); returns the text and its parsed blocks, unsaved."""
+        """Reads a class screenshot on this machine (Apple Vision, or Tesseract off the Mac); returns the text and its parsed blocks, unsaved."""
         if not request.headers.get("content-type", "").startswith("image/"):
             raise HTTPException(415, "Send the screenshot as an image")
         data = await request.body()

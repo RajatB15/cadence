@@ -13,15 +13,21 @@ import workerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url";
 import { Pause, Play, Scan } from "lucide-react";
 import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
 import { formatPace } from "../lib/format";
-import { BASEMAPS, DEM_ATTRIBUTION, DEM_TILES, SKY, STYLES, TERRAIN, type Basemap } from "../lib/mapStyle";
+import { BASEMAPS, DEM_ATTRIBUTION, DEM_TILES, SKY, STYLES, terrainFor, type Basemap } from "../lib/mapStyle";
 import {
   HEAT,
   RELIEF,
-  bearing,
   buildTrack,
+  cameraSigma,
+  chaseHeading,
+  chaseWindow,
+  chasePitch,
   distanceMarks,
   gradient,
   sample,
+  smoothPath,
+  steer,
+  terrainExaggeration,
   type Gradient,
   type Track,
   type TrackKey,
@@ -34,7 +40,6 @@ const BASEMAP_KEY = "cadence.map.basemap";
 const LIME = "#c8f560";
 const PACED = new Set(["run", "walk", "hike"]);
 const PITCH_3D = 58;
-const FOLLOW_PITCH = 64;
 
 let webgl: boolean | null = null;
 setWorkerUrl(workerUrl);
@@ -56,8 +61,6 @@ export default function RouteMap({ fit, family, fallback }: { fit: FitData; fami
   if (!track || failed || !hasWebGL()) return <>{fallback}</>;
   return <MapView track={track} paced={PACED.has(family)} onFail={() => setFailed(true)} />;
 }
-
-const turn = (to: number, from: number) => ((to - from + 540) % 360) - 180;
 
 function clock(seconds: number): string {
   const s = Math.max(0, Math.round(seconds));
@@ -139,7 +142,12 @@ function MapView({ track, paced, onFail }: { track: Track; paced: boolean; onFai
     [track],
   );
   const duration = Math.min(50, Math.max(18, (track.meters / 1000) * 2.4));
-  const lookAhead = Math.min(0.05, Math.max(0.004, 220 / track.meters));
+  const followPitch = chasePitch(track);
+  const terrain = useMemo(() => terrainFor(terrainExaggeration(track)), [track]);
+  // The camera follows a smoothed copy of the route (GPS jitter would otherwise shake it); the marker stays on the real fixes.
+  const sigma = cameraSigma(track.meters, duration);
+  const cam = useMemo(() => smoothPath(track, sigma), [track, sigma]);
+  const reach = chaseWindow(sigma);
   const followZoom = Math.min(15.6, Math.max(12.6, 16.2 - Math.log2(Math.max(1, track.meters / 1000)) * 0.55));
 
   const lineColor = (m: Mode): ExpressionSpecification => {
@@ -225,7 +233,7 @@ function MapView({ track, paced, onFail }: { track: Track; paced: boolean; onFai
       paint: { "text-color": "#f2e8cf" },
     });
     map.setSky(SKY);
-    map.setTerrain(tilt ? TERRAIN : null);
+    map.setTerrain(tilt ? terrain : null);
   };
 
   const place = (p: number) => {
@@ -252,10 +260,11 @@ function MapView({ track, paced, onFail }: { track: Track; paced: boolean; onFai
     const dt = s.last ? Math.min(0.1, (now - s.last) / 1000) : 0;
     s.last = now;
     s.p = Math.min(1, s.p + dt / duration);
-    const here = place(s.p);
+    place(s.p);
     const tilt = live.current.is3d;
-    if (tilt && s.p < 0.999) s.bearing += turn(bearing(here, sample(track, Math.min(1, s.p + lookAhead))), s.bearing) * Math.min(1, dt * 1.6);
-    map.jumpTo({ center: [here.lon, here.lat], bearing: tilt ? s.bearing : 0, pitch: tilt ? FOLLOW_PITCH : 0 });
+    if (tilt && s.p < 0.999) s.bearing = steer(s.bearing, chaseHeading(track, s.p, reach.ahead, reach.behind, cam), dt);
+    const eye = cam(s.p);
+    map.jumpTo({ center: [eye.lon, eye.lat], bearing: tilt ? s.bearing : 0, pitch: tilt ? followPitch : 0 });
     setProgress(s.p);
     if (s.p >= 1) {
       stop();
@@ -270,16 +279,16 @@ function MapView({ track, paced, onFail }: { track: Track; paced: boolean; onFai
     if (!map) return;
     const s = anim.current;
     if (s.p >= 1) s.p = 0;
-    const here = place(s.p);
+    place(s.p);
     const tilt = live.current.is3d;
-    s.bearing = tilt ? bearing(here, sample(track, Math.min(1, s.p + lookAhead))) : 0;
+    s.bearing = tilt ? chaseHeading(track, s.p, reach.ahead, reach.behind, cam) : 0;
     s.last = 0;
     live.current.playing = true;
     setPlaying(true);
     map.flyTo({
-      center: [here.lon, here.lat],
+      center: [cam(s.p).lon, cam(s.p).lat],
       zoom: followZoom,
-      pitch: tilt ? FOLLOW_PITCH : 0,
+      pitch: tilt ? followPitch : 0,
       bearing: s.bearing,
       duration: 1800,
       essential: true,
@@ -355,7 +364,7 @@ function MapView({ track, paced, onFail }: { track: Track; paced: boolean; onFai
       '<div class="relative h-full w-full opacity-0 transition-opacity duration-300">' +
       '<span class="absolute inset-0 animate-ping rounded-full bg-lime/60"></span>' +
       '<span class="absolute inset-[5px] rounded-full bg-lime ring-2 ring-ink"></span></div>';
-    headRef.current = new Marker({ element: head }).setLngLat([first.lon, first.lat]).addTo(map);
+    headRef.current = new Marker({ element: head, opacityWhenCovered: "1" }).setLngLat([first.lon, first.lat]).addTo(map);
 
     return () => {
       cancelAnimationFrame(rafRef.current);
@@ -380,7 +389,7 @@ function MapView({ track, paced, onFail }: { track: Track; paced: boolean; onFai
   useEffect(() => {
     const map = mapRef.current;
     if (!map?.getSource("dem")) return;
-    map.setTerrain(is3d ? TERRAIN : null);
+    map.setTerrain(is3d ? terrain : null);
     if (!live.current.playing) overview(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [is3d]);

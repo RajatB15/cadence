@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { HEAT, bearing, buildTrack, distanceMarks, gradient, locate, paletteAt, sample } from "./route";
+import { HEAT, bearing, buildTrack, cameraSigma, chaseHeading, chasePitch, terrainExaggeration, distanceMarks, gradient, locate, paletteAt, sample, smoothPath, steer, turn } from "./route";
 import type { FitData } from "./types";
 
 function fit(n: number, withTrack = true): FitData {
@@ -69,5 +69,97 @@ describe("route", () => {
     expect(marks.map((m) => m.km)).toEqual([1, 2, 3]);
     expect(bearing({ lat: 0, lon: 0 }, { lat: 1, lon: 0 })).toBeCloseTo(0);
     expect(bearing({ lat: 0, lon: 0 }, { lat: 0, lon: 1 })).toBeCloseTo(90);
+  });
+});
+
+describe("chase camera", () => {
+  // A run heading roughly north with ±15 m of GPS wobble and a couple of tight switchbacks.
+  const noisy = () => {
+    const n = 1500;
+    let seed = 7;
+    const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647 - 0.5) * 2;
+    const lat = Array.from({ length: n }, (_, i) => 12.9 + i * 0.00003 + rnd() * 0.00012 + (i > 600 && i < 700 ? Math.sin(i / 4) * 0.0004 : 0));
+    const lon = Array.from({ length: n }, (_, i) => 77.6 + rnd() * 0.00012 + (i > 600 && i < 700 ? Math.cos(i / 4) * 0.0004 : 0));
+    return buildTrack({ ...fit(n, false), route: lat.map((la, i) => [la, lon[i]]) })!;
+  };
+  const run = (heading: (p: number) => number, step: (cur: number, target: number) => number) => {
+    let cur = heading(0);
+    const out = [cur];
+    for (let f = 1; f <= 600; f++) {
+      cur = step(cur, heading(f / 600));
+      out.push(cur);
+    }
+    return Math.max(...out.slice(1).map((v, i) => Math.abs(turn(v, out[i])))) * 30; // °/s at 30 fps
+  };
+
+  it("turns far more calmly than following the instantaneous direction", () => {
+    const track = noisy();
+    const old = run(
+      (p) => bearing(sample(track, p), sample(track, Math.min(1, p + Math.max(0.004, 220 / track.meters)))),
+      (cur, target) => (cur + turn(target, cur) * Math.min(1, (1 / 30) * 1.6) + 360) % 360,
+    );
+    const calm = run((p) => chaseHeading(track, p), (cur, target) => steer(cur, target, 1 / 30));
+    expect(calm).toBeLessThanOrEqual(8.001);
+    expect(calm).toBeLessThan(old / 2);
+  });
+
+  it("never turns faster than the cap, even for a U-turn", () => {
+    let h = 0;
+    for (let i = 0; i < 30; i++) h = steer(h, 180, 1 / 30);
+    expect(Math.abs(turn(h, 0))).toBeLessThanOrEqual(8.001);
+    expect(Math.abs(turn(h, 0))).toBeGreaterThan(5);
+  });
+
+  it("ignores small differences and settles on the target", () => {
+    expect(Math.abs(turn(steer(100, 104, 1 / 30), 100))).toBeLessThan(0.1);
+    let h = 0;
+    for (let i = 0; i < 30 * 40; i++) h = steer(h, 90, 1 / 30);
+    expect(Math.abs(turn(h, 90))).toBeLessThan(6);
+  });
+
+  it("looks more top-down on hilly routes", () => {
+    const flat = buildTrack(fit(100))!; // 100 m of climb in this fixture
+    expect(chasePitch({ ...flat, elevation: [10, 20] })).toBe(62);
+    expect(chasePitch({ ...flat, elevation: [0, 120] })).toBe(55);
+    expect(chasePitch({ ...flat, elevation: [0, 400] })).toBe(52);
+    expect(chasePitch({ ...flat, elevation: null })).toBe(62);
+  });
+
+  it("smooths the camera path but starts and ends on the route", () => {
+    const n = 800;
+    let seed = 3;
+    const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647 - 0.5) * 2;
+    const lat = Array.from({ length: n }, (_, i) => 12.9 + i * 0.00004);
+    const lon = Array.from({ length: n }, () => 77.6 + rnd() * 0.0002); // ±20 m sideways noise
+    const track = buildTrack({ ...fit(n, false), route: lat.map((la, i) => [la, lon[i]]) })!;
+    const cam = smoothPath(track, 300);
+    const wobble = (at: (p: number) => { lon: number }) => {
+      const xs = Array.from({ length: 400 }, (_, i) => at(0.1 + (i / 399) * 0.8).lon);
+      return Math.max(...xs) - Math.min(...xs);
+    };
+    expect(wobble(cam)).toBeLessThan(wobble((p) => sample(track, p)) / 4);
+    const start = sample(track, 0);
+    const end = sample(track, 1);
+    expect(cam(0).lat).toBeCloseTo(start.lat, 6);
+    expect(cam(0).lon).toBeCloseTo(start.lon, 6);
+    expect(cam(1).lat).toBeCloseTo(end.lat, 6);
+    expect(cam(1).lon).toBeCloseTo(end.lon, 6);
+  });
+
+  it("smooths over more ground when the flight is faster, within bounds", () => {
+    expect(cameraSigma(10_000, 12)).toBeLessThan(cameraSigma(10_000, 6));
+    expect(cameraSigma(500, 12)).toBe(120);
+    expect(cameraSigma(500_000, 6)).toBe(2500);
+  });
+
+  it("exaggerates terrain more when the relief is small next to the route", () => {
+    const long = buildTrack(fit(2000, false))!; // ~22 km north-south
+    const hilly = terrainExaggeration({ ...long, elevation: [800, 1600] });
+    const mild = terrainExaggeration({ ...long, elevation: [800, 830] });
+    expect(hilly).toBeGreaterThan(1.4);
+    expect(mild).toBeGreaterThan(hilly);
+    expect(mild).toBeLessThanOrEqual(3.5);
+    expect(terrainExaggeration({ ...long, elevation: [0, 8000] })).toBe(1.4);
+    expect(terrainExaggeration({ ...long, elevation: null })).toBe(1.4);
   });
 });

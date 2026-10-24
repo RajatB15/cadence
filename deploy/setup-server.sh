@@ -7,7 +7,7 @@ set -euo pipefail
 
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -qq
-apt-get install -y -qq python3 python3-venv python3-pip rsync sqlite3 rclone ufw fail2ban unattended-upgrades
+apt-get install -y -qq python3 python3-venv python3-pip rsync sqlite3 rclone tesseract-ocr ufw fail2ban unattended-upgrades
 
 # Cadence schedules its notifications (06:00 brief, 21:00 bedtime nudge) and splits days in local time.
 timedatectl set-timezone "${CADENCE_TZ:-Asia/Kolkata}"
