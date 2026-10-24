@@ -7,6 +7,7 @@ import {
   formatPace,
   parseDay,
   reminderCopy,
+  timeAgo,
 } from "./format";
 import type { CredentialStatus } from "./types";
 
@@ -68,5 +69,16 @@ describe("formatters", () => {
     expect(deltaTone(5, null)).toBe("neutral");
     expect(formatDelta(-4.24)).toBe("−4.2%");
     expect(formatDelta(null)).toBe("No baseline");
+  });
+});
+
+describe("timeAgo", () => {
+  const now = new Date("2026-10-25T09:00:00Z");
+  it("reads naturally at each scale", () => {
+    expect(timeAgo(new Date("2026-10-25T08:59:40Z"), now)).toBe("just now");
+    expect(timeAgo(new Date("2026-10-25T08:15:00Z"), now)).toBe("45 min ago");
+    expect(timeAgo(new Date("2026-10-25T03:31:00Z"), now)).toBe("5 h ago");
+    expect(timeAgo(new Date("2026-10-24T08:00:00Z"), now)).toBe("1 day ago");
+    expect(timeAgo(new Date("2026-10-21T09:00:00Z"), now)).toBe("4 days ago");
   });
 });

@@ -11,6 +11,20 @@ work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
 stamp="$(date +%Y%m%d-%H%M)"
 
+# Tell the Settings page how the last run went (naive UTC times, like the rest of Cadence).
+STATUS="$DATA/backup-status.json"
+prev_success="" prev_snap=""
+if [[ -f "$STATUS" ]]; then
+  prev_success="$(sed -n 's/.*"last_success_at": *"\([^"]*\)".*/\1/p' "$STATUS" | head -1)"
+  prev_snap="$(sed -n 's/.*"snapshot": *"\([^"]*\)".*/\1/p' "$STATUS" | head -1)"
+fi
+json() { if [[ -n "$1" ]]; then printf '"%s"' "$1"; else printf null; fi; }
+write_status() {  # success_at snapshot error
+  printf '{"last_success_at": %s, "snapshot": %s, "last_attempt_at": "%s", "last_error": %s}\n' \
+    "$(json "$1")" "$(json "$2")" "$(date -u +%Y-%m-%dT%H:%M:%S)" "$(json "$3")" > "$STATUS.tmp" && mv "$STATUS.tmp" "$STATUS"
+}
+trap 'write_status "$prev_success" "$prev_snap" "Backup failed - see: journalctl -u cadence-backup"' ERR
+
 # SQLite's online backup is consistent even while the service is writing.
 sqlite3 "$DATA/cadence.sqlite3" ".backup '$work/cadence.sqlite3'"
 rclone copy "$work" "${REMOTE}db/$stamp"
@@ -22,4 +36,5 @@ rclone copy "$work" "${REMOTE}db/$stamp"
 rclone lsf --dirs-only "${REMOTE}db" | sed 's#/$##' | sort | head -n "-$KEEP" | while read -r old; do
   [[ -n "$old" ]] && rclone purge "${REMOTE}db/$old"
 done
+write_status "$(date -u +%Y-%m-%dT%H:%M:%S)" "$stamp" ""
 echo "Backup $stamp done."

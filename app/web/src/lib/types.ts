@@ -864,6 +864,17 @@ export interface WeightEntries {
   today: string;
 }
 
+export type BackupStatus =
+  | { configured: false }
+  | {
+      configured: true;
+      last_success_at: string | null;
+      last_attempt_at: string | null;
+      snapshot: string | null;
+      last_error: string | null;
+      stale: boolean;
+    };
+
 export interface SourceInfo {
   id: string;
   name: string;
