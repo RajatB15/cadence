@@ -21,3 +21,6 @@ notes/
 node_modules/
 dist/
 *.tsbuildinfo
+
+# Server address for scripts/deploy.sh
+.deploy-host
