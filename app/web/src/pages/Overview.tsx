@@ -129,11 +129,13 @@ function Dashboard({ data }: { data: Extract<Overview, { has_data: true }> }) {
 
       <ReviewPrompt />
 
+      {!data.weight.weighed_today && (
       <motion.section variants={rise}>
         <Link to="/weight?log=1" className="chip text-mute hover:text-paper pointer-coarse:py-2">
           <Scale size={12} className="text-gold" /> Log weight
         </Link>
       </motion.section>
+      )}
 
       <PlannedToday plans={data.planned_today ?? []} />
 

@@ -4,6 +4,7 @@ import { ArrowLeft, ChevronLeft, ChevronRight, CloudDownload } from "lucide-reac
 import { motion } from "motion/react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
+import { calendarAverage } from "../lib/series";
 import { Chart, chartBase, type ChartOption } from "../components/Chart";
 import { NoteGrid, NoteLines, readyColor } from "../components/CoachNotes";
 import { humanize } from "../components/DataViews";
@@ -249,14 +250,6 @@ function Context({ m, metric, color }: { m: DayMetric; metric: string; color: st
   );
 }
 
-function rolling(values: number[], window: number): (number | null)[] {
-  return values.map((_, i) => {
-    if (i < window - 1) return null;
-    const slice = values.slice(i - window + 1, i + 1);
-    return slice.reduce((a, b) => a + b, 0) / window;
-  });
-}
-
 function Trend({
   data,
   color,
@@ -268,8 +261,7 @@ function Trend({
   selected: string;
   onSelect: (day: string) => void;
 }) {
-  const values = data.points.map((p) => p.value);
-  const avg7 = useMemo(() => rolling(values, 7), [values]);
+  const avg7 = useMemo(() => calendarAverage(data.points, 7, 3), [data.points]);
   const days = useMemo(() => data.points.map((p) => p.day), [data]);
 
   const option = useMemo<ChartOption>(
@@ -295,9 +287,9 @@ function Trend({
         {
           name: "7-day average",
           type: "line",
-          data: data.points.map((p, i) => [p.day, avg7[i] == null ? null : +avg7[i]!.toFixed(2)]),
+          data: avg7,
           symbol: "none",
-          smooth: 0.35,
+          smooth: 0.2,
           connectNulls: false,
           lineStyle: { color, width: 2.5, shadowColor: color, shadowBlur: 10 },
         },

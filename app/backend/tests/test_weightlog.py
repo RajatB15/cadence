@@ -47,3 +47,10 @@ def test_paired_phone_can_log_and_remove_a_weight(api, web):  # noqa: F811
     r = c.post("/api/weight/entries", json={"day": day, "weight_kg": 75.0}, headers=MUTATE)
     assert r.status_code == 200
     assert c.delete(f"/api/weight/entries/{day}", headers=MUTATE).status_code == 200
+
+
+def test_overview_knows_whether_you_have_weighed_in_today(env):  # noqa: F811
+    client, clock = env
+    client.post("/api/sync/demo", headers=MUTATE)
+    client.post("/api/weight/entries", json={"day": str(clock.today()), "weight_kg": 74.2}, headers=MUTATE)
+    assert client.get("/api/overview").json()["weight"]["weighed_today"] is True
