@@ -16,7 +16,7 @@ set -euo pipefail
 cd /opt/cadence/app/backend
 [[ -d .venv ]] || python3 -m venv .venv
 # Editable on purpose: the app locates its web build relative to the source tree.
-.venv/bin/pip install -q -e .
+.venv/bin/pip install -q -e '.[garmin-push]'
 chown -R cadence:cadence /opt/cadence
 chmod +x /opt/cadence/deploy/*.sh
 [[ -f /etc/cadence/cadence.env ]] || install -m 640 -o root -g cadence /opt/cadence/deploy/cadence.env /etc/cadence/cadence.env
