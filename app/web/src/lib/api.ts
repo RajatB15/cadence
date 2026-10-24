@@ -42,7 +42,7 @@ export class ApiError extends Error {
 export const READ_ONLY =
   typeof document !== "undefined" &&
   document.querySelector('meta[name="cadence-mode"]')?.getAttribute("content") === "read-only";
-const PHONE_WRITES = ["/api/push/", "/api/garmin/sync", "/api/journal/", "/api/strength/", "/api/planner", "/api/weight/entries"];
+const PHONE_WRITES = ["/api/push/", "/api/garmin/sync", "/api/journal/", "/api/strength/", "/api/planner", "/api/weight/entries", "/api/settings/weather", "/api/settings/profile"];
 
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const method = init.method ?? "GET";

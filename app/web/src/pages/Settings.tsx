@@ -75,7 +75,7 @@ function WeatherCard() {
         </p>
         {!q.data.available && <p className="mt-2 text-xs text-dim">Weather requests are turned off for this server.</p>}
       </div>
-      <button type="button" role="switch" aria-checked={q.data.enabled} disabled={READ_ONLY || toggle.isPending}
+      <button type="button" role="switch" aria-checked={q.data.enabled} disabled={toggle.isPending}
         onClick={() => toggle.mutate(!q.data.enabled)} className={q.data.enabled ? "pop pop-lime" : "pop pop-ghost"}>
         {q.data.enabled ? "On" : "Off"}
       </button>
@@ -124,7 +124,7 @@ function BodyProfileCard() {
           <Segmented label="Sex" options={[{ value: "male", label: "Male" }, { value: "female", label: "Female" }]} value={sex} onChange={setSex} />
         </label>
         <div className="sm:col-span-3">
-          <button type="submit" className="pop pop-lime" disabled={READ_ONLY || !validHeight || !validBirth || save.isPending}>
+          <button type="submit" className="pop pop-lime" disabled={!validHeight || !validBirth || save.isPending}>
             {p ? "Update" : "Save"}
           </button>
           {save.isError && <p className="mt-2 text-xs text-coral">{(save.error as Error).message}</p>}
