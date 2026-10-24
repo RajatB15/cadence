@@ -49,4 +49,22 @@ describe("share card", () => {
     const m = buildCardModel(detail({ name: "Café run!" }, null), "#fff", "Run");
     expect(fileName(m, "png", true)).toBe("cadence-caf-run-transparent.png");
   });
+
+  it("fills a strength card from blocks, exercises, zones and heart rate", () => {
+    const f = { ...fit([]), streams: { heart_rate: Array.from({ length: 200 }, (_, i) => 90 + (i % 40)) }, zones: [{ zone: 2, low: 100, high: 120, seconds: 600 }, { zone: 4, low: 140, high: 160, seconds: 200 }] } as FitData;
+    const d = detail({ family: "strength", type: "strength_training", distance_m: null }, f);
+    d.garmin_summary = { totalSets: 20, totalReps: 180, summarizedExerciseSets: [{ category: "BENCH_PRESS", sets: 4, reps: 32 }, { category: "ROW", sets: 5, reps: 50 }] };
+    const m = buildCardModel(d, "#f00", "Strength");
+    expect(m.stats.map((s) => s.label)).toEqual(["Time", "Sets", "Reps"]);
+    expect(m.panel.hr).toHaveLength(140);
+    expect(m.panel.zones?.map((z) => Math.round(z.pct))).toEqual([75, 25]);
+    expect(m.panel.rowsTitle).toBe("Exercises");
+    expect(m.panel.rows.map((r) => r.label)).toEqual(["Row", "Bench Press"]);
+    expect(m.panel.rows[0].right).toBe("5 sets · 50 reps");
+  });
+
+  it("leaves the panel empty when nothing was recorded", () => {
+    const m = buildCardModel(detail({ family: "strength" }, null), "#f00", "Strength");
+    expect(m.panel).toEqual({ hr: null, zones: null, rowsTitle: "", rows: [] });
+  });
 });

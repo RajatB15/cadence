@@ -1,15 +1,17 @@
 import { formatPace } from "./format";
 import { HEAT, buildTrack, gradient, type Gradient, type Track } from "./route";
-import type { ActivityDetail } from "./types";
+import type { ActivityDetail, Json } from "./types";
 
 export const CARD_W = 1080;
 export const CARD_H = 1920;
 export const VIDEO_SPEEDS = [1, 1.25, 1.5, 2] as const;
 export type VideoSpeed = (typeof VIDEO_SPEEDS)[number];
-/** Length of the route-drawing video at 1x; faster speeds shorten it. */
+/** Length of the flyover at 1x; faster speeds shorten it. The intro and the closing hold are fixed. */
 export const VIDEO_BASE_SECONDS = 12;
-const FPS = 30;
-const HOLD_SECONDS = 1.5;
+const ZONE_COLORS = ["#5c5a55", "#6cc7ff", "#5be3b0", "#c8f560", "#ffbe55", "#ff6a55", "#ff3b6b"];
+const KIND_COLOR: Record<string, string> = {
+  warmup: "#8d8a82", cooldown: "#8d8a82", strength: "#ff6a55", conditioning: "#ffbe55", core: "#9b8cff", mixed: "#6cc7ff",
+};
 
 const PACED = new Set(["run", "walk", "hike"]);
 const LIME = "#c8f560";
@@ -35,6 +37,15 @@ export interface CardModel {
   durationS: number;
   track: Track | null;
   heat: Gradient | null;
+  /** What fills the card when there is no route: heart-rate trace, zone split and a list of blocks or exercises. */
+  panel: Panel;
+}
+
+export interface Panel {
+  hr: number[] | null;
+  zones: { zone: number; pct: number }[] | null;
+  rowsTitle: string;
+  rows: { label: string; right: string; color: string }[];
 }
 
 /** Everything the card shows, derived from the activity as loaded; missing values are left out, never zero. */
@@ -46,6 +57,12 @@ export function buildCardModel(d: ActivityDetail, color: string, kicker: string)
   const stats: CardStat[] = [];
   if (a.distance_m) stats.push({ label: "Distance", value: (a.distance_m / 1000).toFixed(2), unit: "km" });
   stats.push({ label: "Time", value: formatClock(a.duration_s) });
+  const sets = numOf(d.garmin_summary, "totalSets");
+  const reps = numOf(d.garmin_summary, "totalReps");
+  if (a.family === "strength") {
+    if (sets) stats.push({ label: "Sets", value: String(Math.round(sets)) });
+    if (reps) stats.push({ label: "Reps", value: String(Math.round(reps)) });
+  }
   if (PACED.has(a.family) && a.distance_m) {
     const pace = formatPace(moving, a.distance_m);
     if (pace) stats.push({ label: "Avg pace", value: pace, unit: "/km" });
@@ -53,6 +70,7 @@ export function buildCardModel(d: ActivityDetail, color: string, kicker: string)
   if (a.avg_hr) stats.push({ label: "Avg HR", value: String(Math.round(a.avg_hr)), unit: "bpm" });
   if (a.elevation_gain_m) stats.push({ label: "Elevation", value: String(Math.round(a.elevation_gain_m)), unit: "m" });
   if (a.calories) stats.push({ label: "Calories", value: String(Math.round(a.calories)), unit: "kcal" });
+  if (a.training_load) stats.push({ label: "Load", value: String(Math.round(a.training_load)) });
 
   const track = d.fit && d.fit.route.length > 1 ? buildTrack(d.fit) : null;
   return {
@@ -65,7 +83,63 @@ export function buildCardModel(d: ActivityDetail, color: string, kicker: string)
     durationS: a.duration_s,
     track,
     heat: track ? gradient(track, "speed", HEAT) : null,
+    panel: buildPanel(d),
   };
+}
+
+function numOf(obj: Json | null | undefined, key: string): number | null {
+  const v = obj?.[key];
+  return typeof v === "number" && Number.isFinite(v) ? v : null;
+}
+
+const title = (s: string) => s.toLowerCase().replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+
+function buildPanel(d: ActivityDetail): Panel {
+  const raw = d.fit?.streams.heart_rate ?? [];
+  const present = raw.filter((v): v is number => v != null && v > 30);
+  let hr: number[] | null = null;
+  if (present.length >= 30) {
+    const n = Math.min(140, present.length);
+    hr = Array.from({ length: n }, (_, i) => {
+      const chunk = present.slice(Math.floor((i * present.length) / n), Math.max(Math.floor(((i + 1) * present.length) / n), Math.floor((i * present.length) / n) + 1));
+      return chunk.reduce((x, y) => x + y, 0) / chunk.length;
+    });
+  }
+
+  let secs = (d.fit?.zones ?? []).filter((z) => z.zone >= 1 && z.zone <= 5).map((z) => ({ zone: z.zone, seconds: z.seconds }));
+  if (!secs.some((z) => z.seconds > 0)) {
+    secs = [1, 2, 3, 4, 5].map((z) => ({ zone: z, seconds: numOf(d.garmin_summary, `hrTimeInZone_${z}`) ?? 0 }));
+  }
+  const total = secs.reduce((x, z) => x + z.seconds, 0);
+  const zones = total > 0 ? secs.map((z) => ({ zone: z.zone, pct: (z.seconds / total) * 100 })) : null;
+
+  const label = d.strength?.label;
+  const segments = label?.segments?.segments ?? [];
+  const exercises = ((d.garmin_summary?.summarizedExerciseSets as Json[] | undefined) ?? []).flatMap((e) => {
+    const name = [e.category, e.subCategory, e.exerciseName].find((v): v is string => typeof v === "string" && v.length > 0);
+    if (!name) return [];
+    const sets = numOf(e, "sets");
+    const reps = numOf(e, "reps");
+    const right = [sets ? `${sets} ${sets === 1 ? "set" : "sets"}` : null, reps ? `${reps} reps` : null].filter(Boolean).join(" · ");
+    return [{ label: title(name), right, color: "#ff6a55", sets: sets ?? 0 }];
+  });
+  let rowsTitle = "";
+  let rows: Panel["rows"] = [];
+  if (segments.length) {
+    rowsTitle = "Class blocks";
+    rows = segments.map((g) => ({
+      label: g.name,
+      right: `${Math.max(1, Math.round((g.end_s - g.start_s) / 60))} min${g.avg_hr ? ` · ${Math.round(g.avg_hr)} bpm` : ""}`,
+      color: KIND_COLOR[g.kind] ?? "#6cc7ff",
+    }));
+  } else if (exercises.length) {
+    rowsTitle = "Exercises";
+    rows = exercises.sort((x, y) => y.sets - x.sets).map(({ label: l, right, color }) => ({ label: l, right, color }));
+  } else if (label?.blocks.length) {
+    rowsTitle = "Blocks";
+    rows = label.blocks.map((b) => ({ label: b.name, right: `${b.exercises.length} exercises`, color: KIND_COLOR[b.kind] ?? "#6cc7ff" }));
+  }
+  return { hr, zones, rowsTitle, rows };
 }
 
 export function formatClock(seconds: number): string {
@@ -78,6 +152,24 @@ export function formatClock(seconds: number): string {
 
 export function videoSeconds(speed: number): number {
   return VIDEO_BASE_SECONDS / speed;
+}
+
+/** Whether this browser can run the 3D scene and encode H.264 (WebGL + WebCodecs). */
+export async function canRenderVideo(): Promise<boolean> {
+  if (typeof VideoEncoder === "undefined") return false;
+  try {
+    const gl = document.createElement("canvas").getContext("webgl2");
+    if (!gl) return false;
+    const { canEncodeVideo } = await import("mediabunny");
+    return await canEncodeVideo("avc", { width: CARD_W, height: CARD_H });
+  } catch {
+    return false;
+  }
+}
+
+export async function renderVideo(m: CardModel, opts: import("./shareVideo").VideoOptions): Promise<Blob> {
+  const { renderFlyover } = await import("./shareVideo");
+  return renderFlyover(m, opts);
 }
 
 /** Equirectangular fit of the route into a box, north up, never stretched. */
@@ -110,6 +202,10 @@ interface DrawOptions {
   transparent: boolean;
   /** 0..1 how much of the route is drawn and how far the counters have run. */
   progress: number;
+  /** Your own picture behind the card, cropped to fill and dimmed so the text stays readable. */
+  photo?: ImageBitmap | null;
+  /** Text only, no backdrop, route or panel: composited over a rendered map for video. */
+  overlay?: boolean;
 }
 
 function wrap(ctx: CanvasRenderingContext2D, text: string, maxWidth: number, maxLines: number): string[] {
@@ -133,9 +229,19 @@ function wrap(ctx: CanvasRenderingContext2D, text: string, maxWidth: number, max
   return lines;
 }
 
-export function drawCard(ctx: CanvasRenderingContext2D, m: CardModel, { transparent, progress }: DrawOptions): void {
-  ctx.clearRect(0, 0, CARD_W, CARD_H);
-  if (!transparent) {
+export function drawCard(ctx: CanvasRenderingContext2D, m: CardModel, { transparent, progress, photo, overlay }: DrawOptions): void {
+  if (!overlay) ctx.clearRect(0, 0, CARD_W, CARD_H);
+  const floating = transparent || !!photo;
+  if (photo) {
+    const k = Math.max(CARD_W / photo.width, CARD_H / photo.height);
+    ctx.drawImage(photo, (CARD_W - photo.width * k) / 2, (CARD_H - photo.height * k) / 2, photo.width * k, photo.height * k);
+    const scrim = ctx.createLinearGradient(0, 0, 0, CARD_H);
+    scrim.addColorStop(0, "rgba(0,0,0,0.5)");
+    scrim.addColorStop(0.45, "rgba(0,0,0,0.22)");
+    scrim.addColorStop(1, "rgba(0,0,0,0.72)");
+    ctx.fillStyle = scrim;
+    ctx.fillRect(0, 0, CARD_W, CARD_H);
+  } else if (!transparent) {
     const bg = ctx.createLinearGradient(0, 0, 0, CARD_H);
     bg.addColorStop(0, "#14171c");
     bg.addColorStop(1, "#0b0b0c");
@@ -149,9 +255,9 @@ export function drawCard(ctx: CanvasRenderingContext2D, m: CardModel, { transpar
   }
   // Over a photo there is no dark backdrop to lean on, so everything carries its own soft shadow.
   const shade = (on: boolean) => {
-    ctx.shadowColor = on && transparent ? "rgba(0,0,0,0.55)" : "transparent";
-    ctx.shadowBlur = on && transparent ? 18 : 0;
-    ctx.shadowOffsetY = on && transparent ? 3 : 0;
+    ctx.shadowColor = on && floating ? "rgba(0,0,0,0.55)" : "transparent";
+    ctx.shadowBlur = on && floating ? 18 : 0;
+    ctx.shadowOffsetY = on && floating ? 3 : 0;
   };
   const pad = 84;
   ctx.textBaseline = "alphabetic";
@@ -173,7 +279,10 @@ export function drawCard(ctx: CanvasRenderingContext2D, m: CardModel, { transpar
 
   const statsTop = 1440;
   const mapBox = { x: pad, y: titleBottom + 70, w: CARD_W - pad * 2, h: statsTop - 100 - (titleBottom + 70) };
-  if (m.track) drawRoute(ctx, m, mapBox, progress, transparent);
+  if (!overlay) {
+    if (m.track) drawRoute(ctx, m, mapBox, progress, transparent);
+    else drawPanel(ctx, m.panel, mapBox);
+  }
 
   // Stats: the first one leads, the rest sit in a row of up to three.
   const [lead, ...rest] = m.stats;
@@ -186,16 +295,16 @@ export function drawCard(ctx: CanvasRenderingContext2D, m: CardModel, { transpar
   if (lead) {
     ctx.fillStyle = CREAM;
     ctx.font = `600 150px ${MONO}`;
-    ctx.fillText(live(lead), pad, statsTop + 110);
+    ctx.fillText(live(lead), pad, statsTop + 135);
     const w = ctx.measureText(live(lead)).width;
     if (lead.unit) {
       ctx.fillStyle = "rgba(242,232,207,0.7)";
       ctx.font = `500 52px ${FONT}`;
-      ctx.fillText(lead.unit, pad + w + 18, statsTop + 110);
+      ctx.fillText(lead.unit, pad + w + 18, statsTop + 135);
     }
     ctx.font = `600 26px ${FONT}`;
     ctx.fillStyle = "rgba(242,232,207,0.7)";
-    ctx.fillText(lead.label.toUpperCase(), pad, statsTop + 28);
+    ctx.fillText(lead.label.toUpperCase(), pad, statsTop - 8);
   }
   const row = rest.slice(0, 3);
   const colW = (CARD_W - pad * 2) / Math.max(1, row.length);
@@ -203,16 +312,16 @@ export function drawCard(ctx: CanvasRenderingContext2D, m: CardModel, { transpar
     const x = pad + i * colW;
     ctx.fillStyle = "rgba(242,232,207,0.7)";
     ctx.font = `600 24px ${FONT}`;
-    ctx.fillText(s.label.toUpperCase(), x, statsTop + 230);
+    ctx.fillText(s.label.toUpperCase(), x, statsTop + 255);
     ctx.fillStyle = CREAM;
     ctx.font = `600 66px ${MONO}`;
     const v = live(s);
-    ctx.fillText(v, x, statsTop + 305);
+    ctx.fillText(v, x, statsTop + 330);
     if (s.unit) {
       const w = ctx.measureText(v).width;
       ctx.fillStyle = "rgba(242,232,207,0.7)";
       ctx.font = `500 28px ${FONT}`;
-      ctx.fillText(s.unit, x + w + 10, statsTop + 305);
+      ctx.fillText(s.unit, x + w + 10, statsTop + 330);
     }
   });
 
@@ -222,6 +331,94 @@ export function drawCard(ctx: CanvasRenderingContext2D, m: CardModel, { transpar
   ctx.fillText("CADENCE", CARD_W - pad, CARD_H - 70);
   ctx.textAlign = "left";
   shade(false);
+}
+
+const fit = (ctx: CanvasRenderingContext2D, text: string, maxWidth: number): string => {
+  let t = text;
+  while (t.length > 1 && ctx.measureText(t).width > maxWidth) t = t.slice(0, -1);
+  return t === text ? t : `${t.trimEnd()}…`;
+};
+
+function drawPanel(ctx: CanvasRenderingContext2D, p: Panel, box: { x: number; y: number; w: number; h: number }): void {
+  const eyebrow = (text: string, y: number) => {
+    ctx.fillStyle = "rgba(242,232,207,0.7)";
+    ctx.font = `600 24px ${FONT}`;
+    ctx.fillText(text.toUpperCase(), box.x, y);
+  };
+  let y = box.y;
+  if (p.hr) {
+    eyebrow("Heart rate", y + 24);
+    const top = y + 50;
+    const h = 170;
+    const lo = Math.min(...p.hr);
+    const span = Math.max(...p.hr) - lo || 1;
+    const at = (i: number) => [box.x + (i / (p.hr!.length - 1)) * box.w, top + h - ((p.hr![i] - lo) / span) * h] as const;
+    const area = ctx.createLinearGradient(0, top, 0, top + h);
+    area.addColorStop(0, "rgba(255,106,85,0.55)");
+    area.addColorStop(1, "rgba(255,106,85,0)");
+    ctx.beginPath();
+    ctx.moveTo(box.x, top + h);
+    p.hr.forEach((_, i) => ctx.lineTo(...at(i)));
+    ctx.lineTo(box.x + box.w, top + h);
+    ctx.closePath();
+    ctx.fillStyle = area;
+    ctx.fill();
+    ctx.beginPath();
+    p.hr.forEach((_, i) => (i ? ctx.lineTo(...at(i)) : ctx.moveTo(...at(i))));
+    ctx.lineWidth = 5;
+    ctx.lineJoin = "round";
+    ctx.strokeStyle = "#ff6a55";
+    ctx.stroke();
+    ctx.fillStyle = "rgba(242,232,207,0.7)";
+    ctx.font = `500 24px ${MONO}`;
+    ctx.textAlign = "right";
+    ctx.fillText(`${Math.round(lo)}–${Math.round(lo + span)} bpm`, box.x + box.w, y + 24);
+    ctx.textAlign = "left";
+    y = top + h + 60;
+  }
+  if (p.zones) {
+    eyebrow("Time in zones", y + 24);
+    let x = box.x;
+    const barY = y + 44;
+    for (const z of p.zones) {
+      const w = (z.pct / 100) * box.w;
+      ctx.fillStyle = ZONE_COLORS[z.zone] ?? CREAM;
+      ctx.fillRect(x, barY, w, 30);
+      if (z.pct >= 9) {
+        ctx.fillStyle = "rgba(242,232,207,0.85)";
+        ctx.font = `600 22px ${MONO}`;
+        ctx.fillText(`Z${z.zone} ${Math.round(z.pct)}%`, x, barY + 62);
+      }
+      x += w;
+    }
+    y = barY + 110;
+  }
+  if (p.rows.length) {
+    eyebrow(p.rowsTitle, y + 24);
+    y += 50;
+    const rowH = 64;
+    const room = Math.floor((box.y + box.h - y) / rowH);
+    const shown = p.rows.slice(0, Math.max(0, Math.min(7, room)));
+    shown.forEach((r, i) => {
+      const ry = y + i * rowH;
+      ctx.fillStyle = r.color;
+      ctx.fillRect(box.x, ry + 8, 8, rowH - 22);
+      ctx.textAlign = "right";
+      ctx.fillStyle = "rgba(242,232,207,0.78)";
+      ctx.font = `500 28px ${MONO}`;
+      const rw = ctx.measureText(r.right).width;
+      ctx.fillText(r.right, box.x + box.w, ry + 40);
+      ctx.textAlign = "left";
+      ctx.fillStyle = CREAM;
+      ctx.font = `600 34px ${FONT}`;
+      ctx.fillText(fit(ctx, r.label, box.w - rw - 60), box.x + 28, ry + 40);
+    });
+    if (shown.length < p.rows.length) {
+      ctx.fillStyle = "rgba(242,232,207,0.6)";
+      ctx.font = `500 26px ${FONT}`;
+      ctx.fillText(`+ ${p.rows.length - shown.length} more`, box.x + 28, y + shown.length * rowH + 34);
+    }
+  }
 }
 
 function drawRoute(
@@ -277,14 +474,14 @@ function dot(ctx: CanvasRenderingContext2D, [x, y]: [number, number] | number[],
   ctx.stroke();
 }
 
-function makeCanvas(): HTMLCanvasElement {
+export function makeCanvas(): HTMLCanvasElement {
   const canvas = document.createElement("canvas");
   canvas.width = CARD_W;
   canvas.height = CARD_H;
   return canvas;
 }
 
-async function fontsReady(): Promise<void> {
+export async function fontsReady(): Promise<void> {
   try {
     await Promise.all([`600 40px ${MONO}`, `700 30px ${FONT}`, `400 40px ${DISPLAY}`].map((f) => document.fonts.load(f)));
   } catch {
@@ -292,52 +489,11 @@ async function fontsReady(): Promise<void> {
   }
 }
 
-export async function renderPng(m: CardModel, transparent: boolean): Promise<Blob> {
+export async function renderPng(m: CardModel, transparent: boolean, photo?: ImageBitmap | null): Promise<Blob> {
   await fontsReady();
   const canvas = makeCanvas();
-  drawCard(canvas.getContext("2d")!, m, { transparent, progress: 1 });
+  drawCard(canvas.getContext("2d")!, m, { transparent, progress: 1, photo });
   return new Promise((resolve, reject) => canvas.toBlob((b) => (b ? resolve(b) : reject(new Error("The browser couldn't make the image."))), "image/png"));
-}
-
-/** Whether this browser can encode H.264 video (WebCodecs); Safari 16.4+, Chrome and Edge can. */
-export async function canRenderVideo(): Promise<boolean> {
-  if (typeof VideoEncoder === "undefined") return false;
-  try {
-    const { canEncodeVideo } = await import("mediabunny");
-    return await canEncodeVideo("avc", { width: CARD_W, height: CARD_H });
-  } catch {
-    return false;
-  }
-}
-
-/** MP4 of the route drawing itself, then holding on the finished card. MP4 has no alpha, so video always has the dark backdrop. */
-export async function renderVideo(m: CardModel, speed: number, onProgress: (done: number) => void, signal: AbortSignal): Promise<Blob> {
-  await fontsReady();
-  const { Output, Mp4OutputFormat, BufferTarget, CanvasSource, QUALITY_HIGH } = await import("mediabunny");
-  const canvas = makeCanvas();
-  const ctx = canvas.getContext("2d")!;
-  const output = new Output({ format: new Mp4OutputFormat(), target: new BufferTarget() });
-  const source = new CanvasSource(canvas, { codec: "avc", bitrate: QUALITY_HIGH });
-  output.addVideoTrack(source, { frameRate: FPS });
-  await output.start();
-  const drawFrames = Math.round(videoSeconds(speed) * FPS);
-  const total = drawFrames + Math.round(HOLD_SECONDS * FPS);
-  try {
-    for (let f = 0; f < total; f++) {
-      if (signal.aborted) throw new DOMException("Cancelled", "AbortError");
-      const t = Math.min(1, f / drawFrames);
-      drawCard(ctx, m, { transparent: false, progress: t });
-      await source.add(f / FPS, 1 / FPS);
-      if (f % 10 === 0) onProgress(f / total);
-    }
-    source.close();
-    await output.finalize();
-  } catch (e) {
-    await output.cancel().catch(() => {});
-    throw e;
-  }
-  onProgress(1);
-  return new Blob([output.target.buffer!], { type: "video/mp4" });
 }
 
 export function fileName(m: CardModel, ext: "png" | "mp4", transparent: boolean): string {
