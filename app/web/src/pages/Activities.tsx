@@ -1,13 +1,14 @@
-import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { clsx } from "clsx";
 import { AlertTriangle, ArrowDownRight, ArrowUpRight, Flame, Trophy } from "lucide-react";
 import { motion } from "motion/react";
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { ActivityRow } from "../components/ActivityRow";
 import { CountUp } from "../components/CountUp";
+import { MoreMenu } from "../components/MoreMenu";
 import { ErrorBlock, LoadingBlock, PageHeader, Segmented } from "../components/Shell";
-import { api } from "../lib/api";
+import { READ_ONLY, api } from "../lib/api";
 import { formatDuration, parseDay } from "../lib/format";
 import { ACTIVITY_FAMILIES } from "../lib/metrics";
 import type { ActivityItem, ActivityLog } from "../lib/types";
@@ -29,6 +30,22 @@ function weekKey(day: string): string {
 
 export function ActivitiesPage() {
   const [family, setFamily] = useState("");
+  const navigate = useNavigate();
+  // "Group with other activities" on an activity's page lands here with that one already ticked.
+  const start = Number(useSearchParams()[0].get("group"));
+  const [grouping, setGrouping] = useState(Number.isFinite(start) && start > 0);
+  const [picked, setPicked] = useState<Set<number>>(new Set(Number.isFinite(start) && start > 0 ? [start] : []));
+  const selection = grouping
+    ? {
+        picked,
+        toggle: (id: number) =>
+          setPicked((p) => {
+            const next = new Set(p);
+            if (!next.delete(id)) next.add(id);
+            return next;
+          }),
+      }
+    : undefined;
   const query = useInfiniteQuery({
     queryKey: ["activities", family],
     queryFn: ({ pageParam }) => api.activities(PAGE, pageParam, family || undefined),
@@ -58,7 +75,16 @@ export function ActivitiesPage() {
         title={<>Every session, <em className="text-gold">on record.</em></>}
       >
         {all > 0 && <Segmented label="Activity type" options={options} value={family} onChange={setFamily} />}
+        <MoreMenu
+          items={[
+            { label: "Treks & multisport events", hint: "Several activities combined into one", onSelect: () => navigate("/events") },
+            ...(!READ_ONLY && all > 0
+              ? [{ label: grouping ? "Stop grouping" : "Group activities into an event", hint: "Multi-day treks, bike + run, bike + swim", onSelect: () => { setGrouping(!grouping); setPicked(new Set()); } }]
+              : []),
+          ]}
+        />
       </PageHeader>
+      {grouping && <GroupBar picked={picked} onDone={() => { setGrouping(false); setPicked(new Set()); }} />}
 
       {data && (
         <div className="mb-10 space-y-6">
@@ -77,7 +103,7 @@ export function ActivitiesPage() {
           No sessions yet. Run a Garmin sync from the Vault to import your history.
         </div>
       ) : (
-        <Weeks items={items} log={data} />
+        <Weeks items={items} log={data} selection={selection} />
       )}
       {query.hasNextPage && (
         <div className="mt-10 flex justify-center">
@@ -310,7 +336,7 @@ function Records({ log }: { log: Log }) {
 
 // ---- weekly log -----------------------------------------------------------------------
 
-function Weeks({ items, log }: { items: ActivityItem[]; log: Log | null }) {
+function Weeks({ items, log, selection }: { items: ActivityItem[]; log: Log | null; selection?: { picked: Set<number>; toggle: (id: number) => void } }) {
   const groups = useMemo(() => {
     const out: { key: string; items: ActivityItem[] }[] = [];
     for (const a of items) {
@@ -374,12 +400,60 @@ function Weeks({ items, log }: { items: ActivityItem[]; log: Log | null }) {
             </header>
             <ul className="divide-y divide-line px-6">
               {g.items.map((a) => (
-                <ActivityRow key={a.id} a={a} />
+                <ActivityRow key={a.id} a={a} selection={selection && { selected: selection.picked.has(a.id), toggle: () => selection.toggle(a.id) }} />
               ))}
             </ul>
           </section>
         );
       })}
     </div>
+  );
+}
+
+// ---- group into an event ---------------------------------------------------------------
+
+function GroupBar({ picked, onDone }: { picked: Set<number>; onDone: () => void }) {
+  const client = useQueryClient();
+  const events = useQuery({ queryKey: ["events"], queryFn: api.events });
+  const [name, setName] = useState("");
+  const [target, setTarget] = useState("new");
+  const ids = [...picked];
+  const save = useMutation({
+    mutationFn: () => (target === "new" ? api.createEvent(name, ids) : api.linkToEvent(Number(target), ids)),
+    onSuccess: () => {
+      for (const key of ["events", "event", "activities", "activity"]) client.invalidateQueries({ queryKey: [key] });
+      onDone();
+    },
+  });
+  const ready = ids.length > 0 && (target !== "new" || name.trim().length > 0);
+  return (
+    <section aria-label="Group into event" className="surface sticky top-2 z-20 mb-8 space-y-3 border-gold/40 p-5">
+      <p className="text-sm text-mute">
+        Pick every day or leg that belongs together (load more below to reach older ones). Activities stay as they are and keep counting on their own days; the link lasts until you unlink them.
+      </p>
+      <div className="flex flex-wrap items-end gap-4">
+        <label className="text-xs tracking-widest text-dim uppercase">
+          Event
+          <select className="mt-1 block max-w-full border-b-2 border-line-strong bg-transparent py-2 text-paper outline-none focus:border-gold text-base normal-case" value={target} onChange={(e) => setTarget(e.target.value)}>
+            <option value="new">New event</option>
+            {(events.data?.items ?? []).map((e) => (
+              <option key={e.id} value={e.id}>
+                Add to “{e.name}”
+              </option>
+            ))}
+          </select>
+        </label>
+        {target === "new" && (
+          <label className="min-w-48 flex-1 text-xs tracking-widest text-dim uppercase">
+            Name
+            <input className="mt-1 block w-full border-b-2 border-line-strong bg-transparent py-2 text-paper outline-none focus:border-gold text-base normal-case" maxLength={120} placeholder="Annapurna circuit" value={name} onChange={(e) => setName(e.target.value)} />
+          </label>
+        )}
+        <button type="button" className="pop pop-lime" disabled={!ready || save.isPending} onClick={() => save.mutate()}>
+          {save.isPending ? "Saving…" : `Link ${ids.length} activit${ids.length === 1 ? "y" : "ies"}`}
+        </button>
+      </div>
+      {save.isError && <p role="alert" className="text-sm text-coral">{save.error.message}</p>}
+    </section>
   );
 }

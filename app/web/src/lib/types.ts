@@ -60,6 +60,7 @@ export interface ActivityItem {
   aerobic_te?: number | null;
   verdict?: Verdict | null;
   intensity?: { easy_pct: number; moderate_pct: number; hard_pct: number; kind: string } | null;
+  event?: { id: number; name: string } | null;
 }
 
 export type Json = Record<string, unknown>;
@@ -1500,3 +1501,55 @@ export type Outcomes =
       headline: Headline;
       lines: string[];
     };
+
+/** Totals over linked activities; a field no activity reported is null (missing), never 0. */
+export interface EventTotals {
+  count: number;
+  distance_m?: number | null;
+  duration_s?: number;
+  moving_s?: number;
+  elapsed_s?: number;
+  elevation_gain_m?: number | null;
+  calories?: number | null;
+  training_load?: number | null;
+  avg_hr?: number | null;
+  max_hr?: number | null;
+}
+
+export interface EventSummary {
+  id: number;
+  name: string;
+  start: string | null;
+  end: string | null;
+  span_days: number;
+  families: Record<string, number>;
+  totals: EventTotals;
+  linked: number;
+  missing: number;
+}
+
+export interface EventDay {
+  day: string;
+  number: number;
+  totals: EventTotals;
+  recovery: { sleep_h?: number; hrv_ms?: number; rhr?: number } | null;
+  activities: {
+    id: number;
+    name: string;
+    type: string;
+    family: string;
+    start_time_utc: string;
+    timezone: string;
+    local_date: string;
+    duration_s: number;
+    distance_m: number | null;
+    elevation_gain_m: number | null;
+    avg_hr: number | null;
+    training_load: number | null;
+  }[];
+}
+
+export interface EventDetail extends EventSummary {
+  created_at: string;
+  days: EventDay[];
+}

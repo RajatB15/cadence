@@ -3,6 +3,7 @@ import { lazy, Suspense } from "react";
 import { BrowserRouter, Route, Routes } from "react-router-dom";
 import { LoadingBlock, Shell } from "./components/Shell";
 import { ActivitiesPage } from "./pages/Activities";
+import { EventPage, EventsPage } from "./pages/Events";
 import { FoodPage } from "./pages/Food";
 import { GoalsPage } from "./pages/Goals";
 import { OverviewPage } from "./pages/Overview";
@@ -74,6 +75,8 @@ export function App() {
             />
             <Route path="review" element={<ReviewPage />} />
             <Route path="activities" element={<ActivitiesPage />} />
+            <Route path="events" element={<EventsPage />} />
+            <Route path="events/:id" element={<EventPage />} />
             <Route
               path="activities/:id"
               element={

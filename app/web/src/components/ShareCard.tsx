@@ -35,7 +35,7 @@ export function ShareCardButton({ model }: { model: CardModel }) {
   );
 }
 
-function ShareBody({ model }: { model: CardModel }) {
+export function ShareBody({ model }: { model: CardModel }) {
   const hasRoute = !!model.track;
   const [kind, setKind] = useState<Kind>("image");
   const [backdrop, setBackdrop] = useState<Backdrop>("dark");

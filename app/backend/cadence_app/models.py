@@ -120,6 +120,28 @@ class StrengthLabel(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime)
 
 
+class Event(Base):
+    """A trek, expedition or multisport day made of several recorded activities. Only the grouping is stored; totals are
+    computed from the activities, so nothing is counted twice."""
+
+    __tablename__ = "events"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(120))
+    created_at: Mapped[datetime] = mapped_column(DateTime)
+
+
+class EventActivity(Base):
+    """Links a Garmin activity to an event. Keyed by the source's activity id (like strength labels) so an offline rebuild,
+    which recreates activity rows, never loses a link. An activity belongs to at most one event."""
+
+    __tablename__ = "event_activities"
+
+    source_id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    source_record_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    event_id: Mapped[int] = mapped_column(ForeignKey("events.id", ondelete="CASCADE"), index=True)
+
+
 class DayHeartHistogram(Base):
     """Cached minutes-per-bpm for one settled day of all-day heart rate (derived from the vault; safe to drop)."""
 

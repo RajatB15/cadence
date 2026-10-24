@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { HEAT, bearing, buildTrack, cameraSigma, chaseHeading, chasePitch, terrainExaggeration, distanceMarks, gradient, locate, paletteAt, sample, smoothPath, steer, turn } from "./route";
+import { HEAT, bearing, buildTrack, cameraSigma, joinTracks, chaseHeading, chasePitch, terrainExaggeration, distanceMarks, gradient, locate, paletteAt, sample, smoothPath, steer, turn } from "./route";
 import type { FitData } from "./types";
 
 function fit(n: number, withTrack = true): FitData {
@@ -161,5 +161,24 @@ describe("chase camera", () => {
     expect(mild).toBeLessThanOrEqual(3.5);
     expect(terrainExaggeration({ ...long, elevation: [0, 8000] })).toBe(1.4);
     expect(terrainExaggeration({ ...long, elevation: null })).toBe(1.4);
+  });
+});
+
+describe("joinTracks", () => {
+  it("runs distance and clock on across legs and keeps one continuous line", () => {
+    const a = buildTrack(fit(50))!;
+    const b = buildTrack(fit(30))!;
+    const j = joinTracks([a, null, b])!;
+    expect(j.points).toHaveLength(80);
+    expect(j.points[50].dist).toBeCloseTo(a.points[49].dist! + 0, 5);
+    expect(j.points[79].dist!).toBeCloseTo(49 * 11.1 + 29 * 11.1, 5);
+    expect(j.points[79].t).toBe(49 + 29);
+    expect(j.progress[0]).toBe(0);
+    expect(j.progress[79]).toBe(1);
+  });
+  it("returns the single track as is and null for none", () => {
+    const a = buildTrack(fit(10))!;
+    expect(joinTracks([a])).toBe(a);
+    expect(joinTracks([null])).toBeNull();
   });
 });
