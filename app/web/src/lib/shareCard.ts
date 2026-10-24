@@ -115,8 +115,9 @@ function buildPanel(d: ActivityDetail): Panel {
 
   const label = d.strength?.label;
   const segments = label?.segments?.segments ?? [];
+  // Garmin's own names, only where the watch actually named them: UNKNOWN is "not recorded", not an exercise.
   const exercises = ((d.garmin_summary?.summarizedExerciseSets as Json[] | undefined) ?? []).flatMap((e) => {
-    const name = [e.category, e.subCategory, e.exerciseName].find((v): v is string => typeof v === "string" && v.length > 0);
+    const name = [e.category, e.subCategory, e.exerciseName].find((v): v is string => typeof v === "string" && v.length > 0 && v !== "UNKNOWN");
     if (!name) return [];
     const sets = numOf(e, "sets");
     const reps = numOf(e, "reps");
@@ -132,12 +133,12 @@ function buildPanel(d: ActivityDetail): Panel {
       right: `${Math.max(1, Math.round((g.end_s - g.start_s) / 60))} min${g.avg_hr ? ` · ${Math.round(g.avg_hr)} bpm` : ""}`,
       color: KIND_COLOR[g.kind] ?? "#6cc7ff",
     }));
+  } else if (label?.blocks.length) {
+    rowsTitle = "Class blocks";
+    rows = label.blocks.map((b) => ({ label: b.name, right: `${b.exercises.length} exercises`, color: KIND_COLOR[b.kind] ?? "#6cc7ff" }));
   } else if (exercises.length) {
     rowsTitle = "Exercises";
     rows = exercises.sort((x, y) => y.sets - x.sets).map(({ label: l, right, color }) => ({ label: l, right, color }));
-  } else if (label?.blocks.length) {
-    rowsTitle = "Blocks";
-    rows = label.blocks.map((b) => ({ label: b.name, right: `${b.exercises.length} exercises`, color: KIND_COLOR[b.kind] ?? "#6cc7ff" }));
   }
   return { hr, zones, rowsTitle, rows };
 }

@@ -18,9 +18,14 @@ def view(text: str, blocks: list[dict]) -> dict:
     return {"text": text, "blocks": blocks, "summary": X.summary(blocks)}
 
 
+def _blocks(text: str, stored: str) -> list[dict]:
+    """Parsed afresh from the saved text so parser improvements reach sessions saved earlier; the stored blocks are the fallback."""
+    return X.parse(text) or json.loads(stored)
+
+
 def get(session: Session, a: Activity) -> dict | None:
     row = session.get(StrengthLabel, (a.source_id, a.source_record_id))
-    return view(row.text, json.loads(row.blocks)) if row else None
+    return view(row.text, _blocks(row.text, row.blocks)) if row else None
 
 
 def save(session: Session, a: Activity, text: str, now: datetime, template: str | None = None) -> dict:
@@ -57,12 +62,12 @@ def templates(session: Session) -> list[dict]:
 def by_activity(session: Session, source_id: str) -> dict[int, dict]:
     """activity id -> {"blocks", "summary"} for every labelled session of a source."""
     rows = session.execute(
-        select(Activity.id, StrengthLabel.blocks)
+        select(Activity.id, StrengthLabel.text, StrengthLabel.blocks)
         .join(StrengthLabel, (StrengthLabel.source_id == Activity.source_id) & (StrengthLabel.source_record_id == Activity.source_record_id))
         .where(Activity.source_id == source_id)
     ).all()
     out = {}
-    for activity_id, blocks in rows:
-        parsed = json.loads(blocks)
+    for activity_id, text, blocks in rows:
+        parsed = _blocks(text, blocks)
         out[activity_id] = {"blocks": parsed, "summary": X.summary(parsed)}
     return out

@@ -149,3 +149,36 @@ def test_coach_only_flags_unnamed_exercises_until_you_name_them():
     c = ctx([act(500, D0 + timedelta(days=40), (3000, 600, 0, 0, 0), family="strength", load=60, distance_m=None)])
     flagged = lambda **kw: any(n["id"] == "strength_labels" for n in notes.session(c, 500, None, unknown, **kw)["notes"])  # noqa: E731
     assert flagged() and not flagged(named=True)
+
+
+HIIT_CLASS = """Main Movements:
+Endurance WOD: 50s ON, 15s OFF
+1. Air Squats
+2. Elbow Plank
+3. Beast Hold Shoulder Taps to Sprawlees
+4. Side Plank Arm Reach
+PACE Along: 40s ON, 20s OFF
+1. Half Burpees
+2. Bear Walk
+3. Bodyweight Thrusters
+Connect with us on Instagram @someone"""
+
+
+def test_work_rest_headings_start_their_own_blocks():
+    blocks = X.parse(HIIT_CLASS)
+    assert [b["name"] for b in blocks] == ["Endurance WOD: 50s ON, 15s OFF", "PACE Along: 40s ON, 20s OFF"]
+    assert [len(b["exercises"]) for b in blocks] == [4, 3]
+    assert [b["kind"] for b in blocks] == ["conditioning", "conditioning"]
+
+
+def test_saved_text_is_reparsed_on_read_with_stored_blocks_as_fallback(env):  # noqa: F811
+    from cadence_app import strength
+
+    assert [b["name"] for b in strength._blocks(HIIT_CLASS, "[]")] == ["Endurance WOD: 50s ON, 15s OFF", "PACE Along: 40s ON, 20s OFF"]
+    assert strength._blocks("nothing recognisable", '[{"name": "Old", "exercises": [], "kind": "mixed"}]')[0]["name"] == "Old"
+    client, _ = env
+    client.post("/api/sync/demo", headers=MUTATE)
+    aid = client.get("/api/activities?family=strength&limit=1").json()["items"][0]["id"]
+    assert client.put(f"/api/strength/{aid}", json={"text": HIIT_CLASS}, headers=MUTATE).status_code == 200
+    label = client.get(f"/api/activities/{aid}").json()["strength"]["label"]
+    assert [len(b["exercises"]) for b in label["blocks"]] == [4, 3]
