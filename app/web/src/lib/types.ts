@@ -816,6 +816,7 @@ export type Overview =
         latest_trend_kg: number | null;
         rate_kg_per_week: number | null;
         latest_reading: TrendPoint | null;
+        weighed_today: boolean;
         goal_kg: number | null;
         projection: Projection | null;
         spark: Point[];

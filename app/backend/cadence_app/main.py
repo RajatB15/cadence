@@ -595,6 +595,7 @@ def create_app(
                 "latest_trend_kg": weight.latest_trend_kg,
                 "rate_kg_per_week": weight.rate_kg_per_week,
                 "latest_reading": asdict(weight.points[-1]) if weight.points else None,
+                "weighed_today": bool(weight.points and weight.points[-1].day == clock.today()),
                 "goal_kg": _goal(session),
                 "projection": asdict(weight.projection) if weight.projection else None,
                 "spark": [
