@@ -8,6 +8,7 @@ import { PlanPage } from "./pages/Plan";
 import { ReviewPage } from "./pages/Review";
 import { SettingsPage } from "./pages/Settings";
 import { VaultPage } from "./pages/Vault";
+import { useAppLifecycle } from "./lib/useAppLifecycle";
 
 // ECharts is heavy; only chart pages pull it in.
 const WeightPage = lazy(() => import("./pages/Weight").then((m) => ({ default: m.WeightPage })));
@@ -20,9 +21,15 @@ const queryClient = new QueryClient({
   defaultOptions: { queries: { staleTime: 60_000, retry: 1 } },
 });
 
+function Lifecycle() {
+  useAppLifecycle();
+  return null;
+}
+
 export function App() {
   return (
     <QueryClientProvider client={queryClient}>
+      <Lifecycle />
       <BrowserRouter>
         <Routes>
           <Route element={<Shell />}>
