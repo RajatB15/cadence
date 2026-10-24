@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { kcalRange, proteinPosition, servingsLabel, shiftDay } from "./food";
+import { browseList, portionPreview, kcalRange, MAX_SEARCH_RESULTS, proteinPosition, searchList, servingsLabel, shiftDay } from "./food";
 
 describe("food helpers", () => {
   it("shifts days across month and year edges", () => {
@@ -18,5 +18,24 @@ describe("food helpers", () => {
   });
   it("writes servings as fractions", () => {
     expect([0.5, 1, 1.5, 2.25, 0.75, 3.3].map(servingsLabel)).toEqual(["½", "1", "1½", "2¼", "¾", "3.3"]);
+  });
+  it("browses a short list but searches every dish, including other names", () => {
+    const d = (id: number, name: string, source: string, aliases: string[] = []) => ({ id, name, source, aliases });
+    const all = [d(1, "Dal tadka", "healthify"), d(2, "Dal makhani with cream", "healthify"), d(3, "Moong dal", "healthify"), d(4, "Mum's dal", "mine"), d(5, "Aam", "healthify", ["Mango"])];
+    expect(browseList(all, [2]).map((x) => x.id)).toEqual([2, 4, 5, 1, 3]); // recent, mine, then shortest names (ties alphabetical)
+    expect(searchList(all, "dal").map((x) => x.id)).toEqual([1, 2, 3, 4]); // names starting with the text first
+    expect(searchList(all, "mango").map((x) => x.id)).toEqual([5]);
+    expect(searchList(all, "  ")).toEqual([]);
+    const many = Array.from({ length: 200 }, (_, i) => d(i, `Rice ${i}`, "healthify"));
+    expect(searchList(many, "rice")).toHaveLength(MAX_SEARCH_RESULTS);
+    expect(browseList(many, [])).toHaveLength(40);
+  });
+  it("previews a portion the same way by servings or by grams", () => {
+    const paneer = { kcal: 152.7, protein_g: 9.4, unit_g: 50, per_100g: { kcal: 305.4, protein_g: 18.9 } };
+    const byServings = portionPreview(paneer, "servings", 2);
+    const byGrams = portionPreview(paneer, "grams", 100);
+    expect(Math.round(byServings.kcal)).toBe(Math.round(byGrams.kcal));
+    expect(byServings.grams).toBe(100);
+    expect(portionPreview({ kcal: 200, protein_g: 5, unit_g: null, per_100g: null }, "servings", 1.5).grams).toBeNull();
   });
 });

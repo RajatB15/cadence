@@ -4,7 +4,7 @@ import { useMemo, useState, type FormEvent } from "react";
 import { Sheet } from "../components/Sheet";
 import { ErrorBlock, LoadingBlock, PageHeader } from "../components/Shell";
 import { api } from "../lib/api";
-import { kcalRange, MEALS, proteinPosition, servingsLabel, shiftDay } from "../lib/food";
+import { BASIS_NOTE, browseList, kcalRange, MEALS, portionPreview, proteinPosition, searchList, servingsLabel, shiftDay, SOURCE_NOTE, type PortionMode } from "../lib/food";
 import { formatDate } from "../lib/format";
 import type { FoodDish, FoodView, Meal } from "../lib/types";
 
@@ -78,7 +78,7 @@ export function FoodPage() {
                               {e.name}
                             </p>
                             <p className="num text-xs text-dim">
-                              {e.kcal} kcal{e.protein_g != null && ` · ${e.protein_g} g protein`}
+                              {e.grams != null && `${e.grams} g · `}{e.kcal} kcal{e.protein_g != null && ` · ${e.protein_g} g protein`}
                               {e.spread_pct >= 30 && " · eaten out, rough"}
                             </p>
                           </div>
@@ -183,7 +183,7 @@ function Summary({ data }: { data: FoodView }) {
       </section>
 
       <p className="text-xs leading-relaxed text-dim">
-        These are estimates, not measurements. Starter dishes are rounded typical values, and how you cook moves them a lot, so edit a dish to match your kitchen.
+        These are estimates, not measurements. Dishes come from HealthifyMe's food database and are calculated from recipes found online, not lab-measured, so each dish shows its source. Check the portion and its weight before you pick: a bowl, a katori and 100 g are different amounts, and how you cook moves every number.
         Home-cooked entries carry about ±20%, eating out about ±30%.
       </p>
     </aside>
@@ -223,59 +223,136 @@ function AddFoodSheet({ meal, day, recentIds, onClose, onSaved }: { meal: Meal |
 
 const STEPS = [0.5, 1, 1.5, 2, 3, 4];
 
+/** The household portions a dish can be measured in; a dish with only a weight gets its own unit as the one portion. */
+const portionOptions = (d: FoodDish) => (d.portions.length ? d.portions : d.unit_g ? [{ unit: d.unit, grams: d.unit_g }] : []);
+
 function Library({ meal, day, recentIds, search, setSearch, onSaved, onDone, onAddNew }: { meal: Meal; day: string; recentIds: number[]; search: string; setSearch: (s: string) => void; onSaved: () => void; onDone: () => void; onAddNew: () => void }) {
   const dishes = useQuery({ queryKey: ["food-dishes"], queryFn: api.foodDishes });
   const [picked, setPicked] = useState<FoodDish | null>(null);
   const [servings, setServings] = useState(1);
+  const [mode, setMode] = useState<PortionMode>("servings");
+  const [portionIdx, setPortionIdx] = useState(0);
+  const [gramsText, setGramsText] = useState("");
   const [out, setOut] = useState(false);
+  const grams = Number(gramsText.replace(",", "."));
+  const gramsValid = gramsText.trim() !== "" && Number.isFinite(grams) && grams > 0 && grams <= 5000;
   const save = useMutation({
-    mutationFn: () => api.addFoodEntry({ day, meal, dish_id: picked!.id, servings, eating_out: out }),
+    mutationFn: () => {
+      const opts = portionOptions(picked!);
+      const eaten = mode === "grams" ? grams : opts.length ? opts[Math.min(portionIdx, opts.length - 1)].grams * servings : null;
+      return api.addFoodEntry({ day, meal, dish_id: picked!.id, eating_out: out, ...(eaten != null ? { grams: Math.round(eaten * 10) / 10 } : { servings }) });
+    },
     onSuccess: () => {
       onSaved();
       onDone();
       setPicked(null);
       setServings(1);
+      setMode("servings");
+      setPortionIdx(0);
+      setGramsText("");
       setOut(false);
     },
   });
+  const pick = (d: FoodDish) => {
+    setPicked(d);
+    setMode("servings");
+    setPortionIdx(0);
+    setGramsText(d.unit_g ? String(Math.round(d.unit_g)) : "");
+  };
   const shown = useMemo(() => {
     const all = dishes.data?.dishes ?? [];
-    const q = search.trim().toLowerCase();
-    if (q) return all.filter((d) => d.name.toLowerCase().includes(q));
-    const recent = recentIds.map((id) => all.find((d) => d.id === id)).filter((d): d is FoodDish => d != null);
-    return [...recent, ...all.filter((d) => !recentIds.includes(d.id))];
+    return search.trim() ? searchList(all, search) : browseList(all, recentIds);
   }, [dishes.data, search, recentIds]);
 
   if (dishes.isPending) return <LoadingBlock height={240} />;
   if (dishes.isError) return <ErrorBlock error={dishes.error} retry={() => dishes.refetch()} />;
 
   if (picked) {
+    const opts = portionOptions(picked);
+    const portion = opts[Math.min(portionIdx, Math.max(opts.length - 1, 0))];
+    const preview =
+      mode === "grams"
+        ? portionPreview(picked, "grams", gramsValid ? grams : 0)
+        : portion && picked.grams_ok
+          ? portionPreview(picked, "grams", portion.grams * servings)
+          : portionPreview(picked, "servings", servings);
     return (
       <div>
         <button type="button" className="text-xs text-mute hover:text-paper" onClick={() => setPicked(null)}>← Back to dishes</button>
         <p className="mt-3 font-display text-3xl text-cream">{picked.name}</p>
-        <p className="num text-sm text-mute">
-          per {picked.unit}: {picked.kcal} kcal · {picked.protein_g} g protein · {picked.carbs_g} g carbs · {picked.fat_g} g fat
+        <p className="text-xs text-dim">{SOURCE_NOTE[picked.source]} · {BASIS_NOTE[picked.basis]}</p>
+        <p className="num mt-2 text-sm text-mute">
+          per {picked.unit}: {Math.round(picked.kcal)} kcal · {picked.protein_g.toFixed(1)} g protein · {picked.carbs_g.toFixed(1)} g carbs · {picked.fat_g.toFixed(1)} g fat
         </p>
-        <div className="eyebrow mt-6">How many?</div>
-        <div className="mt-2 flex flex-wrap items-center gap-2">
-          <button type="button" className="chip pointer-coarse:py-2" aria-label="Fewer" onClick={() => setServings(Math.max(0.25, servings - 0.25))}><Minus size={12} /></button>
-          <span className="num min-w-12 text-center text-2xl text-paper">{servingsLabel(servings)}</span>
-          <button type="button" className="chip pointer-coarse:py-2" aria-label="More" onClick={() => setServings(Math.min(20, servings + 0.25))}><Plus size={12} /></button>
-          {STEPS.map((s) => (
-            <button key={s} type="button" aria-pressed={servings === s} className={`chip pointer-coarse:py-2 ${servings === s ? "!text-gold" : ""}`} onClick={() => setServings(s)}>
-              {servingsLabel(s)}
-            </button>
-          ))}
-        </div>
+        {picked.per_100g && (
+          <p className="num text-xs text-dim">
+            per 100 g: {picked.per_100g.kcal} kcal · {picked.per_100g.protein_g} g protein · {picked.per_100g.carbs_g} g carbs · {picked.per_100g.fat_g} g fat
+          </p>
+        )}
+        {picked.note && <p className="mt-2 text-xs text-dim">{picked.note}</p>}
+        {picked.aliases.length > 0 && <p className="mt-1 text-xs text-dim">Also called {picked.aliases.slice(0, 4).join(", ")}</p>}
+
+        {picked.grams_ok && (
+          <div role="radiogroup" aria-label="Amount by" className="mt-6 flex w-fit border border-line-strong p-1">
+            {(["servings", "grams"] as const).map((m) => (
+              <button
+                key={m}
+                type="button"
+                role="radio"
+                aria-checked={mode === m}
+                onClick={() => setMode(m)}
+                className={`px-3.5 py-1.5 text-xs font-semibold tracking-widest uppercase pointer-coarse:py-2.5 ${mode === m ? "bg-cream text-ink" : "text-mute hover:text-paper"}`}
+              >
+                {m}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {mode === "servings" || !picked.grams_ok ? (
+          <>
+            {picked.grams_ok && opts.length > 1 && (
+              <>
+                <label className="eyebrow mt-6 block" htmlFor="portion">Portion</label>
+                <select id="portion" value={portionIdx} onChange={(e) => setPortionIdx(Number(e.target.value))} className="mt-2 w-full border-b-2 border-line-strong bg-coal py-2 text-base text-paper outline-none focus:border-gold">
+                  {opts.map((o, i) => (
+                    <option key={`${o.unit}-${o.grams}`} value={i}>{o.unit} · {o.grams} g</option>
+                  ))}
+                </select>
+              </>
+            )}
+            <div className="eyebrow mt-6">{portion && picked.grams_ok ? `How many (${portion.unit})?` : "How many?"}</div>
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <button type="button" className="chip pointer-coarse:py-2" aria-label="Fewer" onClick={() => setServings(Math.max(0.25, servings - 0.25))}><Minus size={12} /></button>
+              <span className="num min-w-12 text-center text-2xl text-paper">{servingsLabel(servings)}</span>
+              <button type="button" className="chip pointer-coarse:py-2" aria-label="More" onClick={() => setServings(Math.min(20, servings + 0.25))}><Plus size={12} /></button>
+              {STEPS.map((s) => (
+                <button key={s} type="button" aria-pressed={servings === s} className={`chip pointer-coarse:py-2 ${servings === s ? "!text-gold" : ""}`} onClick={() => setServings(s)}>
+                  {servingsLabel(s)}
+                </button>
+              ))}
+            </div>
+          </>
+        ) : (
+          <>
+            <label className="eyebrow mt-6 block" htmlFor="grams">Weight eaten (g)</label>
+            <input id="grams" inputMode="decimal" value={gramsText} onChange={(e) => setGramsText(e.target.value)} className={field} aria-invalid={gramsText !== "" && !gramsValid} />
+            <div className="mt-2 flex flex-wrap gap-2">
+              {[50, 100, 150, 200, 250].map((g) => (
+                <button key={g} type="button" className="chip pointer-coarse:py-2" onClick={() => setGramsText(String(g))}>{g} g</button>
+              ))}
+            </div>
+          </>
+        )}
+
         <label className="mt-5 flex items-center gap-2 text-sm text-mute">
           <input type="checkbox" checked={out} onChange={(e) => setOut(e.target.checked)} /> Eaten out or not home-cooked (wider range)
         </label>
         <p className="num mt-5 text-sm text-paper">
-          ≈ {Math.round(picked.kcal * servings)} kcal · {Math.round(picked.protein_g * servings)} g protein
+          ≈ {Math.round(preview.kcal)} kcal · {Math.round(preview.protein_g)} g protein{preview.grams != null && ` · ${Math.round(preview.grams)} g`}
         </p>
         {save.isError && <p className="mt-3 text-xs text-coral">{(save.error as Error).message}</p>}
-        <button type="button" className="pop pop-lime mt-6 disabled:opacity-40" disabled={save.isPending} onClick={() => save.mutate()}>
+        <button type="button" className="pop pop-lime mt-6 disabled:opacity-40" disabled={save.isPending || (mode === "grams" && picked.grams_ok && !gramsValid)} onClick={() => save.mutate()}>
           <Plus size={16} /> Add
         </button>
       </div>
@@ -287,7 +364,7 @@ function Library({ meal, day, recentIds, search, setSearch, onSaved, onDone, onA
       <input
         value={search}
         onChange={(e) => setSearch(e.target.value)}
-        placeholder="Search your dishes: dal, roti, poha"
+        placeholder="Search all dishes: dal, roti, poha"
         aria-label="Search dishes"
         className="w-full border-b-2 border-line-strong bg-transparent py-2 text-lg text-paper outline-none focus:border-gold"
       />
@@ -303,7 +380,7 @@ function Library({ meal, day, recentIds, search, setSearch, onSaved, onDone, onA
         <ul className="mt-3 divide-y divide-line">
           {shown.map((d) => (
             <li key={d.id}>
-              <button type="button" className="flex w-full items-baseline justify-between gap-3 py-3 text-left hover:text-cream pointer-coarse:py-3.5" onClick={() => setPicked(d)}>
+              <button type="button" className="flex w-full items-baseline justify-between gap-3 py-3 text-left hover:text-cream pointer-coarse:py-3.5" onClick={() => pick(d)}>
                 <span className="min-w-0">
                   <span className="block truncate text-sm text-paper">
                     {!search && recentIds.includes(d.id) && <span className="mr-2 text-[10px] tracking-widest text-gold uppercase">Recent</span>}
@@ -363,19 +440,21 @@ function QuickEntry({ meal, day, onSaved, onDone }: { meal: Meal; day: string; o
 
 function NewDish({ initialName, onCreated }: { initialName: string; onCreated: (name: string) => void }) {
   const client = useQueryClient();
-  const [v, setV] = useState({ name: initialName, unit: "", kcal: "", protein: "", carbs: "", fat: "" });
+  const [v, setV] = useState({ name: initialName, unit: "", grams: "", kcal: "", protein: "", carbs: "", fat: "" });
   const set = (key: keyof typeof v) => (e: { target: { value: string } }) => setV({ ...v, [key]: e.target.value });
   const num = (s: string) => (s.trim() === "" ? 0 : Number(s));
   const kcal = Number(v.kcal);
+  const gramsVal = v.grams.trim() === "" ? null : Number(v.grams.replace(",", "."));
   const valid =
     v.name.trim() !== "" && v.unit.trim() !== "" && Number.isFinite(kcal) && kcal >= 0 && kcal <= 5000 && v.kcal.trim() !== "" &&
+    (gramsVal == null || (Number.isFinite(gramsVal) && gramsVal > 0 && gramsVal <= 3000)) &&
     [v.protein, v.carbs, v.fat].every((s) => Number.isFinite(num(s)) && num(s) >= 0);
   const save = useMutation({
-    mutationFn: () => api.addFoodDish({ name: v.name.trim(), unit: v.unit.trim(), kcal, protein_g: num(v.protein), carbs_g: num(v.carbs), fat_g: num(v.fat) }),
+    mutationFn: () => api.addFoodDish({ name: v.name.trim(), unit: v.unit.trim(), kcal, protein_g: num(v.protein), carbs_g: num(v.carbs), fat_g: num(v.fat), ...(gramsVal ? { grams: gramsVal } : {}) }),
     onSuccess: () => {
       client.invalidateQueries({ queryKey: ["food-dishes"] });
       onCreated(v.name.trim());
-      setV({ name: "", unit: "", kcal: "", protein: "", carbs: "", fat: "" });
+      setV({ name: "", unit: "", grams: "", kcal: "", protein: "", carbs: "", fat: "" });
     },
   });
   const submit = (e: FormEvent) => {
@@ -384,11 +463,14 @@ function NewDish({ initialName, onCreated }: { initialName: string; onCreated: (
   };
   return (
     <form onSubmit={submit}>
-      <p className="text-sm text-mute">Add a dish the way you make it, for one serving unit you can count (a roti, a katori, a plate).</p>
+      <p className="text-sm text-mute">Add a dish the way you make it, for one serving unit you can count (a roti, a katori, a plate). Nutrition is for that one serving.</p>
       <label className="eyebrow mt-5 block" htmlFor="d-name">Name</label>
       <input id="d-name" value={v.name} onChange={set("name")} className={field} placeholder="Mum's rajma" maxLength={80} />
       <label className="eyebrow mt-5 block" htmlFor="d-unit">One serving is</label>
       <input id="d-unit" value={v.unit} onChange={set("unit")} className={field} placeholder="1 katori" maxLength={40} />
+      <label className="eyebrow mt-5 block" htmlFor="d-grams">Weight of one serving (g), if you know it</label>
+      <input id="d-grams" inputMode="decimal" value={v.grams} onChange={set("grams")} className={field} placeholder="e.g. 150 — lets you log by grams" />
+      <p className="mt-1 text-xs text-dim">Use the same measure each time (a katori is about 150 g of most gravies, but weigh yours once to be sure).</p>
       <div className="mt-5 grid grid-cols-2 gap-4">
         {([["kcal", "Calories (kcal)"], ["protein", "Protein (g)"], ["carbs", "Carbs (g)"], ["fat", "Fat (g)"]] as const).map(([key, l]) => (
           <div key={key}>

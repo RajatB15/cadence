@@ -234,6 +234,21 @@ class FoodDish(Base):
     spread_pct: Mapped[int] = mapped_column(Integer, default=20, server_default="20")
     builtin: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
     active: Mapped[bool] = mapped_column(Boolean, default=True, server_default="1")
+    source: Mapped[str] = mapped_column(String(16), default="mine", server_default="mine")  # healthify | mine (older: starter | INDB | IFCT)
+    ref_code: Mapped[str | None] = mapped_column(String(24))
+    # Grams are the standard unit: weight of one serving as eaten, and nutrition per 100 g. INDB dishes have only the
+    # recipe's weight, so they're logged by serving. Per-serving kcal/protein/carbs/fat above always equal per-100 g x unit_g.
+    unit_g: Mapped[float | None] = mapped_column(Float)
+    kcal_100g: Mapped[float | None] = mapped_column(Float)
+    protein_100g: Mapped[float | None] = mapped_column(Float)
+    carbs_100g: Mapped[float | None] = mapped_column(Float)
+    fat_100g: Mapped[float | None] = mapped_column(Float)
+    basis: Mapped[str] = mapped_column(String(16), default="estimate", server_default="estimate")  # healthify | estimate (your own)
+    note: Mapped[str | None] = mapped_column(String(240))
+    flagged: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
+    aliases: Mapped[str | None] = mapped_column(Text)  # other names, JSON list, searched alongside the name
+    portions: Mapped[str | None] = mapped_column(Text)  # household portions, JSON list of {unit, grams}
+    edited: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")  # you changed it; the catalogue won't overwrite
     created_at: Mapped[datetime] = mapped_column(DateTime)
 
 
@@ -253,6 +268,7 @@ class FoodEntry(Base):
     carbs_g: Mapped[float | None] = mapped_column(Float)
     fat_g: Mapped[float | None] = mapped_column(Float)
     spread_pct: Mapped[int] = mapped_column(Integer, default=25, server_default="25")
+    grams: Mapped[float | None] = mapped_column(Float)  # amount eaten in grams, when the dish has a weight
     logged_at: Mapped[datetime] = mapped_column(DateTime)
 
 

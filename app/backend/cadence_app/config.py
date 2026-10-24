@@ -28,6 +28,7 @@ class Settings:
     sync_every_h: float = 3.0
     push_contact: str = "mailto:cadence@example.com"
     weather: bool = False  # Open-Meteo requests; on for the real service, off in tests unless asked for
+    food_data_dir: Path | None = None  # the private food-data submodule (HealthifyMe crawl); never in this repo
 
     @property
     def archive_dir(self) -> Path:
@@ -57,4 +58,5 @@ def load_settings() -> Settings:
         sync_every_h=float(os.environ.get("CADENCE_SYNC_EVERY_HOURS", "3")),
         push_contact=os.environ.get("CADENCE_PUSH_CONTACT", "mailto:cadence@example.com"),
         weather=os.environ.get("CADENCE_WEATHER", "1") != "0",
+        food_data_dir=Path(os.environ.get("CADENCE_FOOD_DATA_DIR", REPO_ROOT / "food-data")),
     )

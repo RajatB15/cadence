@@ -205,6 +205,7 @@ class FoodDishRequest(BaseModel):
     carbs_g: float = Field(default=0, ge=0, le=1000)
     fat_g: float = Field(default=0, ge=0, le=500)
     spread_pct: int = Field(default=foodlog.HOME_SPREAD, ge=0, le=60)
+    grams: float | None = Field(default=None, gt=0, le=foodlog.MAX_UNIT_GRAMS)  # weight of one serving
 
 
 class FoodDishPatch(BaseModel):
@@ -215,6 +216,7 @@ class FoodDishPatch(BaseModel):
     carbs_g: float | None = Field(default=None, ge=0, le=1000)
     fat_g: float | None = Field(default=None, ge=0, le=500)
     spread_pct: int | None = Field(default=None, ge=0, le=60)
+    grams: float | None = Field(default=None, gt=0, le=foodlog.MAX_UNIT_GRAMS)
     active: bool | None = None
 
 
@@ -223,6 +225,7 @@ class FoodEntryRequest(BaseModel):
     meal: Literal["breakfast", "lunch", "snack", "dinner"]
     dish_id: int | None = None
     servings: float = Field(default=1, gt=0, le=foodlog.MAX_SERVINGS)
+    grams: float | None = Field(default=None, gt=0, le=foodlog.MAX_LOG_GRAMS)  # instead of servings, for dishes with a weight
     eating_out: bool = False
     # A one-off entry instead of a library dish.
     name: str | None = Field(default=None, max_length=80)
@@ -1150,21 +1153,21 @@ def create_app(
 
     @app.get("/api/food")
     def food_view(day: date | None = None, session: Session = Depends(get_session)) -> dict:
-        foodlog.ensure_catalogue(session, clock.now())
+        foodlog.ensure_catalogue(session, clock.now(), settings.food_data_dir)
         today = clock.today()
         day = min(day or today, today)
         return foodlog.view(session, day, today, _weight_summary(session, today).latest_trend_kg)
 
     @app.get("/api/food/dishes")
     def food_dishes(all: bool = False, session: Session = Depends(get_session)) -> dict:
-        foodlog.ensure_catalogue(session, clock.now())
+        foodlog.ensure_catalogue(session, clock.now(), settings.food_data_dir)
         return {"dishes": foodlog.dishes(session, include_inactive=all)}
 
     @app.post("/api/food/dishes")
     def food_dish_add(body: FoodDishRequest, session: Session = Depends(get_session)) -> dict:
         try:
             return foodlog.add_dish(session, body.name, body.unit, body.kcal, body.protein_g, body.carbs_g, body.fat_g,
-                                    clock.now(), body.spread_pct)
+                                    clock.now(), body.spread_pct, body.grams)
         except foodlog.FoodError as exc:
             raise HTTPException(400, str(exc)) from None
 
@@ -1183,7 +1186,7 @@ def create_app(
         try:
             if body.dish_id is not None:
                 return foodlog.log_dish(session, body.day, body.meal, body.dish_id, body.servings, body.eating_out,
-                                        clock.today(), clock.now())
+                                        clock.today(), clock.now(), body.grams)
             if body.name and body.kcal:
                 return foodlog.log_quick(session, body.day, body.meal, body.name, body.kcal, body.protein_g,
                                          clock.today(), clock.now())
