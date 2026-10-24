@@ -1364,16 +1364,44 @@ export interface FoodDaySummary {
   partial_macros: boolean;
 }
 
+export interface FoodPlan {
+  /** Inputs that are missing, so targets can't be set: weight and/or profile. */
+  needs: ("weight" | "profile")[];
+  phase: "cut" | "gain" | "maintain";
+  goal_kg: number | null;
+  weight_kg: number | null;
+  /** What a typical day costs: Garmin's recent mean, or the profile formula until there is a week of Garmin data. */
+  reference_energy: { kcal: number; low: number; high: number; source: "garmin" | "formula"; days: number } | null;
+  targets: {
+    phase: "cut" | "gain" | "maintain";
+    protein_g: [number, number];
+    protein_per_meal_g: [number, number];
+    fat_g: [number, number];
+    kcal: [number, number] | null;
+    pace_pct_week: [number, number] | null;
+    pace_kg_week: [number, number] | null;
+  } | null;
+  today: { state: "not_logged" | "no_target" | "under" | "within" | "over"; remaining_kcal?: [number, number] } | null;
+  balance: { days: number; intake: number; intake_range: [number, number]; burn: number; burn_range: [number, number]; balance: number; balance_range: [number, number] } | null;
+  implied: { days: number; kcal: number; range: [number, number]; intake: number; trend_kg_week: number } | null;
+  protein: { days: number; g: number; g_per_kg: number | null } | null;
+  trend_kg_week: number | null;
+  meal_protein: Partial<Record<Meal, number>>;
+}
+
 export interface FoodView {
   day: string;
   today: string;
   entries: FoodEntry[];
   summary: FoodDaySummary;
-  trail: (FoodDaySummary & { day: string })[];
+  trail: (FoodDaySummary & { day: string; burn: number | null })[];
+  trail14: (FoodDaySummary & { day: string })[];
   average: { days_logged: number; days_covered: number; kcal: number; kcal_low: number; kcal_high: number; protein_g: number | null } | null;
   weight_kg: number | null;
   protein_reference_g_per_kg: [number, number];
   recent_dish_ids: number[];
+  plan: FoodPlan;
+  notes: Finding[];
 }
 
 export interface FoodEntryInput {

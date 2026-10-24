@@ -26,6 +26,7 @@ from cadence_app.analytics import outcomes as outcome_analytics
 from cadence_app.analytics import routes as route_analytics
 from cadence_app.analytics import whatif as whatif_analytics
 from cadence_app.analytics import body as body_analytics
+from cadence_app.analytics import nutrition as nutrition_analytics
 from cadence_app.analytics import plan as training_plan
 from cadence_app.analytics import planner as session_planner
 from cadence_app.analytics import review as reviews
@@ -1156,7 +1157,23 @@ def create_app(
         foodlog.ensure_catalogue(session, clock.now(), settings.food_data_dir)
         today = clock.today()
         day = min(day or today, today)
-        return foodlog.view(session, day, today, _weight_summary(session, today).latest_trend_kg)
+        ws = _weight_summary(session, today)
+        view = foodlog.view(session, day, today, ws.latest_trend_kg)
+        # Garmin's own estimate of what each recent day cost, to set intake beside; missing days stay missing.
+        burn = {d: v for d, v in session.execute(
+            select(DailyMetric.day, DailyMetric.value).where(
+                DailyMetric.source_id == _active_source(session), DailyMetric.metric == "total_calories",
+                DailyMetric.day >= day - timedelta(days=21), DailyMetric.day <= day))}
+        profile = profile_store.load(session)
+        est = body_analytics.estimate(ws.latest_trend_kg, profile, today) if profile and ws.latest_trend_kg else None
+        plan = nutrition_analytics.food_plan(
+            weight_kg=ws.latest_trend_kg, goal_kg=_goal(session), today_summary=view["summary"], trail=view["trail"],
+            trail14=view["trail14"], entries=view["entries"], burn_by_day=burn, today=day,
+            formula={"bmr": est.bmr_kcal, "active": est.energy_kcal["active"]} if est else None,
+            rate_kg_per_week=ws.rate_kg_per_week, rate_se_kg_per_week=ws.rate_se_kg_per_week)
+        for t in view["trail"]:
+            t["burn"] = burn.get(t["day"])
+        return {**view, "plan": plan, "notes": coach_notes.nutrition(plan)}
 
     @app.get("/api/food/dishes")
     def food_dishes(all: bool = False, session: Session = Depends(get_session)) -> dict:

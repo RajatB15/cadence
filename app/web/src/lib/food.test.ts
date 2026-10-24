@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { browseList, portionPreview, kcalRange, MAX_SEARCH_RESULTS, proteinPosition, searchList, servingsLabel, shiftDay } from "./food";
+import { bandPositions, browseList, stateFor, portionPreview, kcalRange, MAX_SEARCH_RESULTS, proteinPosition, searchList, servingsLabel, shiftDay } from "./food";
 
 describe("food helpers", () => {
   it("shifts days across month and year edges", () => {
@@ -37,5 +37,20 @@ describe("food helpers", () => {
     expect(Math.round(byServings.kcal)).toBe(Math.round(byGrams.kcal));
     expect(byServings.grams).toBe(100);
     expect(portionPreview({ kcal: 200, protein_g: 5, unit_g: null, per_100g: null }, "servings", 1.5).grams).toBeNull();
+  });
+  it("puts a target band and a logged range on one scale", () => {
+    const p = bandPositions([1950, 2160], [1840, 2760], 2300);
+    expect(p.target![0]).toBeLessThan(p.target![1]);
+    expect(p.logged![1]).toBeGreaterThan(p.target![1]); // the high end of the day runs past the band
+    expect(p.point).toBeGreaterThan(p.target![0]);
+    expect(bandPositions(null, null, null)).toMatchObject({ target: null, logged: null, point: null });
+  });
+  it("colours a day by comparing ranges, and leaves unlogged days neutral", () => {
+    const t: [number, number] = [1950, 2160];
+    expect(stateFor({ logged: false, kcal_low: null, kcal_high: null }, t)).toBe("not_logged");
+    expect(stateFor({ logged: true, kcal_low: 1840, kcal_high: 2760 }, t)).toBe("within");
+    expect(stateFor({ logged: true, kcal_low: 960, kcal_high: 1440 }, t)).toBe("under");
+    expect(stateFor({ logged: true, kcal_low: 2800, kcal_high: 4000 }, t)).toBe("over");
+    expect(stateFor({ logged: true, kcal_low: 1000, kcal_high: 2000 }, null)).toBe("no_target");
   });
 });

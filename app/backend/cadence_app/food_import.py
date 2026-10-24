@@ -165,8 +165,10 @@ def build(food_data: Path) -> dict:
     records = [json.loads(line) for line in src.read_text(encoding="utf-8").splitlines() if line.strip()]
     dishes, report = build_catalogue(records)
     out = food_data / "healthifyme"
-    (out / "catalogue.json").write_text(json.dumps({"dishes": dishes}, ensure_ascii=False) + "\n", encoding="utf-8")
-    (out / "catalogue_report.json").write_text(json.dumps(report, indent=1, ensure_ascii=False) + "\n", encoding="utf-8")
+    for name, text in (("catalogue.json", json.dumps({"dishes": dishes}, ensure_ascii=False)), ("catalogue_report.json", json.dumps(report, indent=1, ensure_ascii=False))):
+        tmp = out / (name + ".tmp")
+        tmp.write_text(text + "\n", encoding="utf-8")
+        tmp.replace(out / name)  # the running service never sees a half-written catalogue
     return report
 
 

@@ -337,23 +337,25 @@ def average(summaries: list[dict]) -> dict | None:
     }
 
 
-def view(session: Session, day: date, today: date, weight_kg: float | None, window: int = 7) -> dict:
-    """Everything the Food page needs for one day, plus a trailing window of day totals."""
-    since = day - timedelta(days=window - 1)
+def view(session: Session, day: date, today: date, weight_kg: float | None, window: int = 7, long_window: int = 14) -> dict:
+    """Everything the Food page needs for one day, plus trailing windows of day totals (7 shown, 14 for the expenditure check)."""
+    since = day - timedelta(days=long_window - 1)
     rows = list(session.scalars(select(FoodEntry).where(FoodEntry.day >= since, FoodEntry.day <= day).order_by(FoodEntry.id)))
     by_day: dict[date, list[dict]] = {}
     for r in rows:
         by_day.setdefault(r.day, []).append(entry_dict(r))
-    trail = []
-    for i in range(window):
+    trail14 = []
+    for i in range(long_window):
         d = since + timedelta(days=i)
-        trail.append({"day": d, **day_summary(by_day.get(d, []), weight_kg)})
+        trail14.append({"day": d, **day_summary(by_day.get(d, []), weight_kg)})
+    trail = trail14[-window:]
     return {
         "day": day,
         "today": today,
         "entries": by_day.get(day, []),
         "summary": day_summary(by_day.get(day, []), weight_kg),
         "trail": trail,
+        "trail14": trail14,
         "average": average(trail),
         "weight_kg": weight_kg,
         "protein_reference_g_per_kg": PROTEIN_REFERENCE_G_PER_KG,
