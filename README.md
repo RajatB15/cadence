@@ -26,20 +26,6 @@ Cadence is not affiliated with Garmin. It reads your data through Garmin's offic
 
 **Jump to:** [Quick start](#quick-start-try-it-with-demo-data) · [Features](#features) · [How it works](#how-it-works) · [On your iPhone](#on-your-iphone) · [Run it always-on](#run-it-always-on) · [Privacy](#privacy)
 
-## A look around
-
-<p align="center">
-  <img src="docs/screenshots/home.webp" width="49%" alt="Cadence home screen: readiness and Cadence score rings, today's plan, a morning check-in prompt" />
-  <img src="docs/screenshots/coach.webp" width="49%" alt="Cadence coach page: readiness breakdown by factor and this week's training prescription" />
-</p>
-<p align="center">
-  <img src="docs/screenshots/plan.webp" width="49%" alt="Cadence plan page: ranked run options for today with predicted load, fitness and recovery outcomes" />
-  <img src="docs/screenshots/score.webp" width="49%" alt="Cadence score page: one 0-100 number across train, recover, sleep and move, with a radar of every factor" />
-</p>
-<p align="center">
-  <img src="docs/screenshots/weight.webp" width="49%" alt="Cadence weight page: BMI gauge, healthy weight range, fat versus lean mass and daily energy ranges" />
-</p>
-
 ## Why
 
 Garmin Connect already shows trends and a readiness number. Cadence is for people who want to know *why* that
