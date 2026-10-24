@@ -24,7 +24,12 @@ cp /opt/cadence/deploy/cadence.service /opt/cadence/deploy/cadence-backup.servic
 systemctl daemon-reload
 systemctl enable --now cadence >/dev/null
 systemctl restart cadence
-sleep 8
-systemctl is-active cadence
+# A 1 vCPU server needs ~15 s to start; wait for the API rather than guessing.
+for _ in $(seq 1 30); do
+  curl -sf http://127.0.0.1:8765/api/health >/dev/null && { echo "Cadence is up: $(systemctl is-active cadence)"; exit 0; }
+  sleep 2
+done
+echo "Cadence did not become healthy within 60 s. Check: journalctl -u cadence -n 50 --no-pager" >&2
+exit 1
 REMOTE
 echo "Deployed."
