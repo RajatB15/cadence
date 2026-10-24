@@ -48,6 +48,105 @@ export function bearing(a: { lat: number; lon: number }, b: { lat: number; lon: 
   return ((Math.atan2(y, x) * 180) / Math.PI + 360) % 360;
 }
 
+/** Signed shortest turn from `from` to `to`, in degrees (-180..180]. */
+export const turn = (to: number, from: number) => ((to - from + 540) % 360) - 180;
+
+/**
+ * Chase-camera heading at line progress `p`: the chord from a little behind to well ahead, not the instantaneous direction,
+ * so GPS wobble and tight switchbacks average out and the camera only follows where the route is really heading.
+ */
+export function chaseHeading(
+  track: Track,
+  p: number,
+  aheadM = 500,
+  behindM = 150,
+  at: (p: number) => { lat: number; lon: number } = (q) => sample(track, q),
+): number {
+  const m = Math.max(1, track.meters);
+  return bearing(at(Math.max(0, p - behindM / m)), at(Math.min(1, p + aheadM / m)));
+}
+
+/**
+ * How far (metres of route) the camera path is smoothed. Held to roughly half a second of video, so a faster
+ * flight smooths over more ground and stays as calm as a slow one; bounded so short routes still hug the line.
+ */
+export function cameraSigma(meters: number, flightSeconds: number): number {
+  return Math.min(2500, Math.max(120, (0.4 * meters) / Math.max(1, flightSeconds)));
+}
+
+/** How far behind and ahead the heading chord reaches: wider when the camera path is smoothed over more ground. */
+export function chaseWindow(sigmaM: number): { ahead: number; behind: number } {
+  return { ahead: Math.max(500, 3 * sigmaM), behind: Math.max(150, sigmaM) };
+}
+
+/**
+ * The route low-pass filtered with a Gaussian of `sigmaM` metres, for the camera to follow while the marker stays on the
+ * true GPS position. Raw fixes jitter by metres and every kick would otherwise shake the view. The ends are mirrored through
+ * the first and last point, so the camera still starts and finishes exactly on them.
+ */
+export function smoothPath(track: Track, sigmaM: number): (p: number) => { lat: number; lon: number } {
+  const step = Math.min(25, Math.max(2, sigmaM / 6));
+  const n = Math.min(6000, Math.max(50, Math.ceil(track.meters / step)));
+  const raw = Array.from({ length: n }, (_, i) => sample(track, i / (n - 1)));
+  const sigma = sigmaM / (track.meters / (n - 1) || 1);
+  const radius = Math.max(1, Math.ceil(sigma * 3));
+  const weights = Array.from({ length: radius * 2 + 1 }, (_, k) => Math.exp(-((k - radius) ** 2) / (2 * sigma * sigma)));
+  const total = weights.reduce((a, b) => a + b, 0);
+  const pick = (axis: "lat" | "lon", i: number): number => {
+    if (i < 0) return 2 * raw[0][axis] - raw[Math.min(-i, n - 1)][axis];
+    if (i > n - 1) return 2 * raw[n - 1][axis] - raw[Math.max(2 * (n - 1) - i, 0)][axis];
+    return raw[i][axis];
+  };
+  const smooth = (axis: "lat" | "lon") =>
+    raw.map((_, i) => {
+      let sum = 0;
+      for (let k = -radius; k <= radius; k++) sum += weights[k + radius] * pick(axis, i + k);
+      return sum / total;
+    });
+  const lat = smooth("lat");
+  const lon = smooth("lon");
+  return (p) => {
+    const f = Math.min(1, Math.max(0, p)) * (n - 1);
+    const i = Math.min(n - 2, Math.floor(f));
+    const t = f - i;
+    return { lat: lat[i] + (lat[i + 1] - lat[i]) * t, lon: lon[i] + (lon[i + 1] - lon[i]) * t };
+  };
+}
+
+/**
+ * Turns `current` towards `target` calmly: slow exponential easing (about 2 s), nearly ignoring differences under ~20°, and a
+ * hard cap on turn rate (°/s), so the view never whips round. `dt` is in seconds.
+ */
+export function steer(current: number, target: number, dt: number, maxRate = 8): number {
+  const delta = turn(target, current);
+  const eased = delta * Math.min(1, dt * 0.5) * Math.min(1, Math.abs(delta) / 20);
+  const limit = maxRate * dt;
+  return (current + Math.max(-limit, Math.min(limit, eased)) + 360) % 360;
+}
+
+/**
+ * Chase pitch: the hillier the route, the closer to top-down, so a ridge behind the runner can't hide them
+ * (the camera sits behind and above; a lower pitch shortens the sight line across terrain).
+ */
+export function chasePitch(track: Track): number {
+  const relief = track.elevation ? track.elevation[1] - track.elevation[0] : 0;
+  return relief >= 200 ? 52 : relief >= 100 ? 55 : relief >= 40 ? 58 : 62;
+}
+
+/**
+ * Vertical exaggeration for the terrain. Real relief is tiny next to a long route (800 m of climb over 40 km is ~2%), so a
+ * fixed factor reads as flat: aim for the relief to show as roughly a tenth of the route's extent, within 1.4x..3.5x.
+ */
+export function terrainExaggeration(track: Track): number {
+  if (!track.elevation) return 1.4;
+  const relief = track.elevation[1] - track.elevation[0];
+  const lat = (track.bounds[0][1] + track.bounds[1][1]) / 2;
+  const width = (track.bounds[1][0] - track.bounds[0][0]) * 111_320 * Math.cos((lat * Math.PI) / 180);
+  const height = (track.bounds[1][1] - track.bounds[0][1]) * 110_540;
+  const extent = Math.max(width, height, 1);
+  return Math.round(Math.min(3.5, Math.max(1.4, (0.1 * extent) / Math.max(relief, 1))) * 10) / 10;
+}
+
 export function buildTrack(fit: FitData): Track | null {
   const tr = fit.track;
   const col = (k: keyof TrackPoint, i: number) => tr?.[k]?.[i] ?? null;

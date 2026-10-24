@@ -151,7 +151,7 @@ function LabelForm({ id, initial, templates, onDone, canCancel }: {
   return (
     <div className="space-y-4">
       <p className="text-sm text-mute">
-        Upload the class screenshot: your Mac reads the text (nothing leaves it), finds the blocks and exercises, and you check them before saving.
+        Upload the class screenshot: Cadence reads the text on its own machine (nothing goes to a third party), finds the blocks and exercises, and you check them before saving.
         Warm-up and cool-down are added from your heart rate.
       </p>
       <input ref={picker} type="file" accept="image/*" multiple hidden

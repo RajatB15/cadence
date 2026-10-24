@@ -20,6 +20,7 @@ dependencies = [
     "segno>=1.6",
     "py-vapid>=1.9",
     "http-ece>=1.2",
+    "pillow>=10",  # straightens and cleans photos before Tesseract (the non-Mac text recognition path)
     "pyobjc-framework-Vision>=10; sys_platform == 'darwin'",  # on-device text recognition for class screenshots
 ]
 

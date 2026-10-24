@@ -123,3 +123,22 @@ def test_screenshot_upload_is_read_on_the_mac(env):  # noqa: F811
     assert [b["name"] for b in body["blocks"]] == ["Get Stronger", "Core"] and body["summary"]["heavy_lower"]
     assert client.post("/api/strength/ocr", content=b"hello", headers={**MUTATE, "Content-Type": "text/plain"}).status_code == 415
     assert client.post("/api/strength/ocr", content=b"", headers={**MUTATE, "Content-Type": "image/png"}).status_code == 413
+
+
+def test_screenshot_reads_with_tesseract_when_vision_is_absent(env, monkeypatch):  # noqa: F811
+    import shutil
+    import pytest
+    from cadence_app import ocr
+
+    if not shutil.which("tesseract"):
+        pytest.skip("tesseract not installed")
+    try:
+        png = class_png(["Get Stronger", "Barbell Front Squats", "Glute Bridges", "Core", "Beast Hold drag", "Bodyweight crunches"])
+    except Exception:  # drawing needs AppKit
+        pytest.skip("can't draw a test image here")
+    monkeypatch.setattr(ocr, "_has_vision", lambda: False)
+    client, _ = env
+    r = client.post("/api/strength/ocr", content=png, headers={**MUTATE, "Content-Type": "image/png"})
+    assert r.status_code == 200, r.text
+    assert [b["name"] for b in r.json()["blocks"]] == ["Get Stronger", "Core"]
+    assert client.post("/api/strength/ocr", content=b"not an image", headers={**MUTATE, "Content-Type": "image/png"}).status_code == 400

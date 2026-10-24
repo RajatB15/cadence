@@ -32,7 +32,7 @@ export const BASEMAPS: { value: Basemap; label: string }[] = [
   { value: "streets", label: "Streets" },
   { value: "satellite", label: "Satellite" },
 ];
-export const TERRAIN: TerrainSpecification = { source: "dem", exaggeration: 1.4 };
+export const terrainFor = (exaggeration: number): TerrainSpecification => ({ source: "dem", exaggeration });
 export const SKY: SkySpecification = {
   "sky-color": "#0d1117",
   "horizon-color": "#2b3340",

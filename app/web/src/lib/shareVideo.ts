@@ -1,7 +1,7 @@
 import { Map as MapLibreMap, setWorkerUrl, type ExpressionSpecification, type LngLatBoundsLike, type LngLatLike } from "maplibre-gl";
 import workerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url";
-import { DEM_TILES, SKY, STYLES, TERRAIN, type Basemap } from "./mapStyle";
-import { bearing, sample } from "./route";
+import { DEM_TILES, SKY, STYLES, terrainFor, type Basemap } from "./mapStyle";
+import { cameraSigma, chaseHeading, chaseWindow, chasePitch, sample, smoothPath, steer, terrainExaggeration, turn } from "./route";
 import { CARD_H, CARD_W, drawCard, fontsReady, makeCanvas, videoSeconds, type CardModel } from "./shareCard";
 
 setWorkerUrl(workerUrl);
@@ -20,7 +20,6 @@ const INTRO_S = 0.8;
 const OUTRO_S = 2.6;
 const OUTRO_MOVE_S = 1.6;
 const PITCH_OVERVIEW = 58;
-const PITCH_FOLLOW = 64;
 const LIME = "#c8f560";
 /** Room kept clear of the head for the title above and the stats below. */
 const FOLLOW_PADDING = { top: 360, bottom: 560, left: 0, right: 0 };
@@ -31,7 +30,6 @@ const ATTRIBUTION: Record<Basemap, string> = {
   satellite: "Sentinel-2 cloudless by EOX IT Services (contains modified Copernicus Sentinel data 2025) · Terrain: Mapzen, AWS",
 };
 
-const turn = (to: number, from: number) => ((to - from + 540) % 360) - 180;
 const smooth = (t: number) => t * t * (3 - 2 * t);
 const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
 
@@ -120,7 +118,7 @@ export async function renderFlyover(m: CardModel, { speed, basemap, quality, onP
       });
     });
 
-    // Scene: relief, the route (dim full line + coloured reveal), a start pin and a moving head.
+    // Scene: relief, the route (dim full line + coloured reveal), a start pin; the moving head is drawn over the finished frame.
     const dem = { type: "raster-dem" as const, tiles: [DEM_TILES], tileSize: 256, maxzoom: 14, encoding: "terrarium" as const };
     mp.addSource("dem", dem);
     mp.addSource("dem-shade", dem);
@@ -131,7 +129,7 @@ export async function renderFlyover(m: CardModel, { speed, basemap, quality, onP
         type: "hillshade",
         source: "dem-shade",
         paint: {
-          "hillshade-exaggeration": basemap === "satellite" ? 0.15 : 0.4,
+          "hillshade-exaggeration": basemap === "satellite" ? 0.3 : 0.7,
           "hillshade-shadow-color": "rgba(0,0,0,0.6)",
           "hillshade-highlight-color": "rgba(255,255,255,0.18)",
           "hillshade-accent-color": "rgba(0,0,0,0.25)",
@@ -139,10 +137,27 @@ export async function renderFlyover(m: CardModel, { speed, basemap, quality, onP
       },
       firstLabel,
     );
+    if (track.elevation && basemap !== "satellite") {
+      // A soft height tint under the route (valleys cool and dark, ridges warm and pale) so climbs read as colour as well as shape.
+      const [lo, hi] = track.elevation;
+      const span = Math.max(hi - lo, 50);
+      const at = (f: number) => lo - span * 0.6 + f * span * 2.2;
+      mp.addLayer(
+        {
+          id: "height-tint",
+          type: "color-relief",
+          source: "dem-shade",
+          paint: {
+            "color-relief-opacity": 0.4,
+            "color-relief-color": ["interpolate", ["linear"], ["elevation"], at(0), "#14324a", at(0.35), "#2f6f6a", at(0.65), "#9a8a4a", at(1), "#f2e8cf"],
+          },
+        },
+        "relief",
+      );
+    }
     const coords = track.points.map((p) => [p.lon, p.lat]);
     mp.addSource("route", { type: "geojson", lineMetrics: true, data: { type: "Feature", properties: {}, geometry: { type: "LineString", coordinates: coords } } });
     const point = (lon: number, lat: number) => ({ type: "Feature" as const, properties: {}, geometry: { type: "Point" as const, coordinates: [lon, lat] } });
-    mp.addSource("head", { type: "geojson", data: point(coords[0][0], coords[0][1]) });
     mp.addSource("start", { type: "geojson", data: point(coords[0][0], coords[0][1]) });
     const join = { "line-join": "round", "line-cap": "round" } as const;
     // Drawn into a 1080-wide frame that is viewed small on a phone, so much heavier than the on-screen map's line.
@@ -153,10 +168,8 @@ export async function renderFlyover(m: CardModel, { speed, basemap, quality, onP
     mp.addLayer({ id: "route-glow", type: "line", source: "route", layout: join, paint: { "line-gradient": revealed(stops, 0), "line-width": width(26, 56), "line-blur": width(14, 30), "line-opacity": 0.5 } });
     mp.addLayer({ id: "route-line", type: "line", source: "route", layout: join, paint: { "line-gradient": revealed(stops, 0), "line-width": width(10, 24) } });
     mp.addLayer({ id: "start-pin", type: "circle", source: "start", paint: { "circle-radius": 16, "circle-color": "#0b0b0c", "circle-stroke-color": LIME, "circle-stroke-width": 6, "circle-pitch-alignment": "map" } });
-    mp.addLayer({ id: "head-halo", type: "circle", source: "head", paint: { "circle-radius": 36, "circle-color": LIME, "circle-opacity": 0.3, "circle-pitch-alignment": "map" } });
-    mp.addLayer({ id: "head", type: "circle", source: "head", paint: { "circle-radius": 17, "circle-color": LIME, "circle-stroke-color": "#0b0b0c", "circle-stroke-width": 5, "circle-pitch-alignment": "map" } });
     mp.setSky(SKY);
-    mp.setTerrain(TERRAIN);
+    mp.setTerrain(terrainFor(terrainExaggeration(track)));
 
     // Cameras: the whole route from above-ish, and the head-following chase view.
     const fitted = mp.cameraForBounds(track.bounds as LngLatBoundsLike, {
@@ -175,12 +188,16 @@ export async function renderFlyover(m: CardModel, { speed, basemap, quality, onP
       padding: { top: 0, bottom: 0, left: 0, right: 0 },
     };
     const followZoom = Math.min(15.6, Math.max(12.6, 16.2 - Math.log2(Math.max(1, track.meters / 1000)) * 0.55));
-    const lookAhead = Math.min(0.05, Math.max(0.004, 220 / track.meters));
+    const pitchFollow = chasePitch(track);
+    // The camera glides along a smoothed copy of the route; the marker stays on the real fixes.
+    const sigma = cameraSigma(track.meters, videoSeconds(speed));
+    const cam = smoothPath(track, sigma);
+    const reach = chaseWindow(sigma);
     const follow = (p: number, heading: number): Cam => {
-      const here = sample(track, p);
-      return { center: [here.lon, here.lat], zoom: followZoom, bearing: heading, pitch: PITCH_FOLLOW, padding: FOLLOW_PADDING };
+      const here = cam(p);
+      return { center: [here.lon, here.lat], zoom: followZoom, bearing: heading, pitch: pitchFollow, padding: FOLLOW_PADDING };
     };
-    const headingAt = (p: number) => bearing(sample(track, p), sample(track, Math.min(1, p + lookAhead)));
+    const headingAt = (p: number) => chaseHeading(track, p, reach.ahead, reach.behind, cam);
 
     const settled = () =>
       new Promise<void>((resolve) => {
@@ -195,8 +212,6 @@ export async function renderFlyover(m: CardModel, { speed, basemap, quality, onP
       mp.setPaintProperty("route-line", "line-gradient", revealed(stops, p));
       mp.setPaintProperty("route-glow", "line-gradient", revealed(stops, p));
       mp.setPaintProperty("route-casing", "line-gradient", revealed([[0, "#0b0b0c"], [1, "#0b0b0c"]], p));
-      const here = sample(track, p);
-      (mp.getSource("head") as import("maplibre-gl").GeoJSONSource).setData(point(here.lon, here.lat));
     };
 
     const canvas = makeCanvas();
@@ -231,7 +246,7 @@ export async function renderFlyover(m: CardModel, { speed, basemap, quality, onP
         p = 0;
       } else if (f < introF + flightF) {
         p = (f - introF + 1) / flightF;
-        heading += turn(headingAt(p), heading) * Math.min(1, 1.6 / FPS);
+        heading = steer(heading, headingAt(p), 1 / FPS);
         cam = follow(p, heading);
         last = cam;
       } else {
@@ -255,6 +270,22 @@ export async function renderFlyover(m: CardModel, { speed, basemap, quality, onP
       bottom.addColorStop(1, "rgba(11,11,12,0.88)");
       ctx.fillStyle = bottom;
       ctx.fillRect(0, CARD_H - 640, CARD_W, 640);
+      // The runner is drawn on top of the map, not in it, so a ridge in front of them never hides where they are.
+      const here = sample(track, p);
+      const at = mp.project([here.lon, here.lat]);
+      if (at.x > -40 && at.x < CARD_W + 40 && at.y > -40 && at.y < CARD_H + 40) {
+        ctx.beginPath();
+        ctx.arc(at.x, at.y, 38, 0, Math.PI * 2);
+        ctx.fillStyle = "rgba(200,245,96,0.3)";
+        ctx.fill();
+        ctx.beginPath();
+        ctx.arc(at.x, at.y, 17, 0, Math.PI * 2);
+        ctx.fillStyle = LIME;
+        ctx.fill();
+        ctx.lineWidth = 5;
+        ctx.strokeStyle = "#0b0b0c";
+        ctx.stroke();
+      }
       drawCard(ctx, m, { transparent: true, progress: p, overlay: true });
       ctx.fillStyle = "rgba(242,232,207,0.5)";
       ctx.font = '500 17px "Manrope Variable", system-ui, sans-serif';
