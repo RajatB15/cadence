@@ -1,6 +1,6 @@
 # Cadence Product Plan
 
-Last updated: 2026-10-23.
+Last updated: 2026-10-24.
 
 ## Direction
 
@@ -22,6 +22,7 @@ The web-first roadmap supersedes the earlier iOS-first roadmap. No cloud account
 - Not built: export/backup, tags, deeper analytics, app packaging, OS notifications. Remaining datasets without purpose-built views (auto-detected moves, food logs) are viewable via the day "Everything recorded" panel and the Vault data explorer.
 - Coach / analytics (2026-10-22): `/coach` page backed by `analytics/athlete.py` (pure algorithms) and `analytics/insights.py` (assembly, rules, plan). Readiness score (HRV/RHR z-scores vs 60-day baseline, sleep score, form), Banister fitness/fatigue/form and EWMA acute:chronic ratio, weekly monotony/strain/rest days, 80/20 intensity distribution from HR-zone time, aerobic efficiency (grade-adjusted pace per heartbeat, Theil–Sen trend), Pa:HR decoupling from FIT streams (cached per run in `activity_analyses`), sleep timing regularity, lagged personal effects (Welch t-tests, n ≥ 8 per group), a rule-based "what you're missing" list, and a 7-day prescription using Garmin lactate-threshold HR zones. Raw-dump panels were removed from product pages; the Vault data explorer remains for inspection.
 - Coach everywhere (2026-10-22): `analytics/notes.py` builds on a shared per-request insights context (~0.1 s). Home leads with today's call (readiness ring + concrete session from the weekly plan, HR targets from Garmin zones), this week vs plan (load band, sessions, quality sessions, long run, easy-kept-easy, sleep, lights-out), an athlete score with five pillars and week-over-week deltas (fitness vs 1-year peak, 7-day readiness, sleep, consistency, intensity balance), streaks with personal bests, and the top issues to fix. Every session gets a verdict (Easy, Long & easy, Key session, Grey zone, Hard again, Long & hard, High intensity) and notes: intensity mix vs readiness and recent hard days, load percentile, efficiency vs similar-HR runs, HR drift, pacing split, next-morning HRV response, late-finish sleep cost, distance/pace milestones, unlabelled strength sets. Every day gets metric-tagged notes (sleep duration with a bedtime from the wake time, sleep quality with likely contributors, deep/REM lows, HRV and RHR vs baseline, stress, Body Battery, steps, SpO₂, respiration, load/ACWR, weekly intensity minutes), and weigh-ins get frequency, rate-vs-goal and goal-path notes.
+- Lab + Goals (2026-10-24): `/lab` (Accuracy, Fitness model, Routes, What-ifs) and `/goals`. Prediction accuracy scores planned sessions and a walk-forward backtest (log-ratio t-interval; bias needs 10+ sessions; shrunk, capped per-sport correction stored beside the raw load). Personal Banister fit on weekly aerobic efficiency (grid search, F-test region with autocorrelation-shrunk n, adopted only if 5-fold blocked CV beats both 42/7 and the mean); monthly critical speed gives too few points to fit. Repeated routes matched from Garmin summary fields (no FIT decode). What-if replay reruns the same PMC with a session skipped/halved/kept easy. Goals table (migration 0010 moves the old training/weight goal settings): race, performance, distance, weight in run/ride/swim; run times use a CS Monte Carlo, ride/swim a labelled heuristic from best recent sessions. Verified with synthetic-data tests and in-browser at desktop and phone widths; not yet judged on real data.
 - Renamed WeighIn → Cadence (2026-10-22): package `cadence_app`, header `X-Cadence-Request`, env `CADENCE_*`, database `data/cadence.sqlite3`.
 - iPhone access (2026-10-22): opt-in, read-only share server (`cadence_app/share.py`, port 8766, all interfaces) started from Settings. QR pairing key → HttpOnly cookie; GET/HEAD only; `/api/share` blocked from phones; serves the built `app/web/dist` with a read-only marker so the UI skips on-demand fetches; resumes on restart. Home-screen install via web manifest + apple-touch-icon. Plain HTTP on the LAN; use Tailscale for remote access. Rebuild `dist` after frontend changes.
 - Cloud hosting (2026-10-24): `deploy/` + `docs/deploy-digitalocean.md` run Cadence on a ~1 GB DigitalOcean droplet (Ubuntu 24.04, systemd, ufw with only SSH open, Tailscale for the phone via the share port, nightly rclone-crypt backups of the database and Garmin archive to Google Drive, never the Garmin key). Install, run, demo sync, weight logging and an encrypted backup/restore round trip were tested in a clean Ubuntu container; systemd, ufw and the live droplet are untested until first deploy.
@@ -134,11 +135,11 @@ Gate: reproducible calculations, uncertainty, minimum-data rules, and no causal 
 ### Stage 5: Training Lab (Ideas 7-9)
 
 - [x] Idea 7: transparent fitness/fatigue/form (42/7-day EWMA) with acute:chronic ratio and visible assumptions.
-- [ ] Idea 8: repeated-route matching and effort comparison; add weather context before claiming weather adjustment.
+- [x] Idea 8: repeated-route matching and effort comparison (Lab → Routes); weather shown as context, not adjusted.
 - [x] Idea 9: heart-rate drift (Pa:HR) on grade-adjusted pace for runs ≥ 45 min; late-run fade on runs ≥ 75 min; unsteady-pace runs excluded.
 - [x] Critical speed / D′, race predictions, pace bands and HR-zone staleness from best efforts.
 - [x] Periodised plan with optional race goal, 3:1 blocks, run-specific spike caps and HRV-guided gating.
-- [ ] Personal Banister fit (individual time constants) once critical-speed history is long enough.
+- [x] Personal Banister fit (individual time constants): implemented on weekly aerobic efficiency, adopted only when it wins held-out CV (see Lab).
 
 Gate: test on controlled fixtures and representative activities; unsuitable activities get explicit exclusions.
 

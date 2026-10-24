@@ -925,3 +925,252 @@ export interface GarminStatus {
   };
   datasets: GarminDataset[];
 }
+
+// ---- lab: how far to trust the models, and what-ifs -------------------------------------
+
+export interface Headline {
+  tone: "good" | "info" | "warn";
+  text: string;
+}
+
+export interface AccuracyStats {
+  n: number;
+  enough: boolean;
+  typical_error_pct?: number;
+  ratio?: number;
+  ratio_ci?: [number, number];
+  bias_pct?: number;
+  biased?: boolean;
+  within_10_pct?: number;
+  within_25_pct?: number;
+  range_coverage_pct?: number | null;
+  range_n?: number;
+}
+
+export interface AccuracyPoint {
+  day: string;
+  sport: string;
+  predicted: number;
+  actual: number;
+}
+
+export type LabAccuracy =
+  | { has_data: false }
+  | {
+      has_data: true;
+      as_of: string;
+      min_bias_n: number;
+      headline: Headline;
+      plans: {
+        overall: AccuracyStats;
+        by_sport: Record<string, AccuracyStats>;
+        recent: { id: number; day: string; sport: string; title: string; predicted: number; actual: number; error_pct: number }[];
+        followed: { done: number; missed: number; of: number } | null;
+        points: AccuracyPoint[];
+      };
+      backtest: AccuracyStats & { kind: "backtest"; window?: [string, string] | null; by_sport?: Record<string, AccuracyStats>; points?: AccuracyPoint[] };
+      calibration: Record<string, { factor: number; n: number; ratio: number; ratio_ci: [number, number] }>;
+      form: { n: number; median_error: number; typical_abs_error: number } | null;
+    };
+
+export type LabModel =
+  | { has_data: false }
+  | ({
+      has_data: true;
+      headline: Headline;
+      performance_label: string;
+      n: number;
+      min_obs: number;
+      valid: boolean;
+      adopted: boolean;
+      missing?: string;
+      why_not?: string;
+      tau1?: number;
+      tau2?: number;
+      k1?: number;
+      k2?: number;
+      r2?: number | null;
+      default_taus?: [number, number];
+      span_days?: number;
+      consistent_with_default?: boolean;
+      region?: { tau1: [number, number]; tau2: [number, number]; n_eff: number; points: number; of: number };
+      cv?: { personal: number; default: number; mean: number; gain_vs_default_pct: number; gain_vs_mean_pct: number };
+      series?: { day: string; observed: number; fitted: number }[];
+      curve?: { day: string; value: number }[];
+      taper?: { peak_day: number; gain_pct: number | null; range: [number, number] } | null;
+    });
+
+export interface RouteEffort {
+  id: number;
+  day: string;
+  time_s: number;
+  pace_s: number;
+  distance_km: number;
+  avg_hr: number | null;
+  load: number;
+  ef: number | null;
+  temperature: number | null;
+  dew_point: number | null;
+  wind: number | null;
+  hot: boolean | null;
+  pr: boolean;
+  hard: boolean;
+}
+
+export interface RouteView {
+  id: number;
+  name: string;
+  sport: "run" | "ride";
+  n: number;
+  distance_km: number;
+  loop: boolean | null;
+  first: string;
+  last: string;
+  elevation_m: number | null;
+  best: { id: number; day: string; time_s: number };
+  median_time_s: number;
+  latest: RouteEffort & { vs_prior: { time_s: number; avg_hr: number | null; ef_pct: number | null; temperature: number | null } };
+  trend: { n: number; span_days: number; change_pct: number; ci_pct: [number, number]; significant: boolean } | null;
+  efforts: RouteEffort[];
+  notes: Finding[];
+}
+
+export type LabRoutes = { has_data: false } | { has_data: true; n_with_gps: number; routes: RouteView[]; reason: string | null };
+
+export interface WhatIfPoint {
+  day: string;
+  fitness: number;
+  fatigue: number;
+  form: number;
+  acwr: number | null;
+  alt_fitness: number;
+  alt_fatigue: number;
+  alt_form: number;
+  alt_acwr: number | null;
+}
+
+export interface WhatIfResult {
+  valid: true;
+  rough: boolean;
+  window_days: number;
+  n_days: number;
+  edits: { id: number; day: string; name: string; family: string; action: string; load: number; load_after: number }[];
+  end: { fitness: [number, number]; fatigue: [number, number]; form: [number, number]; fitness_delta: number; fitness_delta_pct: number | null; form_delta: number };
+  next_morning: { day: string; form_delta: number; fatigue_delta: number } | null;
+  avg_form_delta: number;
+  acwr_days_over: [number, number];
+  trajectory: WhatIfPoint[];
+  performance?: { delta_pct: number | null; taus: [number, number] };
+  headline: string;
+}
+
+export interface WhatIfBundle {
+  label: string;
+  n: number;
+  end: WhatIfResult["end"];
+  avg_form_delta: number;
+  acwr_days_over: [number, number];
+  rough: boolean;
+  trajectory: WhatIfPoint[];
+  n_days: number;
+  performance?: WhatIfResult["performance"];
+  headline: string;
+}
+
+export type LabWhatIf =
+  | { has_data: false }
+  | {
+      has_data: true;
+      window_days: number;
+      actions: Record<"skip" | "easy" | "half", string>;
+      easy_rates: Record<string, { rate: number | null; n: number }>;
+      items: { id: number; day: string; name: string; family: string; kind: "grey" | "hard_again"; load: number; load_after: number; fitness_delta: number; fitness_delta_pct: number | null; next_morning_form: number | null; rough: boolean }[];
+      bundles: Record<string, WhatIfBundle>;
+      recent: { id: number; day: string; name: string; family: string; load: number }[];
+    };
+
+// ---- goals ----------------------------------------------------------------------------------
+
+export type GoalKind = "race" | "performance" | "distance" | "weight";
+export type GoalSport = "run" | "ride" | "swim";
+export type GoalBand = "likely" | "plausible" | "a stretch" | "unlikely";
+
+export interface GoalOutlook {
+  band: GoalBand;
+  probability?: number;
+  heuristic?: boolean;
+  required_gain_pct?: number;
+  per_month_pct?: number | null;
+  spare_weeks?: number;
+}
+
+export interface GoalView {
+  id: number;
+  kind: GoalKind;
+  sport: GoalSport | null;
+  title: string;
+  date: string | null;
+  status: "active" | "achieved" | "dropped";
+  spec: { distance_m?: number; label?: string; target_s?: number; key?: string; target_kg?: number };
+  start_value: number | null;
+  created_on: string;
+  closed_on: string | null;
+  days_left: number | null;
+  weeks_left: number | null;
+  overdue: boolean;
+  state: "ok" | "no_data" | "no_basis" | "closed";
+  reason?: string;
+  headline: Headline;
+  achieved_hint?: boolean;
+  caveats?: string[];
+  outlook?: GoalOutlook;
+  roadmap?: { week: string; weeks_to_go: number | null; phase: string; label: string; blurb: string }[];
+  // run / ride / swim performance and race goals
+  basis?: string;
+  horizon_days?: number;
+  current_s?: number;
+  required_s?: number;
+  projected?: { p10_s: number; p50_s: number; p90_s: number; probability?: number };
+  cs_needed_mps?: number;
+  cs_gain_pct?: number;
+  cs?: { cs_mps: number; n_history: number; sigma_pct: number; sigma_assumed: boolean; slope_pct_per_month: number | null };
+  demonstrated?: { time_s: number; id: number; day: string; distance_m: number; name: string } | null;
+  // single-session distance goals
+  longest_recent?: { id: number; day: string; distance_m: number; name: string } | null;
+  longest_ever?: { id: number; day: string; distance_m: number; name: string } | null;
+  ladder?: { weeks: { week: number; m: number; kind: "build" | "recovery" | "easier" | "attempt" }[]; weeks_needed: number };
+  earliest?: string;
+  // weight goals
+  current_kg?: number;
+  target_kg?: number;
+  gap_kg?: number;
+  rate_kg_wk?: number | null;
+  rate_pct_wk?: number;
+  rate_flag?: "too_fast" | "wrong_way" | null;
+  progress_pct?: number;
+  required?: { kg_wk: number; pct_wk: number; too_fast: boolean; wrong_way: boolean };
+  path?: { week: string; kg: number }[];
+  earliest_safe?: string | null;
+  steady?: string | null;
+  projection?: { status: string; expected: string | null; earliest: string | null; latest: string | null };
+}
+
+export interface GoalsResponse {
+  today: string;
+  goals: GoalView[];
+  plan_goal_id: number | null;
+  summary: { active: number; achieved: number; next: number | null };
+  has_training: boolean;
+}
+
+export interface GoalInput {
+  kind: GoalKind;
+  sport?: GoalSport | null;
+  title?: string | null;
+  date?: string | null;
+  distance_m?: number | null;
+  label?: string | null;
+  target_s?: number | null;
+  speed_kmh?: number | null;
+  target_kg?: number | null;
+}
