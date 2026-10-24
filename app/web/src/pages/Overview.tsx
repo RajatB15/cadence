@@ -573,7 +573,8 @@ function VitalsStrip({ data }: { data: Extract<Overview, { has_data: true }> }) 
         {w.latest_trend_kg != null && (
           <Link to="/weight" className="surface surface-hover flex w-40 shrink-0 snap-start flex-col p-4 sm:w-auto">
             <span className="eyebrow flex items-center gap-1.5 !text-[10px]"><Scale size={12} className="text-gold" /> Weight</span>
-            <span className="num mt-3 text-2xl text-paper">{w.latest_trend_kg.toFixed(1)}<span className="ml-1 text-xs text-mute">kg</span></span>
+            <span className="num mt-3 text-2xl text-paper">{(w.latest_reading?.weight_kg ?? w.latest_trend_kg).toFixed(1)}<span className="ml-1 text-xs text-mute">kg</span></span>
+            {w.latest_reading && <span className="mt-0.5 text-[11px] text-dim">last weigh-in · trend {w.latest_trend_kg.toFixed(1)}</span>}
             <Sparkline values={w.spark.map((s) => s.value)} color="#d9b26a" height={28} className="mt-auto pt-2" />
           </Link>
         )}
