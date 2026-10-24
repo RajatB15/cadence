@@ -6,6 +6,7 @@ import type {
   Review,
   BodyProfile,
   WeightEntries,
+  BackupStatus,
   PlannedSessionView,
   PlannerWeek,
   Sport,
@@ -145,6 +146,7 @@ export const api = {
   bodyProfile: () => request<{ profile: BodyProfile | null }>("/api/settings/profile"),
   setBodyProfile: (profile: { height_cm: number; birth_date: string; sex: "male" | "female" }) =>
     request<{ profile: BodyProfile }>("/api/settings/profile", { method: "PUT", body: JSON.stringify(profile) }),
+  backupStatus: () => request<BackupStatus>("/api/backup/status"),
   weightEntries: () => request<WeightEntries>("/api/weight/entries"),
   addWeight: (day: string, weight_kg: number) =>
     request<{ day: string; weight_kg: number }>("/api/weight/entries", { method: "POST", body: JSON.stringify({ day, weight_kg }) }),

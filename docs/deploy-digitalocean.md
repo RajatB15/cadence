@@ -14,7 +14,7 @@ scripts/deploy.sh          # runs the tests, builds the web app, deploys, waits 
 scripts/deploy.sh --fast   # same, skipping the tests
 ```
 
-The server address is read from `.deploy-host` in the repo root (git-ignored), for example `root@139.59.6.124`. You can
+The server address is read from `.deploy-host` in the repo root (git-ignored), for example `root@203.0.113.10`. You can
 also pass it as an argument or set `CADENCE_DEPLOY_HOST`. It deploys your working tree, not the last commit, and says
 so when there are uncommitted changes.
 
@@ -169,8 +169,10 @@ ssh root@<ip> 'sudo -u cadence env RCLONE_CONFIG=/var/lib/cadence/rclone.conf CA
 ssh root@<ip> 'systemctl enable --now cadence-backup.timer'
 ```
 
-The first run is slow because it uploads every archived response one by one (hundreds of small files); later runs only
-send new ones.
+The first run is slow because it uploads every archived response one by one (hundreds of small files); later runs take
+about two minutes. After every run (and every failure) the script writes `backup-status.json` into the data folder, and
+**Settings -> Backups** in the app shows when the last backup succeeded, turning amber if more than 36 hours have passed
+or the last run failed. A machine that has never run a backup shows a neutral "no backup has run" note.
 
 ## Restoring from a backup
 
@@ -186,8 +188,10 @@ copy `/etc/cadence/garmin.env` back (step 4).
 
 ## Troubleshooting
 
-- **SSH suddenly refuses or times out:** the firewall rate-limits SSH to about six new connections per 30 seconds. Wait
-  half a minute. Scripts that open many connections in a row can trigger it.
+- **SSH says "Connection refused" or times out:** the firewall rate-limits SSH to about six new connections per 30
+  seconds per address, and every retry restarts that window, so do not retry in a loop. Wait a minute, or connect over
+  Tailscale instead (`ssh root@<tailscale-ip>`, from `tailscale status`), which counts separately. A deploy followed by
+  more commands can trigger it.
 - **`scripts/deploy.sh` says the server did not become healthy:** `ssh root@<ip> journalctl -u cadence -n 50 --no-pager`.
   The 1 vCPU server needs about 15 seconds to start.
 - **Phone shows "not paired":** re-scan the QR code from the tunnelled Settings page.

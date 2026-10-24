@@ -7,7 +7,7 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { ErrorBlock, LoadingBlock, PageHeader, Segmented } from "../components/Shell";
 import { READ_ONLY, api } from "../lib/api";
-import { formatDate, parseDay } from "../lib/format";
+import { formatDate, parseDay, timeAgo } from "../lib/format";
 import { currentSubscription, disablePush, enablePush, pushSupport } from "../lib/push";
 import { useCredentialStatus } from "../lib/useCredentialStatus";
 import type { CredentialStatus, ShareStatus, SourceInfo } from "../lib/types";
@@ -48,6 +48,9 @@ export function SettingsPage() {
           <BodyProfileCard />
         </div>
         <div className="lg:col-span-5">
+          <BackupCard />
+        </div>
+        <div className="lg:col-span-5">
           <SourcesCard />
         </div>
       </div>
@@ -79,6 +82,48 @@ function WeatherCard() {
         onClick={() => toggle.mutate(!q.data.enabled)} className={q.data.enabled ? "pop pop-lime" : "pop pop-ghost"}>
         {q.data.enabled ? "On" : "Off"}
       </button>
+    </section>
+  );
+}
+
+function BackupCard() {
+  const q = useQuery({ queryKey: ["backup-status"], queryFn: api.backupStatus, refetchInterval: 5 * 60_000 });
+  if (q.isPending) return <LoadingBlock height={120} />;
+  if (q.isError) return <ErrorBlock error={q.error} retry={() => q.refetch()} />;
+  const s = q.data;
+  const ok = s.configured && !s.stale && !s.last_error;
+  const when = s.configured && s.last_success_at ? new Date(`${s.last_success_at}Z`) : null;
+  return (
+    <section className="surface p-8">
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div className="max-w-2xl">
+          <h2 className="font-display text-3xl text-cream">Backups</h2>
+          <p className="mt-3 text-sm leading-relaxed text-mute">
+            The server copies your database and Garmin archive to Google Drive every night, encrypted before it leaves the server.
+            The Garmin key is never backed up.
+          </p>
+        </div>
+        {s.configured && (
+          <span className={clsx("chip", ok ? "!border-lime/40 !text-lime" : "!border-amber/50 !text-amber")}>
+            {ok ? "Up to date" : s.last_error ? "Last run failed" : "Overdue"}
+          </span>
+        )}
+      </div>
+      {!s.configured ? (
+        <p className="mt-4 text-sm text-dim">No backup has run on this machine. Nightly backups are set up on the server (see docs/deploy-digitalocean.md).</p>
+      ) : (
+        <div className="mt-5 space-y-1">
+          <p className="num text-3xl text-paper">{when ? timeAgo(when) : "Never succeeded"}</p>
+          {when && (
+            <p className="text-xs text-dim">
+              {when.toLocaleString()}
+              {s.snapshot ? ` · snapshot ${s.snapshot}` : ""}
+            </p>
+          )}
+          {s.last_error && <p className="pt-2 text-xs text-coral">{s.last_error}</p>}
+          {!s.last_error && s.stale && <p className="pt-2 text-xs text-amber">More than a day and a half since the last successful backup.</p>}
+        </div>
+      )}
     </section>
   );
 }

@@ -16,7 +16,7 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from cadence_app import days, journal, ocr, planner_store, profile as profile_store, push, strength, weather, weightlog
+from cadence_app import backup, days, journal, ocr, planner_store, profile as profile_store, push, strength, weather, weightlog
 from cadence_app.analytics import exercises
 from cadence_app.analytics import body as body_analytics
 from cadence_app.analytics import plan as training_plan
@@ -1002,6 +1002,10 @@ def create_app(
         except ValueError as exc:
             raise HTTPException(400, str(exc)) from None
         return {"profile": p}
+
+    @app.get("/api/backup/status")
+    def backup_status() -> dict:
+        return backup.load(settings.data_dir, clock.now())
 
     @app.get("/api/weight/entries")
     def weight_entries(session: Session = Depends(get_session)) -> dict:
