@@ -139,6 +139,36 @@ def efficiency_trend(efforts: list[dict], end: date) -> dict | None:
             "ci_pct": [round(lo * span / before * 100, 1), round(hi * span / before * 100, 1)], "significant": bool(lo > 0 or hi < 0)}
 
 
+def vs_prior(e: dict, prior: list[dict]) -> dict:
+    """How one effort compares with the efforts before it on the same route."""
+    hr = [p["avg_hr"] for p in prior if p["avg_hr"]]
+    ef = [p["ef"] for p in prior if p["ef"]]
+    temps = [p["temperature"] for p in prior if p["temperature"] is not None]
+    return {
+        "time_s": e["time_s"] - round(median(p["time_s"] for p in prior)) if prior else None,
+        "avg_hr": round(e["avg_hr"] - median(hr), 1) if e["avg_hr"] and hr else None,
+        "ef_pct": round((e["ef"] / median(ef) - 1) * 100, 1) if e["ef"] and len(ef) >= 2 else None,
+        "temperature": round(e["temperature"] - median(temps), 1) if e["temperature"] is not None and len(temps) >= 2 else None,
+    }
+
+
+def for_activity(report: dict, activity_id: int) -> dict | None:
+    """This session's place on its route, from a `build` report: rank, best, and how it compared with the earlier efforts."""
+    for r in report.get("routes", []):
+        if activity_id not in r["member_ids"]:
+            continue
+        efforts = r["efforts"]
+        mine = next((e for e in efforts if e["id"] == activity_id), None)
+        out = {"id": r["id"], "name": r["name"], "sport": r["sport"], "n": r["n"], "distance_km": r["distance_km"], "best": r["best"],
+               "median_time_s": r["median_time_s"], "trend": r["trend"], "notes": r.get("notes", []), "this": None}
+        if mine:
+            prior = [e for e in efforts if (e["day"], e["id"]) < (mine["day"], mine["id"])]
+            out["this"] = {**mine, "rank": 1 + sum(1 for e in efforts if e["time_s"] < mine["time_s"]), "of": len(efforts), "vs_prior": vs_prior(mine, prior),
+                           "is_best": mine["id"] == r["best"]["id"], "earlier_efforts": len(prior)}
+        return out
+    return None
+
+
 def build(acts: list, geo: dict[int, dict], eff: list[dict], weather: dict[int, dict], end: date) -> dict:
     """acts: Act objects; geo: activity id → summary (raw Garmin fields); eff: efficiency points; weather: id → conditions."""
     ef_by_id = {p["id"]: p for p in eff}
@@ -168,23 +198,15 @@ def build(acts: list, geo: dict[int, dict], eff: list[dict], weather: dict[int, 
             e["pr"] = e["time_s"] < running_best
             running_best = min(running_best, e["time_s"])
         latest, prior = efforts[-1], efforts[:-1]
-        prior_ef = [e["ef"] for e in prior if e["ef"]]
-        temps = [e["temperature"] for e in prior if e["temperature"] is not None]
         routes.append({
             "id": g[0]["id"], "name": _name(g, distance_km), "sport": g[0]["family"], "n": len(g), "distance_km": round(distance_km, 1),
             "loop": _loop(g[0]), "first": g[0]["day"], "last": g[-1]["day"], "elevation_m": round(median([m["elev"] for m in g if m["elev"] is not None]))
             if any(m["elev"] is not None for m in g) else None,
             "best": {"id": best["id"], "day": best["day"], "time_s": best["time_s"]},
             "median_time_s": round(median(e["time_s"] for e in efforts)),
-            "latest": {**latest, "vs_prior": {
-                "time_s": latest["time_s"] - round(median(e["time_s"] for e in prior)),
-                "avg_hr": round(latest["avg_hr"] - median(e["avg_hr"] for e in prior if e["avg_hr"]), 1)
-                if latest["avg_hr"] and any(e["avg_hr"] for e in prior) else None,
-                "ef_pct": round((latest["ef"] / median(prior_ef) - 1) * 100, 1) if latest["ef"] and len(prior_ef) >= 2 else None,
-                "temperature": round(latest["temperature"] - median(temps), 1) if latest["temperature"] is not None and len(temps) >= 2 else None,
-            }},
+            "latest": {**latest, "vs_prior": vs_prior(latest, prior)},
             "trend": efficiency_trend(efforts, end) if g[0]["family"] == "run" else None,
-            "efforts": efforts[-MAX_EFFORTS:],
+            "efforts": efforts[-MAX_EFFORTS:], "member_ids": [m["id"] for m in g],
         })
     routes.sort(key=lambda r: (r["last"], r["n"]), reverse=True)
     return {"has_geo": True, "n_with_gps": gps, "routes": routes, "reason": None if routes else f"No route has been covered {MIN_EFFORTS}+ times yet."}

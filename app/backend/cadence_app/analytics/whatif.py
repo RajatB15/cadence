@@ -52,23 +52,25 @@ def new_load(a: A.Act, action: str, rates: dict[str, dict]) -> tuple[float, bool
     return a.load / 2, True
 
 
-def _replay(c: dict, changes: dict[int, float]) -> list[dict]:
+def _replay(c: dict, changes: dict[int, float], until: date) -> list[dict]:
     load = dict(c["load"])
     for aid, after in changes.items():
         a = c["act_by_id"][aid]
         load[a.day] = max(0.0, load.get(a.day, 0.0) - a.load + after)
-    return A.pmc(load, c["first"], c["as_of"])
+    return A.pmc(load, c["first"], until)
 
 
-def compare(c: dict, edits: list[dict], rates: dict[str, dict] | None = None, banister: dict | None = None) -> dict:
-    """edits: [{"activity_id", "action"}] within the last WINDOW_DAYS. Returns trajectories and headline differences."""
+def compare(c: dict, edits: list[dict], rates: dict[str, dict] | None = None, banister: dict | None = None,
+            since: date | None = None, until: date | None = None) -> dict:
+    """edits: [{"activity_id", "action"}] within (since, until], by default the last WINDOW_DAYS. Returns trajectories and headline differences."""
     as_of = c["as_of"]
-    since = as_of - timedelta(days=WINDOW_DAYS)
+    until = min(until or as_of, as_of)
+    since = since or as_of - timedelta(days=WINDOW_DAYS)
     rates = rates if rates is not None else easy_rates(c["acts"], as_of)
     changes, rough, rows = {}, False, []
     for e in edits:
         a = c["act_by_id"].get(e["activity_id"])
-        if a is None or e["action"] not in ACTIONS or a.day <= since or a.day > as_of or a.load <= 0:
+        if a is None or e["action"] not in ACTIONS or a.day <= since or a.day > until or a.load <= 0:
             continue
         after, r = new_load(a, e["action"], rates)
         changes[a.id] = after
@@ -76,8 +78,8 @@ def compare(c: dict, edits: list[dict], rates: dict[str, dict] | None = None, ba
         rows.append({"id": a.id, "day": a.day, "name": a.name, "family": a.family, "action": e["action"], "load": round(a.load), "load_after": round(after)})
     if not changes:
         return {"edits": [], "valid": False}
-    base = [p for p in c["pmc"] if p["day"] > since]
-    alt = [p for p in _replay(c, changes) if p["day"] > since]
+    base = [p for p in c["pmc"] if since < p["day"] <= until]
+    alt = [p for p in _replay(c, changes, until) if p["day"] > since]
     first_day = min(r["day"] for r in rows)
     after_edit = {p["day"]: p for p in alt}
     base_by = {p["day"]: p for p in base}
@@ -87,7 +89,7 @@ def compare(c: dict, edits: list[dict], rates: dict[str, dict] | None = None, ba
     window_a = [p for p in alt if p["day"] >= first_day]
     over = lambda ps: sum(1 for p in ps if p["acwr"] is not None and p["acwr"] > ACWR_FLAG)  # noqa: E731
     out = {
-        "valid": True, "edits": rows, "rough": rough, "window_days": WINDOW_DAYS, "n_days": len(window_b),
+        "valid": True, "edits": rows, "rough": rough, "window_days": (until - since).days, "n_days": len(window_b),
         "end": {
             "fitness": [end_b["fitness"], end_a["fitness"]], "fatigue": [end_b["fatigue"], end_a["fatigue"]], "form": [end_b["form"], end_a["form"]],
             "fitness_delta": round(end_a["fitness"] - end_b["fitness"], 1),
@@ -107,8 +109,8 @@ def compare(c: dict, edits: list[dict], rates: dict[str, dict] | None = None, ba
         for aid, after in changes.items():
             a = c["act_by_id"][aid]
             load[a.day] = max(0.0, load.get(a.day, 0.0) - a.load + after)
-        b0 = B.curve(banister, c["load"], as_of, step=1, since=as_of)[0]["value"]
-        b1 = B.curve(banister, load, as_of, step=1, since=as_of)[0]["value"]
+        b0 = B.curve(banister, c["load"], until, step=1, since=until)[0]["value"]
+        b1 = B.curve(banister, load, until, step=1, since=until)[0]["value"]
         out["performance"] = {"delta_pct": round((b1 - b0) / abs(b0) * 100, 2) if b0 else None, "taus": [banister["tau1"], banister["tau2"]]}
     return out
 
@@ -154,3 +156,56 @@ def suggestions(c: dict, banister: dict | None = None) -> dict:
             "recent": [{"id": a.id, "day": a.day, "name": a.name, "family": a.family, "load": round(a.load)}
                        for a in sorted(c["acts"], key=lambda x: (x.day, x.id), reverse=True)
                        if a.day > c["as_of"] - timedelta(days=WINDOW_DAYS) and a.load > 0][:30]}
+
+
+def _flagged(c: dict, start: date, end: date) -> list[tuple[str, A.Act]]:
+    return [(k, a) for k, a in candidates(c) if start <= a.day <= end]
+
+
+def _brief(r: dict) -> dict:
+    return {"n": len(r["edits"]), "rough": r["rough"], "fitness_delta": r["end"]["fitness_delta"], "fitness_delta_pct": r["end"]["fitness_delta_pct"],
+            "form_delta": r["end"]["form_delta"], "avg_form_delta": r["avg_form_delta"], "acwr_days_over": r["acwr_days_over"],
+            "next_morning_form": r["next_morning"]["form_delta"] if r["next_morning"] else None,
+            "performance_pct": (r.get("performance") or {}).get("delta_pct")}
+
+
+def for_period(c: dict, start: date, end: date, banister: dict | None = None) -> dict | None:
+    """Sessions in [start, end] that an easier day would have improved, replayed together up to `end` (or today).
+
+    Also counts the easy sessions you kept easy, so a clean period reads as the win it is. None outside the replay window.
+    """
+    as_of = c["as_of"]
+    end = min(end, as_of)
+    if end <= as_of - timedelta(days=WINDOW_DAYS) or start > end:
+        return None
+    start = max(start, as_of - timedelta(days=WINDOW_DAYS) + timedelta(days=1))
+    found = _flagged(c, start, end)
+    easy = sum(1 for a in c["acts"] if start <= a.day <= end and a.family in A.INTENSITY_FAMILIES and (k := A.intensity(a)) and k["kind"] == "easy")
+    out: dict = {"start": start, "end": end, "flagged": len(found), "easy_kept": easy, "kinds": sorted({k for k, _ in found}), "replay": None, "sessions": []}
+    if found:
+        edits = [{"activity_id": a.id, "action": "easy"} for _, a in found]
+        r = compare(c, edits, banister=banister, since=start - timedelta(days=1), until=end)
+        if r["valid"]:
+            out["replay"] = _brief(r)
+            out["trajectory"] = r["trajectory"]
+            out["sessions"] = [{"id": e["id"], "day": e["day"], "name": e["name"], "load": e["load"], "load_after": e["load_after"], "kind": k}
+                               for e in r["edits"] for k, a in found if a.id == e["id"]]
+    return out
+
+
+def for_activity(c: dict, activity_id: int, banister: dict | None = None) -> dict | None:
+    """The replay of one flagged session (grey zone, or a hard day right after another) kept easy; None when it isn't one."""
+    match = next(((k, a) for k, a in candidates(c) if a.id == activity_id), None)
+    if match is None:
+        return None
+    kind, a = match
+    r = compare(c, [{"activity_id": a.id, "action": "easy"}], banister=banister)
+    if not r["valid"]:
+        return None
+    return {"kind": kind, "activity_id": a.id, "load": r["edits"][0]["load"], "load_after": r["edits"][0]["load_after"], **_brief(r)}
+
+
+def opportunity(c: dict, banister: dict | None = None) -> dict | None:
+    """The biggest pattern in the last four weeks worth a nudge, for Home."""
+    as_of = c["as_of"]
+    return for_period(c, as_of - timedelta(days=27), as_of, banister)

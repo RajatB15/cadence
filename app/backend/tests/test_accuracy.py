@@ -95,3 +95,26 @@ def test_a_realised_plan_is_scored_and_stored_predictions_keep_the_raw_load(env)
     assert made["predicted"]["load_raw"] == made["predicted"]["load"] and made["predicted"]["calibration"] is None
     acc = client.get("/api/lab/accuracy").json()
     assert acc["calibration"] == {} and acc["plans"]["followed"] is None or acc["plans"]["followed"]["of"] >= 0
+
+
+def test_plain_language_explainers_follow_the_numbers():
+    from cadence_app.analytics import banister as B
+    from cadence_app.analytics import notes
+    from tests import test_banister as tb
+
+    ratios = [1.3] * 12
+    c = training_ctx()
+    rep = AC.report(c, [plan(i, r) for i, r in enumerate(ratios)])
+    qa = {x["q"]: x["a"] for x in notes.accuracy_explain({**rep, "headline": None})}
+    assert "What does a point look like?" in qa and "predicted at 100 and came out at 130" in qa["What does a point look like?"]
+    assert "Yes." in qa["Is it consistently off?"] and "30%" in qa["Is it consistently off?"] and "Typical miss" in qa["How good is it?"]
+    empty = notes.accuracy_explain(AC.report(c, []))
+    assert any("Why two boxes" in x["q"] for x in empty)
+
+    load, obs, end = tb.history()
+    fit = B.fit(load, obs, end)
+    text = " ".join(x["a"] for x in notes.model_explain(fit))
+    assert "42" in text and "Cadence hides some weeks" in text
+    assert "so it is used" in text and "faster" in text
+    thin = notes.model_explain(B.fit(load, obs[:5], end))
+    assert len(thin) == 2 and "needs" in thin[1]["a"]

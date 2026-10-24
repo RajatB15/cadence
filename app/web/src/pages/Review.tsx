@@ -4,6 +4,7 @@ import { ChevronLeft, ChevronRight, Flame, Target } from "lucide-react";
 import type { ReactNode } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { ErrorBlock, LoadingBlock, PageHeader, Segmented } from "../components/Shell";
+import { WhatIfCard } from "../components/WhatIfCard";
 import { PATTERN_LABEL } from "../components/StrengthClass";
 import { api } from "../lib/api";
 import { formatDate } from "../lib/format";
@@ -70,6 +71,8 @@ function Body({ r, go }: { r: Review; go: (k: "week" | "month", s?: string) => v
           <p className="mt-1 text-sm text-mute">{r.focus.detail}</p>
         </div>
       </section>
+
+      <WhatIfCard card={r.what_if} />
 
       <section className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <Kpi label="Sessions" value={t.sessions} delta={v.sessions} />

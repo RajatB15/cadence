@@ -11,6 +11,7 @@ from cadence_app.analytics import heat as W
 from cadence_app.analytics import plan as training_plan
 from cadence_app.analytics import recovery as R
 from cadence_app.analytics import strain as S
+from cadence_app.analytics import whatif as WI
 from cadence_app.analytics.insights import (
     SEVERITY_ORDER,
     coach,
@@ -926,6 +927,7 @@ def brief(c: dict) -> dict:
         "tonight": c.get("tonight"),
         "fix": [f for f in findings if f["severity"] in ("alert", "warn")][:3],
         "wins": [f for f in findings if f["severity"] == "good"][:2],
+        "what_if": whatif_card(WI.opportunity(c), "home", c),
     }
 
 
@@ -1060,3 +1062,137 @@ def goal_headline(a: dict) -> dict:
     if target and out:
         text += f" Target {_clock_time(target)}: {out['band']}" + (f" ({_pct_band(out['probability'])})" if out.get("probability") is not None else " (a heuristic on the gain still needed)") + "."
     return {"tone": "good" if out and out["band"] in ("likely",) else "warn" if out and out["band"] == "unlikely" else "info", "text": text}
+
+
+# ---- lab, in plain words ---------------------------------------------------------------------------
+
+
+def accuracy_explain(report: dict) -> list[dict]:
+    """Q&A for the Predictions tab: what is being checked, how to read it, what happens next."""
+    plans, back = report["plans"]["overall"], report["backtest"]
+    src = plans if plans.get("enough") else back if back.get("enough") else None
+    out = [{"q": "What is being checked?", "a": (
+        "When you plan a session, Cadence predicts its training load: the Garmin effort number that feeds your fitness, fatigue and "
+        "form curves. This page asks whether those predictions come true. If they don't, the form and readiness numbers built on them "
+        "can't be trusted either.")}]
+    pts = (report["plans"].get("points") or []) or (back.get("points") or [])
+    if pts:
+        p = pts[-1]
+        out.append({"q": "What does a point look like?", "a": (
+            f"Your most recent scored {p['sport']} was predicted at {round(p['predicted'])} and came out at {round(p['actual'])}. "
+            "On the chart a point on the dashed line is a perfect prediction, above it means the session cost more than predicted, below means less.")})
+    if src is None:
+        out.append({"q": "How good is it?", "a": "Not enough sessions yet to say. Plan sessions on the Plan page and do them; each one adds a data point. Until then the walk-forward test needs 5+ sessions with heart-rate zones."})
+    else:
+        e = src["typical_error_pct"]
+        out.append({"q": "How good is it?", "a": (
+            f"Typical miss: {e}%. A session predicted at 100 usually lands between about {100 - e} and {100 + e}. "
+            f"{src['within_25_pct']}% of sessions were within 25% of the prediction. Under about 15% is good for something this noisy; "
+            "much more means treat the exact numbers loosely and look at the direction.")})
+        if src["biased"]:
+            lean = "more" if src["bias_pct"] > 0 else "less"
+            out.append({"q": "Is it consistently off?", "a": (
+                f"Yes. Sessions cost about {abs(src['bias_pct'])}% {lean} than predicted, and that is unlikely to be chance (the range "
+                f"{src['ratio_ci'][0]:.2f}–{src['ratio_ci'][1]:.2f} excludes 1.00). Cadence nudges new predictions by that amount, shrunk towards no change.")})
+        elif src["n"] >= report["min_bias_n"]:
+            out.append({"q": "Is it consistently off?", "a": "No. Some sessions come in higher and some lower, with no lean either way, so nothing is corrected."})
+        else:
+            out.append({"q": "Is it consistently off?", "a": f"Too early to say. A lean is only called with {report['min_bias_n']}+ sessions, so one odd week doesn't change anything."})
+    out.append({"q": "Why two boxes?", "a": (
+        "'Your planned sessions' is the real test: predicted when you chose the session, scored after you did it. It includes the times you went harder or "
+        "easier than planned. 'Walk-forward test' is available straight away: it pretends to be at each past session, predicts it only from what came "
+        "before, and checks. It shows how good the method is, not how well you stick to plans.")})
+    return out
+
+
+def model_explain(fit: dict) -> list[dict]:
+    """Q&A for the Fitness model tab, from the fit result."""
+    out = [{"q": "What is this?", "a": (
+        "Cadence tracks two curves from your training load. Fitness builds slowly and fades slowly; fatigue builds fast and fades fast. "
+        "The standard model assumes fitness reflects roughly the last 42 days and fatigue the last 7. Those are averages for people in general. "
+        "This page tests whether your own body follows different timescales.")}]
+    if not fit.get("valid"):
+        out.append({"q": "Why nothing yet?", "a": (
+            f"The test needs {fit['missing']}. With fewer points, the maths would fit random noise and give you confident-looking nonsense, "
+            "so it waits. Keep syncing runs with heart rate; nothing else is needed.")})
+        return out
+    t1, t2 = fit["tau1"], fit["tau2"]
+    d1, d2 = fit["default_taus"]
+    quick = "faster" if t1 < d1 - 4 else "slower" if t1 > d1 + 4 else "about the same as average"
+    out.append({"q": "What did it find?", "a": (
+        f"Best fit: fitness builds over about {t1} days (standard {d1}) and fatigue fades in about {t2} (standard {d2}). "
+        f"Fitness seems to build {quick} for you. The plausible range ({fit['region']['tau1'][0]}–{fit['region']['tau1'][1]} and "
+        f"{fit['region']['tau2'][0]}–{fit['region']['tau2'][1]} days) is how wide the data leave it: wide means the data can't pin it down.")})
+    cv = fit["cv"]
+    out.append({"q": "Can I trust it?", "a": (
+        "Cadence hides some weeks, learns from the rest and predicts the hidden ones, five times over. "
+        f"Average miss on unseen weeks: {cv['personal']:.2f} for your fit, {cv['default']:.2f} for the standard 42/7 and {cv['mean']:.2f} for just guessing the average. "
+        + ("Your fit wins by enough (5%+ over both), so it is used." if fit["adopted"] else
+           "Your fit didn't win by enough, so the standard 42/7 stays. That is a normal outcome: it means the textbook numbers describe you fine."
+           if fit.get("consistent_with_default") else "Your fit didn't win by enough, so the standard 42/7 stays.")
+        )})
+    out.append({"q": "What does it change?", "a": (
+        "Only the what-if replays and the rest estimate below; it doesn't change your fitness, fatigue and form numbers on Home and Coach, which stay on the standard constants so they remain comparable over time."
+        if fit["adopted"] else "Nothing. Everything keeps using the standard constants.")})
+    tp = fit.get("taper")
+    if fit["adopted"] and tp:
+        out.append({"q": "What is the rest estimate?", "a": (
+            "If you stopped training today there is no further gain." if tp["peak_day"] == 0 else
+            f"If you stopped training now, the model has your efficiency peaking after about {tp['peak_day']} days "
+            f"(anywhere from {tp['range'][0]} to {tp['range'][1]} given the uncertainty), because fatigue fades faster than fitness. "
+            "It is how the model works, not a taper plan.")})
+    out.append({"q": "How do I read the chart?", "a": (
+        "Dots are your real aerobic efficiency (how fast you run per heartbeat) for each week. The line is what the model expects from your training alone. "
+        "The closer the line follows the dots, the better the model understands how you respond.")})
+    return out
+
+
+# ---- what-if cards: Home, session pages and reviews ------------------------------------------------------
+
+
+def _easy_phrase(c: dict | None) -> str:
+    cap = easy_cap(c) if c else None
+    return f"Keep it under {cap} bpm." if cap else "Keep it conversational."
+
+
+def _points(v: float) -> str:
+    return f"{v:.0f} point{'' if round(v) == 1 else 's'}"
+
+
+def _effects(w: dict) -> str:
+    bits = []
+    if w.get("avg_form_delta") is not None and w["avg_form_delta"] >= 0.5:
+        bits.append(f"{_points(w['avg_form_delta'])} fresher on average")
+    if w.get("next_morning_form") is not None and w["next_morning_form"] >= 1:
+        bits.append(f"{_points(w['next_morning_form'])} fresher the next morning")
+    over_b, over_a = (w.get("acwr_days_over") or (0, 0))
+    if over_b > over_a:
+        bits.append(f"{over_b - over_a} fewer day{'s' if over_b - over_a != 1 else ''} with a spiking workload ratio")
+    bits = bits[:3]
+    text = "a little fresher" if not bits else bits[0] if len(bits) == 1 else ", ".join(bits[:-1]) + " and " + bits[-1]
+    cost = abs(w["fitness_delta"])
+    pct = f" ({abs(w['fitness_delta_pct']):.1f}%)" if w.get("fitness_delta_pct") is not None else ""
+    return f"{text}, for about {cost:.1f} fitness point{'' if round(cost, 1) == 1 else 's'}{pct}"
+
+
+def whatif_card(w: dict | None, scope: str, c: dict | None = None) -> dict | None:
+    """scope: home | week | month | session. Honest and encouraging: what an easier day would have bought, or praise when there were none."""
+    if w is None:
+        return None
+    link = "/lab?tab=whatif"
+    when = {"home": "the last four weeks", "week": "this week", "month": "this month", "session": ""}[scope]
+    if scope == "session":
+        kind = "a grey-zone session (too hard to be easy, too easy to be hard)" if w["kind"] == "grey" else "a hard session right after another hard one"
+        return {"tone": "info", "title": "If this had stayed easy", "scope": scope, "link": f"/lab?tab=whatif&session={w['activity_id']}",
+                "text": f"This was {kind}. Kept easy at the same duration, load {w['load']} would have been about {w['load_after']}, leaving you {_effects(w)}. "
+                        "The model's view, not a measurement.", "action": _easy_phrase(c)}
+    if not w["flagged"] or not w.get("replay"):
+        if w["easy_kept"] >= 2:
+            return {"tone": "good", "title": "Easy days stayed easy", "scope": scope, "link": link, "action": None,
+                    "text": f"{w['easy_kept']} easy sessions in {when} and none in the grey zone or stacked on a hard day. That discipline is what lets your hard days work."}
+        return None
+    n = w["flagged"]
+    these = "that session" if n == 1 else f"those {n} sessions"
+    return {"tone": "info", "title": f"{n} session{'s' if n != 1 else ''} could have been easier", "scope": scope, "link": link,
+            "text": f"Had {these} been kept easy at the same length, the model has you {_effects(w['replay'])}. A small price for fresher legs on the days that count.",
+            "action": _easy_phrase(c), "sessions": w["sessions"]}
