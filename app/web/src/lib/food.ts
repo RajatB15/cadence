@@ -102,3 +102,40 @@ export function portionPreview(dish: PortionDish, mode: PortionMode, amount: num
   }
   return { kcal: dish.kcal * amount, protein_g: dish.protein_g * amount, grams: dish.unit_g ? dish.unit_g * amount : null };
 }
+
+export const PHASE_LABEL: Record<string, string> = { cut: "Cutting", gain: "Gaining", maintain: "Maintaining" };
+
+/** Positions (0-100) of a target band and a logged range on one shared scale, so a bar can show them together. */
+export function bandPositions(
+  target: [number, number] | null,
+  logged: [number, number] | null,
+  point: number | null,
+): { max: number; target: [number, number] | null; logged: [number, number] | null; point: number | null } {
+  const top = Math.max(target?.[1] ?? 0, logged?.[1] ?? 0, point ?? 0);
+  const max = Math.max(1, top * 1.15);
+  const pct = (v: number) => Math.min(100, Math.max(0, (v / max) * 100));
+  return {
+    max,
+    target: target ? [pct(target[0]), pct(target[1])] : null,
+    logged: logged ? [pct(logged[0]), pct(logged[1])] : null,
+    point: point == null ? null : pct(point),
+  };
+}
+
+export type DayState = "not_logged" | "no_target" | "under" | "within" | "over";
+
+/** Colour for a day against the target band; unknown stays neutral rather than looking like zero. */
+export const STATE_COLOR: Record<DayState, string> = {
+  within: "#c8f560",
+  under: "#6cc7ff",
+  over: "#ffbe55",
+  no_target: "#d9b26a",
+  not_logged: "#5c5a55",
+};
+
+/** The same ranged comparison the server uses, so each day in the week chart can be coloured on its own. */
+export function stateFor(day: { logged: boolean; kcal_low: number | null; kcal_high: number | null }, target: [number, number] | null): DayState {
+  if (!day.logged || day.kcal_low == null || day.kcal_high == null) return "not_logged";
+  if (!target) return "no_target";
+  return day.kcal_high < target[0] ? "under" : day.kcal_low > target[1] ? "over" : "within";
+}
