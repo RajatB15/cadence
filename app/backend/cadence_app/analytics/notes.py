@@ -8,6 +8,7 @@ from statistics import fmean, median
 from cadence_app.analytics import athlete as A
 from cadence_app.analytics import habits as H
 from cadence_app.analytics import heat as W
+from cadence_app.analytics import nutrition as N
 from cadence_app.analytics import plan as training_plan
 from cadence_app.analytics import recovery as R
 from cadence_app.analytics import strain as S
@@ -665,6 +666,60 @@ def weight(points: list, rate_kg_per_week: float | None, goal_kg: float | None, 
 
 
 # ---- home brief -----------------------------------------------------------------------
+
+
+def nutrition(plan: dict) -> list[dict]:
+    """Plain-language readings of the food plan. Each needs its minimum data; none is a prescription."""
+    notes: list[dict] = []
+    ph, ref, t = plan["phase"], plan["reference_energy"], plan["targets"]
+    bal, imp, prot = plan["balance"], plan["implied"], plan["protein"]
+    if bal is None and plan["weight_kg"] is not None:
+        if plan["logged_days"] >= N.MIN_LOGGED_FOR_BALANCE:
+            notes.append(note("food_data", "info", "Data", "No Garmin energy figures to compare with yet",
+                              f"You have {plan['logged_days']} logged days, but Garmin has not reported energy burned for at least {N.MIN_LOGGED_FOR_BALANCE} of them, so there is nothing to set intake against. Targets still use the formula estimate.",
+                              "Sync your watch; the comparison appears once those days arrive."))
+        else:
+            notes.append(note("food_data", "info", "Data", "Log a few more days",
+                              f"Averages need at least {N.MIN_LOGGED_FOR_BALANCE} logged days that also have a Garmin energy figure. A day with nothing logged is left out, not counted as zero.",
+                              "Log every meal for a week, including snacks and drinks."))
+    if bal and t and t["kcal"]:
+        lo, hi = t["kcal"]
+        ev = [{"label": "Mean intake", "value": f"{bal['intake']} kcal ({bal['intake_range'][0]}-{bal['intake_range'][1]})"},
+              {"label": "Garmin burn", "value": f"{bal['burn']} kcal"}, {"label": "Days", "value": str(bal["days"])}]
+        if ph == "cut" and bal["intake_range"][0] > hi:
+            notes.append(note("food_balance", "warn", "Energy", "Eating above your cutting range",
+                              f"Logged intake averaged {bal['intake']} kcal over {bal['days']} days; the range for steady loss is {lo}-{hi}.",
+                              "Look at the biggest meals first; small changes there add up.", ev))
+        elif ph == "gain" and bal["intake_range"][1] < lo:
+            notes.append(note("food_balance", "warn", "Energy", "Not eating enough to gain",
+                              f"Logged intake averaged {bal['intake']} kcal over {bal['days']} days; a gaining range starts near {lo}.",
+                              "Add a calorie-dense meal or snack on training days.", ev))
+        elif lo <= bal["intake"] <= hi or (bal["intake_range"][0] <= hi and bal["intake_range"][1] >= lo):
+            notes.append(note("food_balance", "good", "Energy", "Intake is in your target range",
+                              f"Logged intake averaged {bal['intake']} kcal over {bal['days']} days, overlapping the {lo}-{hi} range.", None, ev))
+    if prot and plan["weight_kg"]:
+        lo_g, hi_g = N.PROTEIN_G_PER_KG
+        ev = [{"label": "Mean protein", "value": f"{prot['g']} g ({prot['g_per_kg']} g/kg)"}, {"label": "Days", "value": str(prot["days"])}]
+        if prot["g_per_kg"] < lo_g:
+            notes.append(note("food_protein", "warn" if ph != "maintain" else "info", "Protein", "Protein is under the usual training range",
+                              f"{prot['g_per_kg']} g/kg on {prot['days']} logged days; studies of lifters point to {lo_g}-{hi_g} g/kg a day (Morton 2018, Iraki 2019).",
+                              "Add a protein anchor to each meal: dal, paneer, eggs, curd, chicken or fish.", ev))
+        else:
+            notes.append(note("food_protein", "good", "Protein", "Protein is in range",
+                              f"{prot['g_per_kg']} g/kg on {prot['days']} logged days, against {lo_g}-{hi_g}.", None, ev))
+    if imp and ref:
+        diff = imp["kcal"] - ref["kcal"]
+        ev = [{"label": "From logs + weight", "value": f"{imp['kcal']} kcal ({imp['range'][0]}-{imp['range'][1]})"},
+              {"label": "Reference energy", "value": f"{ref['kcal']} kcal ({'Garmin' if ref['source'] == 'garmin' else 'formula'})"}, {"label": "Days logged", "value": str(imp["days"])}]
+        if abs(diff) <= 0.15 * ref["kcal"]:
+            notes.append(note("food_implied", "good", "Check", "Your logs and your weight trend agree",
+                              f"Together they imply about {imp['kcal']} kcal a day, close to the {ref['kcal']} kcal reference. That is a good sign the logging is complete.", None, ev))
+        else:
+            side = "less" if diff < 0 else "more"
+            notes.append(note("food_implied", "info", "Check", f"Logs and weight trend imply you burn {side} than the reference",
+                              f"About {imp['kcal']} kcal a day against {ref['kcal']}. Either some eating is missing from the log, or the reference is off; both happen. A 7,700 kcal per kg rule of thumb also gets rough over weeks (Hall 2011).",
+                              "Keep logging; check again in two weeks before changing your targets.", ev))
+    return _by_severity(notes)
 
 
 def recent_sessions(c: dict) -> dict:

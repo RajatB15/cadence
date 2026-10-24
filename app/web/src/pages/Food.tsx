@@ -1,10 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ChevronLeft, ChevronRight, Copy, Minus, Plus, Trash2, Utensils } from "lucide-react";
 import { useMemo, useState, type FormEvent } from "react";
+import { NoteCard } from "../components/CoachNotes";
+import { EnergyCard, PlanNeeds, ProteinCard, WeekCard } from "../components/FoodPlan";
 import { Sheet } from "../components/Sheet";
 import { ErrorBlock, LoadingBlock, PageHeader } from "../components/Shell";
 import { api } from "../lib/api";
-import { BASIS_NOTE, browseList, kcalRange, MEALS, portionPreview, proteinPosition, searchList, servingsLabel, shiftDay, SOURCE_NOTE, type PortionMode } from "../lib/food";
+import { BASIS_NOTE, browseList, MEALS, portionPreview, searchList, servingsLabel, shiftDay, SOURCE_NOTE, type PortionMode } from "../lib/food";
 import { formatDate } from "../lib/format";
 import type { FoodDish, FoodView, Meal } from "../lib/types";
 
@@ -42,6 +44,12 @@ export function FoodPage() {
       ) : query.isError ? (
         <ErrorBlock error={query.error} retry={() => query.refetch()} />
       ) : (
+        <div className="space-y-6">
+          {query.data.plan.needs.length > 0 && <PlanNeeds plan={query.data.plan} />}
+          <div className="grid gap-6 md:grid-cols-2">
+            <EnergyCard data={query.data} />
+            <ProteinCard data={query.data} />
+          </div>
         <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_340px]">
           <div className="space-y-6">
             {query.data.entries.length === 0 && (
@@ -100,7 +108,8 @@ export function FoodPage() {
             })}
             {remove.isError && <p className="text-xs text-coral">{(remove.error as Error).message}</p>}
           </div>
-          <Summary data={query.data} />
+          <Aside data={query.data} />
+        </div>
         </div>
       )}
       <AddFoodSheet meal={adding} day={day} recentIds={query.data?.recent_dish_ids ?? []} onClose={() => setAdding(null)} onSaved={refresh} />
@@ -108,83 +117,49 @@ export function FoodPage() {
   );
 }
 
-function Summary({ data }: { data: FoodView }) {
+function Aside({ data }: { data: FoodView }) {
   const s = data.summary;
-  const range = kcalRange(s);
-  const pos = proteinPosition(s.protein_g_per_kg, data.protein_reference_g_per_kg);
-  const [lo, hi] = data.protein_reference_g_per_kg;
-  const peak = Math.max(1, ...data.trail.map((t) => t.kcal_high ?? 0));
+  const t = data.plan.targets;
+  const avg = data.average;
   return (
     <aside className="space-y-6 lg:sticky lg:top-8 lg:self-start">
+      <WeekCard data={data} />
+
       <section className="surface p-6">
-        <div className="eyebrow">Energy</div>
+        <div className="eyebrow">Carbs and fat</div>
         {s.logged ? (
-          <>
-            <p className="num mt-2 font-display text-5xl text-cream">{s.kcal?.toLocaleString("en-US")}</p>
-            <p className="num text-sm text-mute">kcal logged · likely {range}</p>
-            <dl className="mt-5 grid grid-cols-3 gap-3 text-center">
-              {[
-                ["Protein", s.protein_g],
-                ["Carbs", s.carbs_g],
-                ["Fat", s.fat_g],
-              ].map(([label, v]) => (
-                <div key={label as string}>
-                  <dt className="eyebrow">{label}</dt>
-                  <dd className="num mt-1 text-xl text-paper">{v == null ? "—" : `${Math.round(v as number)} g`}</dd>
-                </div>
-              ))}
-            </dl>
-            {s.partial_macros && <p className="mt-3 text-xs text-dim">Some entries have calories only, so the macro totals may be low.</p>}
-          </>
-        ) : (
-          <p className="mt-2 text-sm text-mute">Not logged. Totals appear once there is an entry.</p>
-        )}
-      </section>
-
-      <section className="surface p-6">
-        <div className="eyebrow">Protein per kg</div>
-        {s.protein_g_per_kg != null ? (
-          <>
-            <p className="num mt-2 font-display text-4xl text-cream">{s.protein_g_per_kg.toFixed(2)} <span className="text-base text-mute">g/kg</span></p>
-            <p className="mt-1 text-xs text-mute">
-              {pos === "below" ? "Below" : pos === "above" ? "Above" : "Within"} the {lo}–{hi} g/kg reference for people who train
-              {data.weight_kg ? `, using your ${data.weight_kg.toFixed(1)} kg trend weight` : ""}.
-            </p>
-            <p className="mt-2 text-xs text-dim">Reference: ISSN position stand, Jäger et al. 2017. A guide to compare against, not a target set for you.</p>
-          </>
-        ) : (
-          <p className="mt-2 text-sm text-mute">
-            {data.weight_kg == null ? "Needs a weigh-in to compute." : "Needs protein logged for the day."}
-          </p>
-        )}
-      </section>
-
-      <section className="surface p-6">
-        <div className="eyebrow">Last 7 days</div>
-        <div className="mt-4 flex h-20 items-end gap-2" role="img" aria-label="Logged calories for the last seven days">
-          {data.trail.map((t) => (
-            <div key={t.day} className="flex flex-1 flex-col items-center justify-end gap-1">
-              {t.logged ? (
-                <div className="w-full bg-gold/70" style={{ height: `${Math.max(6, ((t.kcal ?? 0) / peak) * 100)}%` }} title={`${formatDate(t.day)}: ${t.kcal} kcal`} />
-              ) : (
-                <div className="h-px w-full border-t border-dashed border-line-strong" title={`${formatDate(t.day)}: not logged`} />
-              )}
+          <dl className="mt-3 grid grid-cols-2 gap-3 text-center">
+            <div>
+              <dt className="eyebrow">Carbs</dt>
+              <dd className="num mt-1 text-xl text-paper">{s.carbs_g == null ? "—" : `${Math.round(s.carbs_g)} g`}</dd>
+              <dd className="text-xs text-dim">fills the rest</dd>
             </div>
+            <div>
+              <dt className="eyebrow">Fat</dt>
+              <dd className="num mt-1 text-xl text-paper">{s.fat_g == null ? "—" : `${Math.round(s.fat_g)} g`}</dd>
+              {t && <dd className="text-xs text-dim">guide {t.fat_g[0]}–{t.fat_g[1]} g</dd>}
+            </div>
+          </dl>
+        ) : (
+          <p className="mt-2 text-sm text-mute">Not logged.</p>
+        )}
+        {s.partial_macros && <p className="mt-3 text-xs text-dim">Some entries have calories only, so these totals may be low.</p>}
+        {t && <p className="mt-3 text-[11px] text-dim">Fat 0.5–1.5 g/kg a day, the rest of the calories from carbohydrate (Iraki 2019).</p>}
+      </section>
+
+      {data.notes.length > 0 && (
+        <div className="space-y-3">
+          {data.notes.map((f, i) => (
+            <NoteCard key={f.id} f={f} index={i} compact />
           ))}
         </div>
-        {data.average ? (
-          <p className="num mt-3 text-sm text-mute">
-            Average {data.average.kcal.toLocaleString("en-US")} kcal (likely {Math.round(data.average.kcal_low).toLocaleString("en-US")}–
-            {Math.round(data.average.kcal_high).toLocaleString("en-US")}) over {data.average.days_logged} logged days.
-          </p>
-        ) : (
-          <p className="mt-3 text-xs text-dim">An average needs at least 4 logged days in the week. Dashed days weren't logged.</p>
-        )}
-      </section>
+      )}
 
+      {avg && <p className="num text-xs text-dim">Week average {avg.kcal.toLocaleString("en-US")} kcal over {avg.days_logged} logged days (of {avg.days_covered}).</p>}
       <p className="text-xs leading-relaxed text-dim">
-        These are estimates, not measurements. Dishes come from the source's food database and are calculated from recipes found online, not lab-measured, so each dish shows its source. Check the portion and its weight before you pick: a bowl, a katori and 100 g are different amounts, and how you cook moves every number.
-        Home-cooked entries carry about ±20%, eating out about ±30%.
+        These are estimates, not measurements. Dishes come from the source's food database and are calculated from recipes found online, not lab-measured, so each dish shows its source.
+        Check the portion and its weight before you pick: a bowl, a katori and 100 g are different amounts, and how you cook moves every number. Targets are a planning range from published
+        guidance for people who train, not medical advice.
       </p>
     </aside>
   );
