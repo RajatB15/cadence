@@ -108,3 +108,33 @@ def test_a_second_hard_session_on_the_same_day_is_cautioned():
     assert long_run["caution"] and not long_run["recommended"]
     m = PL.load_model(c["acts"], c["as_of"])
     assert "critical speed" not in PL.predict(c, m, day, swim, [])["builds"]
+
+
+def test_custom_session_derives_the_third_value_and_sets_effort():
+    c = training_ctx()
+    o = PL.custom_option(c, "run", distance_m=10_000, speed_mps=3.0)  # 55:33
+    assert o["minutes"] == 56 and o["kind"] == "easy" and o["key"] == "custom"
+    assert sum(o["profile"]) == pytest.approx(56)
+    ride = PL.custom_option(c, "ride", minutes=180, speed_mps=7.0, effort="hard")
+    assert ride["kind"] == "threshold" and "75.6 km" in ride["detail"]
+    assert PL.custom_option(c, "swim", distance_m=1500, minutes=30)["detail"].startswith("1500 m at 2:00/100 m")
+    assert PL.custom_option(c, "ride", minutes=160, speed_mps=7.0)["kind"] == "long"
+    for bad in ({"distance_m": 5000}, {"distance_m": 5000, "minutes": 5}, {"distance_m": 5000, "speed_mps": 12.0}):
+        with pytest.raises(ValueError):
+            PL.custom_option(c, "run", **bad)
+
+
+def test_custom_session_and_start_hour_through_the_api(env):  # noqa: F811
+    client, clock = env
+    client.post("/api/sync/demo", headers=MUTATE)
+    today = clock.today()
+    q = {"day": str(today), "sport": "run", "custom": "true", "distance_m": 8000, "speed_mps": 3.2, "start_hour": 6}
+    got = client.get("/api/planner/options", params=q).json()
+    assert got["start_hour"] == 6 and [o["key"] for o in got["options"]] == ["custom"] and not got["options"][0]["recommended"]
+    assert client.get("/api/planner/options", params={**q, "sport": "strength"}).status_code == 400
+    assert client.get("/api/planner/options", params={**q, "speed_mps": 12}).status_code == 400
+    body = {"day": str(today), "sport": "run", "option_key": "custom", "start_hour": 6, "custom": {"distance_m": 8000, "speed_mps": 3.2}}
+    made = client.post("/api/planner", json=body, headers=MUTATE)
+    assert made.status_code == 200 and made.json()["start_hour"] == 6 and made.json()["minutes"] == 42
+    suggested = client.get("/api/planner/options", params={"day": str(today), "sport": "ride", "start_hour": 18}).json()["options"]
+    assert suggested and all(o["start_hour"] == 18 for o in suggested)

@@ -12,6 +12,7 @@ from cadence_app.analytics import plan as training_plan
 from cadence_app.analytics import recovery as R
 from cadence_app.analytics import strain as S
 from cadence_app.analytics import whatif as WI
+from cadence_app.analytics import wellbeing as WB
 from cadence_app.analytics.insights import (
     SEVERITY_ORDER,
     coach,
@@ -826,6 +827,9 @@ def _suggest(c: dict, r: dict | None, week: dict, plan: dict | None, long_done_t
     t = plan["targets"] if plan else {}
     cap = t.get("easy_cap") or easy_cap(c)
     cap_txt = f" under {cap} bpm" if cap else ""
+    told = wellbeing_suggestion(c, cap_txt)
+    if told:
+        return told
     if r is None:
         return {"kind": "unknown", "title": "Train by feel", "detail": "Readiness needs this morning's HRV or resting heart rate."}
 
@@ -914,7 +918,9 @@ def brief(c: dict) -> dict:
         "as_of": as_of,
         "readiness": {k: r[k] for k in ("score", "label", "components", "morning_score", "changes", "live") if k in r} if r else None,
         "readiness_trend": trend,
-        "call": recommend(r, c["pmc_by_day"].get(as_of), c["load"].get(as_of - DAY, 0), c.get("warnings"), c.get("hrv_guided")),
+        "call": wellbeing_call(c, r) or recommend(r, c["pmc_by_day"].get(as_of), c["load"].get(as_of - DAY, 0), c.get("warnings"), c.get("hrv_guided")),
+        "wellbeing": wellbeing_block(c, r),
+        "recovery_wins": recovery_wins_card(c),
         # The day's plan is set by the morning score, not by how today's training has since lowered it.
         "today": today,
         "strain": strain_today(c, morning, today),
@@ -1326,3 +1332,159 @@ def freshness_explain(fr: dict) -> list[dict]:
             + ("a real, if small, effect." if e["helpful"] else "no clear effect."))})
     out.append({"q": "A caution", "a": "These are your own sessions compared with each other, not an experiment. Rest days also tend to come with better weather and mood, so read it as evidence, not proof."})
     return out
+
+
+# ---- check-in: what you told us changes the call ---------------------------------------------------------------
+
+
+AREA = lambda a: f" in your {a}" if a else ""  # noqa: E731
+FEEL_WORD = {1: "awful", 2: "flat", 3: "okay", 4: "good", 5: "great"}
+CODE_TEXT = {
+    "ill": "You said you're properly ill.",
+    "pain_stops": "You said pain is stopping you",
+    "pain_hurts": "You said it hurts",
+    "run_down": "You said you feel run down.",
+    "very_sore": "You said you're very sore.",
+    "feel_low": "You said you feel flat.",
+    "niggle": "You mentioned a niggle",
+    "heavy_stress": "You said life is heavy right now.",
+}
+
+
+def _today_state(c: dict) -> tuple[dict | None, dict | None]:
+    entry = (c.get("wellbeing") or {}).get(c.get("today", c["as_of"]))
+    return entry, WB.state(entry)
+
+
+def wellbeing_call(c: dict, r: dict | None) -> dict | None:
+    """Today's headline when your check-in says rest or easy; the watch can't overrule how you say you feel."""
+    entry, st = _today_state(c)
+    if not st or st["level"] not in ("rest", "easy"):
+        return None
+    top, area = st["codes"][0], st["area"]
+    flat_vs_watch = WB.disagrees(entry, r["score"] if r else None) == "flat"
+    table = {
+        "ill": ("Rest", "You said you're properly ill. Training on top of an illness slows recovery, so rest today and check in again tomorrow. If it lasts or worries you, see a clinician."),
+        "pain_stops": ("Rest", f"You said pain{AREA(area)} is stopping you. Don't train through it. If it keeps coming back, get it looked at."),
+        "pain_hurts": ("Protect it", f"You said it hurts{AREA(area)}. Choose something that doesn't load it (or rest) and keep any effort easy."),
+        "run_down": ("Keep it easy", "You said you feel run down. Easy movement or rest; leave intensity until it clears."),
+        "very_sore": ("Easy day", "You said you're very sore. Easy aerobic work or rest."),
+        "feel_low": ("Keep it easy", "You said you feel flat." + (" The watch says you've recovered, but how you feel counts: keep it easy and see how it goes." if flat_vs_watch else " Keep it easy.")),
+    }
+    headline, detail = table[top]
+    extra = [CODE_TEXT[k].rstrip(".") for k in st["codes"][1:] if k in ("niggle", "heavy_stress", "very_sore", "run_down")]
+    if extra:
+        detail += " Also: " + ", ".join(x[0].lower() + x[1:] for x in extra) + "."
+    return {"headline": headline, "detail": detail, "source": "check-in", "reasons": [{"factor": "Your check-in", "tone": "low", "score": 20 if st["level"] == "rest" else 45}]}
+
+
+def wellbeing_suggestion(c: dict, cap_txt: str = "") -> dict | None:
+    """Today's session when your check-in says rest or easy."""
+    entry, st = _today_state(c)
+    if not st or st["level"] not in ("rest", "easy"):
+        return None
+    call = wellbeing_call(c, None)
+    if st["level"] == "rest":
+        return {"kind": "rest", "title": "Rest", "detail": call["detail"], "source": "check-in"}
+    return {"kind": "easy", "title": "Easy, or low-impact", "detail": call["detail"] + (f" Conversational effort{cap_txt}." if cap_txt else ""), "source": "check-in"}
+
+
+def wellbeing_notes(c: dict) -> list[dict]:
+    """The patterns in your check-ins worth saying out loud."""
+    wb = c.get("wellbeing") or {}
+    if not wb:
+        return []
+    ready = {d: r["score"] for d in wb if (r := readiness_on(c, d))}
+    p = WB.patterns(wb, ready, c["acts"], c.get("today", c["as_of"]))
+    out = []
+    if x := p.get("recurring_pain"):
+        out.append(note("pain_recurring", "warn", "Check-in", f"Recurring pain in your {x['area']}", f"You've logged it on {x['days']} days in the last three weeks"
+                        + (" and it has stopped you at times." if x["worst"] >= 3 else "."), "Pain that keeps coming back is worth getting looked at (a physio or doctor) rather than training around. Cadence can't diagnose it."))
+    if x := p.get("through_pain"):
+        out.append(note("through_pain", "warn", "Check-in", "You trained on days you logged pain", f"{x['days']} session day{'s' if x['days'] != 1 else ''} in the last three weeks"
+                        + (f", {x['hard']} of them hard." if x["hard"] else "."), "On a day it hurts, rest or something that doesn't load the area."))
+    if x := p.get("through_illness"):
+        out.append(note("through_illness", "warn", "Check-in", "You trained while properly ill", f"{x['days']} day{'s' if x['days'] != 1 else ''} in the last three weeks.", "Rest until you feel normal; sessions on top of an illness rarely help."))
+    if x := p.get("disagreement"):
+        if x["mostly"] == "flat":
+            out.append(note("feel_vs_watch", "info", "Check-in", "You feel worse than the watch says", f"On {x['days']} of the last {x['of']} days you felt flat while readiness was high.",
+                            "Trust how you feel. Sleep and HRV aren't everything: work stress, fuelling and a cold coming on don't show up on a watch."))
+        else:
+            out.append(note("feel_vs_watch", "info", "Check-in", "You feel better than the watch says", f"On {x['days']} of the last {x['of']} days you felt great while readiness was low.",
+                            "The watch may be reading you cautiously. Cadence still follows its brake on hard days; tell me if that keeps happening."))
+    if x := p.get("heavy_stress"):
+        out.append(note("heavy_stress", "info", "Check-in", "Heavy life load this week", f"You called {x['days']} of the last 7 days heavy.", "This week's load target is trimmed 10% while it lasts. Protect sleep."))
+    if x := p.get("feel_drop"):
+        out.append(note("feel_drop", "warn", "Check-in", "You've been feeling worse lately", f"Average feel {x['now']} over the last week against {x['before']} before.",
+                        "Persistent flatness is an early overreaching sign. An easier week often helps; if it doesn't lift, think about sleep, fuelling and stress."))
+    return out
+
+
+def wellbeing_block(c: dict, r: dict | None) -> dict:
+    entry, st = _today_state(c)
+    return {"today": entry, "level": (st or {}).get("level"), "needed": entry is None, "feel_words": FEEL_WORD, "notes": wellbeing_notes(c)[:3]}
+
+
+def recovery_wins_card(c: dict) -> dict | None:
+    w = WB.recovery_wins(c)
+    items = []
+    if w["easy_kept"] >= 2:
+        items.append(f"{w['easy_kept']} easy sessions kept easy")
+    if w["sessions"] >= 4 and w["grey"] == 0:
+        items.append("No grey-zone sessions")
+    if w["hard_days"] and w["eased_after_hard"]:
+        items.append(f"Eased off after {w['eased_after_hard']} of {w['hard_days']} hard days")
+    if w["nights"] >= 7 and w["nights_at_need"] >= 7:
+        items.append(f"{w['nights_at_need']} of {w['nights']} nights at your {w['need']:g} h sleep need")
+    if w["listened"]:
+        items.append(f"Listened to your body on {w['listened']} day{'s' if w['listened'] != 1 else ''}")
+    if not items:
+        return None
+    return {"title": "Recovery wins", "window": w["days"], "items": items,
+            "text": "Recovery is part of the training. In the last two weeks you did these right."}
+
+
+# ---- is it working? ------------------------------------------------------------------------------------------
+
+
+def outcomes_text(o: dict) -> dict:
+    """A plain verdict for the 12-weeks-against-12-weeks comparison, and what changed in training and in the body."""
+    if not o.get("enough"):
+        return {"headline": {"tone": "info", "text": o["reason"]}, "lines": []}
+    names = {m["key"]: m["label"].lower() for m in o["markers"]}
+    up = [names[m["key"]] for m in o["markers"] if m["key"] in ("fitness", "efficiency", "critical_speed", "vo2max") and m["state"] == "better"]
+    down = [names[m["key"]] for m in o["markers"] if m["key"] in ("fitness", "efficiency", "critical_speed", "vo2max") and m["state"] == "worse"]
+    join = lambda xs: ", ".join(xs[:-1]) + " and " + xs[-1] if len(xs) > 1 else xs[0]  # noqa: E731
+    v = o["verdict"]
+    if v == "improving":
+        head, tone = f"Working: {join(up)} {'are' if len(up) > 1 else 'is'} better than 12 weeks ago, and nothing fitness-related is worse.", "good"
+    elif v == "slipping":
+        head, tone = f"Not working right now: {join(down)} {'are' if len(down) > 1 else 'is'} worse than 12 weeks ago.", "warn"
+    elif v == "holding":
+        head, tone = "Holding steady: no clear change in fitness over the last 12 weeks. That's the goal in a maintain phase, and a prompt to change something if you wanted to improve.", "info"
+    elif v == "edging_up":
+        head, tone = f"A little better: {join(up)}. Nothing else in fitness has clearly changed.", "info"
+    elif v == "edging_down":
+        head, tone = f"A little worse: {join(down)}. Nothing else in fitness has clearly changed, so watch it rather than react.", "info"
+    elif v == "mixed":
+        head, tone = f"Mixed: {join(up)} better, {join(down)} worse.", "info"
+    else:
+        head, tone = "Not enough markers with data yet to judge whether it is working.", "info"
+    lines = []
+    n, b = o["now"], o["before"]
+    d = lambda x, y: f"{x} (was {y})" if y is not None else f"{x}"  # noqa: E731
+    lines.append(f"Training: {d(n['load_per_week'], b['load_per_week'])} load a week over {d(n['sessions_per_week'], b['sessions_per_week'])} sessions a week"
+                 + (f", {d(str(n['hard_share_pct']) + '%', str(b['hard_share_pct']) + '%' if b['hard_share_pct'] is not None else None)} of them hard" if n["hard_share_pct"] is not None else "") + ".")
+    if n["adherence_pct"] is not None:
+        lines.append(f"You did {n['adherence_pct']}% of the {n['plans']} sessions you planned.")
+    if o["checkin_coverage"] or n["checkins"] >= 14:
+        cost = f"Check-ins: {n['pain_days']} day{'s' if n['pain_days'] != 1 else ''} with pain, {n['ill_days']} run down or ill, {n['flat_days']} feeling flat"
+        lines.append(cost + (f" ({o['cost_up']:+d} pain and illness days against the 12 weeks before)." if o["checkin_coverage"] else "."))
+    else:
+        lines.append("Add daily check-ins and this will show whether training costs you niggles or illness.")
+    if o["cost_up"] >= 3 and o["checkin_coverage"]:
+        head += " It has come with more days of pain or illness, so the gain isn't free."
+    if o["body_worse"] >= 2:
+        worse = [names[m["key"]] for m in o["markers"] if m["key"] not in ("fitness", "efficiency", "critical_speed", "vo2max") and m["state"] == "worse"]
+        lines.append(f"Recovery markers have slipped: {join(worse)}.")
+    return {"headline": {"tone": tone, "text": head}, "lines": lines}

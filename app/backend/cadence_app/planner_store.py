@@ -19,7 +19,7 @@ HORIZON_DAYS = 7
 def as_dict(p: PlannedSession) -> dict:
     predicted = json.loads(p.predicted)
     out = {"id": p.id, "day": p.day, "sport": p.sport, "kind": p.kind, "option_key": p.option_key, "title": p.title, "detail": p.detail,
-           "minutes": p.minutes, "predicted": predicted, "predicted_load": predicted.get("load"), "heavy_lower": False, "blocks": []}
+           "minutes": p.minutes, "start_hour": p.start_hour, "predicted": predicted, "predicted_load": predicted.get("load"), "heavy_lower": False, "blocks": []}
     if p.strength_text:
         blocks = X.parse(p.strength_text)
         out.update(blocks=blocks, heavy_lower=X.summary(blocks)["heavy_lower"])
@@ -34,7 +34,7 @@ def listing(session: Session, start: date, end: date) -> list[dict]:
 def create(session: Session, day: date, option: dict, predicted: dict, now: datetime, strength_text: str | None = None) -> dict:
     p = PlannedSession(day=day, sport=option["sport"], kind=option["kind"], option_key=option["key"], title=option["title"][:120],
                        detail=option["detail"], minutes=int(option.get("minutes") or 0), predicted=json.dumps(predicted, default=str),
-                       strength_text=(strength_text or None), created_at=now)
+                       strength_text=(strength_text or None), start_hour=option.get("start_hour"), created_at=now)
     session.add(p)
     session.commit()
     return as_dict(p)

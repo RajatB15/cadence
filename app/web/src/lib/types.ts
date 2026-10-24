@@ -166,6 +166,7 @@ export interface SessionCoach {
 }
 
 export interface Recommendation {
+  source?: "check-in";
   headline: string;
   detail: string;
   reasons: { factor: string; tone: string; score: number }[];
@@ -203,6 +204,8 @@ export interface RecentSession {
 }
 
 export interface Brief {
+  wellbeing: BriefWellbeing;
+  recovery_wins: RecoveryWins | null;
   what_if: WhatIfCard | null;
   as_of: string;
   readiness: ReadinessToday | null;
@@ -468,6 +471,7 @@ export interface PlannedSessionView {
   predicted: Prediction;
   heavy_lower: boolean;
   blocks: StrengthBlock[];
+  start_hour: number | null;
   status: "planned" | "done" | "missed";
   activity: { id: number; name: string; load: number | null; minutes: number } | null;
 }
@@ -537,7 +541,8 @@ export type HabitEffect = Effect & { extra: { behaviour: string; outcome: string
 export type GoalDistance = "5k" | "10k" | "half" | "marathon";
 
 export interface TrainingGoal {
-  distance: GoalDistance;
+  distance: GoalDistance | null;
+  sport?: GoalSport;
   label: string;
   date: string;
   target_s: number | null;
@@ -545,7 +550,7 @@ export interface TrainingGoal {
 }
 
 export interface PlanPhase {
-  phase: "base" | "build" | "specific" | "recovery" | "absorb" | "taper" | "race";
+  phase: "base" | "build" | "specific" | "maintain" | "recovery" | "absorb" | "taper" | "race";
   label: string;
   blurb: string;
   week_in_block: number | null;
@@ -719,6 +724,7 @@ export type Insights =
       };
       effects: Effect[];
       plan: TrainingPlan | null;
+      training_mode: TrainingMode;
       goal: TrainingGoal | null;
       performance: Performance;
       hrv_guided: HrvGuided | null;
@@ -800,6 +806,7 @@ export type Overview =
       has_data: true;
       source_id: string;
       as_of: string;
+      today: string;
       coach: Brief | null;
       score: ScoreSummary | null;
       journal: { day: string; done: boolean; behaviours: Behaviour[] };
@@ -1299,3 +1306,151 @@ export interface ChannelsFit {
   high?: { pct_per_hour: number; ci: [number, number] };
   gain_vs_total_pct?: number;
 }
+
+export type Meal = "breakfast" | "lunch" | "snack" | "dinner";
+
+export interface FoodDish {
+  id: number;
+  name: string;
+  unit: string;
+  kcal: number;
+  protein_g: number;
+  carbs_g: number;
+  fat_g: number;
+  spread_pct: number;
+  builtin: boolean;
+  active: boolean;
+}
+
+export interface FoodEntry {
+  id: number;
+  day: string;
+  meal: Meal;
+  dish_id: number | null;
+  name: string;
+  servings: number;
+  kcal: number;
+  protein_g: number | null;
+  carbs_g: number | null;
+  fat_g: number | null;
+  spread_pct: number;
+}
+
+export interface FoodDaySummary {
+  logged: boolean;
+  entries: number;
+  kcal: number | null;
+  kcal_low: number | null;
+  kcal_high: number | null;
+  protein_g: number | null;
+  carbs_g: number | null;
+  fat_g: number | null;
+  protein_g_per_kg: number | null;
+  partial_macros: boolean;
+}
+
+export interface FoodView {
+  day: string;
+  today: string;
+  entries: FoodEntry[];
+  summary: FoodDaySummary;
+  trail: (FoodDaySummary & { day: string })[];
+  average: { days_logged: number; days_covered: number; kcal: number; kcal_low: number; kcal_high: number; protein_g: number | null } | null;
+  weight_kg: number | null;
+  protein_reference_g_per_kg: [number, number];
+  recent_dish_ids: number[];
+}
+
+export interface FoodEntryInput {
+  day: string;
+  meal: Meal;
+  dish_id?: number;
+  servings?: number;
+  eating_out?: boolean;
+  name?: string;
+  kcal?: number;
+  protein_g?: number | null;
+}
+
+export interface FoodDishInput {
+  name: string;
+  unit: string;
+  kcal: number;
+  protein_g: number;
+  carbs_g: number;
+  fat_g: number;
+}
+
+// ---- check-in, recovery and outcomes ------------------------------------------------------
+
+export type TrainingMode = "auto" | "build" | "maintain";
+
+export interface WellbeingEntry {
+  day: string;
+  feel: number | null;
+  soreness: number | null;
+  pain_level: number | null;
+  pain_area: string | null;
+  illness: number | null;
+  life_stress: number | null;
+  note: string | null;
+}
+
+export interface BriefWellbeing {
+  today: WellbeingEntry | null;
+  level: "rest" | "easy" | "watch" | null;
+  needed: boolean;
+  notes: Finding[];
+}
+
+export interface RecoveryWins {
+  title: string;
+  window: number;
+  items: string[];
+  text: string;
+}
+
+export interface OutcomeMarker {
+  key: string;
+  label: string;
+  unit: string;
+  now: number | null;
+  before: number | null;
+  change: number | null;
+  state: "better" | "worse" | "flat" | "missing";
+  higher_is_better: boolean;
+  n: [number, number];
+}
+
+export interface OutcomeContext {
+  load_per_week: number;
+  sessions_per_week: number;
+  hard_share_pct: number | null;
+  adherence_pct: number | null;
+  plans: number;
+  checkins: number;
+  pain_days: number;
+  ill_days: number;
+  flat_days: number;
+}
+
+export type Outcomes =
+  | { has_data: false }
+  | {
+      has_data: true;
+      enough: false;
+      reason: string;
+      headline: Headline;
+      lines: string[];
+    }
+  | {
+      has_data: true;
+      enough: true;
+      weeks: number;
+      verdict: "improving" | "slipping" | "holding" | "edging_up" | "edging_down" | "mixed" | "unclear";
+      markers: OutcomeMarker[];
+      now: OutcomeContext;
+      before: OutcomeContext;
+      headline: Headline;
+      lines: string[];
+    };

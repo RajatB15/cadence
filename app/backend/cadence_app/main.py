@@ -16,12 +16,13 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from cadence_app import backup, days, goal_store, journal, ocr, planner_store, profile as profile_store, push, strength, weather, weightlog
+from cadence_app import backup, days, foodlog, goal_store, journal, ocr, planner_store, profile as profile_store, push, strength, weather, weightlog, wellbeing_store
 from cadence_app.analytics import accuracy as accuracy_analytics
 from cadence_app.analytics import banister as banister_analytics
 from cadence_app.analytics import channels as channels_analytics
 from cadence_app.analytics import exercises
 from cadence_app.analytics import goals as goal_analytics
+from cadence_app.analytics import outcomes as outcome_analytics
 from cadence_app.analytics import routes as route_analytics
 from cadence_app.analytics import whatif as whatif_analytics
 from cadence_app.analytics import body as body_analytics
@@ -140,6 +141,20 @@ class GoalPatch(BaseModel):
     status: Literal["active", "achieved", "dropped"] | None = None
 
 
+class WellbeingRequest(BaseModel):
+    feel: int | None = Field(default=None, ge=1, le=5)
+    soreness: int | None = Field(default=None, ge=0, le=3)
+    pain_level: int | None = Field(default=None, ge=0, le=3)
+    pain_area: str | None = Field(default=None, max_length=40)
+    illness: int | None = Field(default=None, ge=0, le=2)
+    life_stress: int | None = Field(default=None, ge=1, le=3)
+    note: str | None = Field(default=None, max_length=200)
+
+
+class TrainingModeRequest(BaseModel):
+    mode: Literal["auto", "build", "maintain"]
+
+
 class JournalDayRequest(BaseModel):
     answers: dict[str, float] = Field(default_factory=dict, max_length=60)
 
@@ -157,11 +172,20 @@ class BehaviourUpdate(BaseModel):
     question: str | None = Field(default=None, min_length=1, max_length=150)
 
 
+class CustomSession(BaseModel):
+    distance_m: float | None = Field(default=None, gt=0, le=400_000)
+    minutes: float | None = Field(default=None, gt=0, le=600)
+    speed_mps: float | None = Field(default=None, gt=0, le=40)
+    effort: Literal["easy", "moderate", "hard"] | None = None
+
+
 class PlanRequest(BaseModel):
     day: RaceDate
     sport: Literal["run", "ride", "swim", "strength"]
     option_key: str = Field(max_length=48)
     strength_text: str | None = Field(default=None, max_length=4000)
+    start_hour: int | None = Field(default=None, ge=0, le=23)
+    custom: CustomSession | None = None
 
 
 class WeatherSetting(BaseModel):
@@ -171,6 +195,44 @@ class WeatherSetting(BaseModel):
 class WeightEntryRequest(BaseModel):
     day: date
     weight_kg: float = Field(ge=weightlog.MIN_KG, le=weightlog.MAX_KG)
+
+
+class FoodDishRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=80)
+    unit: str = Field(min_length=1, max_length=40)
+    kcal: float = Field(ge=0, le=foodlog.MAX_KCAL)
+    protein_g: float = Field(default=0, ge=0, le=500)
+    carbs_g: float = Field(default=0, ge=0, le=1000)
+    fat_g: float = Field(default=0, ge=0, le=500)
+    spread_pct: int = Field(default=foodlog.HOME_SPREAD, ge=0, le=60)
+
+
+class FoodDishPatch(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=80)
+    unit: str | None = Field(default=None, min_length=1, max_length=40)
+    kcal: float | None = Field(default=None, ge=0, le=foodlog.MAX_KCAL)
+    protein_g: float | None = Field(default=None, ge=0, le=500)
+    carbs_g: float | None = Field(default=None, ge=0, le=1000)
+    fat_g: float | None = Field(default=None, ge=0, le=500)
+    spread_pct: int | None = Field(default=None, ge=0, le=60)
+    active: bool | None = None
+
+
+class FoodEntryRequest(BaseModel):
+    day: date
+    meal: Literal["breakfast", "lunch", "snack", "dinner"]
+    dish_id: int | None = None
+    servings: float = Field(default=1, gt=0, le=foodlog.MAX_SERVINGS)
+    eating_out: bool = False
+    # A one-off entry instead of a library dish.
+    name: str | None = Field(default=None, max_length=80)
+    kcal: float | None = Field(default=None, gt=0, le=foodlog.MAX_KCAL)
+    protein_g: float | None = Field(default=None, ge=0, le=500)
+
+
+class FoodCopyRequest(BaseModel):
+    source: date
+    target: date
 
 
 class ProfileRequest(BaseModel):
@@ -581,6 +643,7 @@ def create_app(
                         "behaviours": [journal.behaviour_dict(b) for b in journal.catalogue(session, include_inactive=False)]},
             "source_id": source_id,
             "as_of": latest_day,
+            "today": clock.today(),
             "coach": coach_notes.brief(ctx) if ctx else None,
             "score": cadence_score.summary(ctx) if ctx else None,
             "metrics": metrics,
@@ -731,14 +794,22 @@ def create_app(
             session, source_id, planner_store.listing(session, date(2000, 1, 1), today + timedelta(days=planner_store.HORIZON_DAYS)), today, clock.now()
         )
 
-    def _plan_options(session: Session, ctx: dict, day: date, sport: str, strength_text: str | None = None) -> list[dict]:
+    def _plan_options(session: Session, ctx: dict, day: date, sport: str, strength_text: str | None = None,
+                      start_hour: int | None = None, custom: CustomSession | None = None) -> list[dict]:
         today = clock.today()
+        if start_hour is not None:
+            ctx = {**ctx, "start_hour": start_hour}  # the forecast is read at the hour you chose
         source_id = _active_source(session)
         # A bias in your own realised plans corrects new predictions (see analytics/accuracy.py).
         ctx["calibration"] = accuracy_analytics.calibration(accuracy_analytics.score_plans(_plan_history(session, source_id)))
         start, end = planner_store.window(today)
         planned = planner_store.listing(session, start, end + timedelta(days=7))
-        if sport == "run":
+        if custom is not None:
+            try:
+                opts = [session_planner.custom_option(ctx, sport, **custom.model_dump())]
+            except ValueError as e:
+                raise HTTPException(400, str(e))
+        elif sport == "run":
             opts = session_planner.run_options(ctx, training_plan.weekly_plan(ctx))
         elif sport == "ride":
             opts = session_planner.ride_options(ctx)
@@ -749,9 +820,13 @@ def create_app(
             opts = [session_planner.strength_option(ctx, blocks, exercises.summary(blocks) if blocks else None)]
         model = session_planner.load_model(ctx["acts"], ctx["as_of"])
         for o in opts:
+            o["start_hour"] = start_hour
             o["predicted"] = session_planner.predict(ctx, model, day, o, planned)
         readiness = insights_service.readiness_on(ctx, ctx["as_of"]) if day == ctx["as_of"] else None
-        return session_planner.rank(ctx, day, opts, planned, readiness)
+        ranked = session_planner.rank(ctx, day, opts, planned, readiness)
+        for o in ranked:
+            o["recommended"] = o["recommended"] and not o.get("custom")
+        return ranked
 
     def _planning_day(day: date) -> None:
         today = clock.today()
@@ -794,13 +869,20 @@ def create_app(
     @app.get("/api/planner/options")
     def planner_options(
         day: date, sport: Literal["run", "ride", "swim", "strength"], strength_text: str | None = Query(None, max_length=4000),
+        start_hour: int | None = Query(None, ge=0, le=23), distance_m: float | None = Query(None, gt=0, le=400_000),
+        minutes: float | None = Query(None, gt=0, le=600), speed_mps: float | None = Query(None, gt=0, le=40),
+        effort: Literal["easy", "moderate", "hard"] | None = None, custom: bool = False,
         session: Session = Depends(get_session),
     ) -> dict:
         _planning_day(day)
         ctx = insights_service.context(session, _active_source(session), clock.today())
         if ctx is None:
             raise HTTPException(409, "Sync some training first")
-        return {"day": day, "sport": sport, "options": _plan_options(session, ctx, day, sport, strength_text)}
+        if custom and sport == "strength":
+            raise HTTPException(400, "Custom sessions are for run, ride and swim")
+        body = CustomSession(distance_m=distance_m, minutes=minutes, speed_mps=speed_mps, effort=effort) if custom else None
+        return {"day": day, "sport": sport, "start_hour": start_hour if start_hour is not None else ctx.get("start_hour", 7),
+                "options": _plan_options(session, ctx, day, sport, strength_text, start_hour, body)}
 
     @app.post("/api/planner")
     def planner_create(body: PlanRequest, session: Session = Depends(get_session)) -> dict:
@@ -808,7 +890,10 @@ def create_app(
         ctx = insights_service.context(session, _active_source(session), clock.today())
         if ctx is None:
             raise HTTPException(409, "Sync some training first")
-        option = next((o for o in _plan_options(session, ctx, body.day, body.sport, body.strength_text) if o["key"] == body.option_key), None)
+        if body.custom is not None and body.sport == "strength":
+            raise HTTPException(400, "Custom sessions are for run, ride and swim")
+        options = _plan_options(session, ctx, body.day, body.sport, body.strength_text, body.start_hour, body.custom)
+        option = next((o for o in options if o["key"] == body.option_key), None)
         if option is None:
             raise HTTPException(400, "That option isn't available for this day")
         return planner_store.create(session, body.day, option, option["predicted"], clock.now(), body.strength_text if body.sport == "strength" else None)
@@ -1063,6 +1148,62 @@ def create_app(
             raise HTTPException(404, "No manual entry for that day")
         return {"deleted": day}
 
+    @app.get("/api/food")
+    def food_view(day: date | None = None, session: Session = Depends(get_session)) -> dict:
+        foodlog.ensure_catalogue(session, clock.now())
+        today = clock.today()
+        day = min(day or today, today)
+        return foodlog.view(session, day, today, _weight_summary(session, today).latest_trend_kg)
+
+    @app.get("/api/food/dishes")
+    def food_dishes(all: bool = False, session: Session = Depends(get_session)) -> dict:
+        foodlog.ensure_catalogue(session, clock.now())
+        return {"dishes": foodlog.dishes(session, include_inactive=all)}
+
+    @app.post("/api/food/dishes")
+    def food_dish_add(body: FoodDishRequest, session: Session = Depends(get_session)) -> dict:
+        try:
+            return foodlog.add_dish(session, body.name, body.unit, body.kcal, body.protein_g, body.carbs_g, body.fat_g,
+                                    clock.now(), body.spread_pct)
+        except foodlog.FoodError as exc:
+            raise HTTPException(400, str(exc)) from None
+
+    @app.patch("/api/food/dishes/{dish_id}")
+    def food_dish_update(dish_id: int, body: FoodDishPatch, session: Session = Depends(get_session)) -> dict:
+        try:
+            dish = foodlog.update_dish(session, dish_id, body.model_dump(exclude_unset=True))
+        except foodlog.FoodError as exc:
+            raise HTTPException(400, str(exc)) from None
+        if dish is None:
+            raise HTTPException(404, "No such dish")
+        return dish
+
+    @app.post("/api/food/entries")
+    def food_entry_add(body: FoodEntryRequest, session: Session = Depends(get_session)) -> dict:
+        try:
+            if body.dish_id is not None:
+                return foodlog.log_dish(session, body.day, body.meal, body.dish_id, body.servings, body.eating_out,
+                                        clock.today(), clock.now())
+            if body.name and body.kcal:
+                return foodlog.log_quick(session, body.day, body.meal, body.name, body.kcal, body.protein_g,
+                                         clock.today(), clock.now())
+            raise foodlog.FoodError("Pick a dish, or give a name and calories")
+        except foodlog.FoodError as exc:
+            raise HTTPException(400, str(exc)) from None
+
+    @app.delete("/api/food/entries/{entry_id}")
+    def food_entry_delete(entry_id: int, session: Session = Depends(get_session)) -> dict:
+        if not foodlog.remove(session, entry_id):
+            raise HTTPException(404, "No such entry")
+        return {"deleted": entry_id}
+
+    @app.post("/api/food/copy")
+    def food_copy(body: FoodCopyRequest, session: Session = Depends(get_session)) -> dict:
+        try:
+            return {"copied": foodlog.copy_day(session, body.source, body.target, clock.today(), clock.now())}
+        except foodlog.FoodError as exc:
+            raise HTTPException(400, str(exc)) from None
+
     @app.get("/api/settings/weather")
     def weather_setting(session: Session = Depends(get_session)) -> dict:
         return {"enabled": weather.enabled(session), "available": settings.weather}
@@ -1085,6 +1226,41 @@ def create_app(
         goal_store.set_primary_race(session, goal, clock.today(), clock.now())
         return {"goal": insights_service._goal_dict(goal)}  # pylint: disable=protected-access
 
+    # ---- check-in ----
+
+    @app.get("/api/wellbeing")
+    def wellbeing_view(days: int = Query(21, ge=1, le=120), session: Session = Depends(get_session)) -> dict:
+        today = clock.today()
+        entries = wellbeing_store.entries(session, today - timedelta(days=days))
+        return {"today": today, "entry": entries.get(today), "entries": list(entries.values())}
+
+    @app.put("/api/wellbeing/{day}")
+    def wellbeing_save(day: date, body: WellbeingRequest, session: Session = Depends(get_session)) -> dict:
+        try:
+            return wellbeing_store.save(session, day, body.model_dump(exclude_unset=True), clock.today(), clock.now())
+        except wellbeing_store.WellbeingError as err:
+            raise HTTPException(400, str(err)) from err
+
+    @app.delete("/api/wellbeing/{day}")
+    def wellbeing_delete(day: date, session: Session = Depends(get_session)) -> dict:
+        if not wellbeing_store.delete(session, day):
+            raise HTTPException(404, "Not found")
+        return {"deleted": True}
+
+    @app.put("/api/settings/training-mode")
+    def set_training_mode(body: TrainingModeRequest, session: Session = Depends(get_session)) -> dict:
+        insights_service.save_training_mode(session, body.mode)
+        return {"mode": body.mode}
+
+    @app.get("/api/outcomes")
+    def outcomes_view(session: Session = Depends(get_session)) -> dict:
+        source_id = _active_source(session)
+        ctx = insights_service.context(session, source_id, clock.today())
+        if ctx is None:
+            return {"has_data": False}
+        out = outcome_analytics.summarise(ctx, _plan_history(session, source_id))
+        return {"has_data": True, **out, **coach_notes.outcomes_text(out)}
+
     # ---- goals ----
 
     @app.get("/api/goals")
@@ -1102,7 +1278,7 @@ def create_app(
             w = goal_analytics.weight_inputs(weight_analytics.summarize(readings, today, g["spec"].get("target_kg"))) if g["kind"] == "weight" else None
             a = goal_analytics.assess(g, ctx, today, w)
             items.append({**a, "headline": coach_notes.goal_headline(a)})
-        plan_goal = goal_store.primary_run_goal(session, today)
+        plan_goal = goal_store.primary_run_goal(session, today) or goal_store.primary_sport_goal(session, today)
         return {"today": today, "goals": items, "plan_goal_id": plan_goal["id"] if plan_goal else None,
                 "summary": goal_analytics.summarise_set(items), "has_training": ctx is not None}
 

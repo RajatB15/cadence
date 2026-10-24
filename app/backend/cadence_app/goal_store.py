@@ -205,3 +205,20 @@ def set_weight_target(session: Session, kg: float | None, start_value: float | N
     if current is not None:
         session.delete(current)
     create(session, {"kind": "weight", "target_kg": kg}, today, now, start_value)
+
+
+def primary_sport_goal(session: Session, today: date) -> dict | None:
+    """The nearest upcoming dated goal in a sport the weekly plan can't prescribe in detail (rides, swims, non-standard run distances).
+
+    It still sets the phase (base, build, specific, taper, race week) and a long-session target for that sport.
+    """
+    rows = session.scalars(select(Goal).where(Goal.kind.in_(("race", "performance", "distance")), Goal.status == "active", Goal.target_date >= today)
+                           .order_by(Goal.target_date, Goal.id))
+    for g in rows:
+        spec = json.loads(g.spec)
+        if g.sport == "run" and spec.get("key") in training_plan.GOALS:
+            continue
+        metres = float(spec["distance_m"])
+        return {"id": g.id, "sport": g.sport, "date": g.target_date, "distance_m": metres, "label": spec.get("label") or distance_label(g.sport, metres),
+                "target_s": spec.get("target_s"), "kind": g.kind, "taper_weeks": G.taper_weeks(g.sport, metres) if g.kind != "distance" else 1}
+    return None

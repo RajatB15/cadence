@@ -149,6 +149,7 @@ class PlannedSession(Base):
     minutes: Mapped[int] = mapped_column(Integer)
     predicted: Mapped[str] = mapped_column(Text)  # JSON from analytics.planner.predict
     strength_text: Mapped[str | None] = mapped_column(Text)
+    start_hour: Mapped[int | None] = mapped_column(Integer)  # local hour you plan to start; None = your usual time
     created_at: Mapped[datetime] = mapped_column(DateTime)
 
 
@@ -200,6 +201,59 @@ class Goal(Base):
     start_value: Mapped[float | None] = mapped_column(Float)  # weight when the goal was set (progress)
     created_at: Mapped[datetime] = mapped_column(DateTime)
     closed_at: Mapped[datetime | None] = mapped_column(DateTime)
+
+
+class Wellbeing(Base):
+    """How you say you feel on a day: one row per day, entered by you, never derived from the watch."""
+
+    __tablename__ = "wellbeing"
+
+    day: Mapped[date] = mapped_column(Date, primary_key=True)
+    feel: Mapped[int | None] = mapped_column(Integer)  # 1 awful .. 5 great
+    soreness: Mapped[int | None] = mapped_column(Integer)  # 0 none, 1 mild, 2 moderate, 3 severe
+    pain_level: Mapped[int | None] = mapped_column(Integer)  # 0 none, 1 niggle, 2 hurts, 3 stops me
+    pain_area: Mapped[str | None] = mapped_column(String(40))
+    illness: Mapped[int | None] = mapped_column(Integer)  # 0 well, 1 run down, 2 properly ill
+    life_stress: Mapped[int | None] = mapped_column(Integer)  # 1 light, 2 normal, 3 heavy
+    note: Mapped[str | None] = mapped_column(String(200))
+    updated_at: Mapped[datetime] = mapped_column(DateTime)
+
+
+class FoodDish(Base):
+    """A dish in your own library: nutrition for one serving unit (a roti, a katori of dal, a plate of poha)."""
+
+    __tablename__ = "food_dishes"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(80), unique=True)
+    unit: Mapped[str] = mapped_column(String(40))
+    kcal: Mapped[float] = mapped_column(Float)
+    protein_g: Mapped[float] = mapped_column(Float)
+    carbs_g: Mapped[float] = mapped_column(Float)
+    fat_g: Mapped[float] = mapped_column(Float)
+    spread_pct: Mapped[int] = mapped_column(Integer, default=20, server_default="20")
+    builtin: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
+    active: Mapped[bool] = mapped_column(Boolean, default=True, server_default="1")
+    created_at: Mapped[datetime] = mapped_column(DateTime)
+
+
+class FoodEntry(Base):
+    """One thing eaten. Nutrition is copied from the dish when logged, so editing a dish later never rewrites history."""
+
+    __tablename__ = "food_entries"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    day: Mapped[date] = mapped_column(Date, index=True)
+    meal: Mapped[str] = mapped_column(String(16))  # breakfast | lunch | snack | dinner
+    dish_id: Mapped[int | None] = mapped_column(ForeignKey("food_dishes.id", ondelete="SET NULL"), index=True)
+    name: Mapped[str] = mapped_column(String(80))
+    servings: Mapped[float] = mapped_column(Float)
+    kcal: Mapped[float] = mapped_column(Float)
+    protein_g: Mapped[float | None] = mapped_column(Float)
+    carbs_g: Mapped[float | None] = mapped_column(Float)
+    fat_g: Mapped[float | None] = mapped_column(Float)
+    spread_pct: Mapped[int] = mapped_column(Integer, default=25, server_default="25")
+    logged_at: Mapped[datetime] = mapped_column(DateTime)
 
 
 class StrengthTemplate(Base):
