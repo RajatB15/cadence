@@ -6,12 +6,14 @@ import { Suspense, lazy, useEffect, useMemo, useRef, useState, type ReactNode } 
 import { Link, useParams } from "react-router-dom";
 import { Chart, chartBase, type ChartOption } from "../components/Chart";
 import { NoteGrid, VerdictChip, readyColor } from "../components/CoachNotes";
+import { ShareCardButton } from "../components/ShareCard";
 import { ClassContent } from "../components/StrengthClass";
 import { JsonTree, RecordTable, humanize } from "../components/DataViews";
 import { ErrorBlock, LoadingBlock, Segmented } from "../components/Shell";
 import { READ_ONLY, api } from "../lib/api";
 import { formatDuration, formatPace } from "../lib/format";
 import { activityStyle } from "../lib/metrics";
+import { buildCardModel } from "../lib/shareCard";
 import type { ActivityDetail, FitData, Json, SessionCoach as SessionCoachData } from "../lib/types";
 
 const ZONE_COLORS = ["#5c5a55", "#6cc7ff", "#5be3b0", "#c8f560", "#ffbe55", "#ff6a55", "#ff3b6b"];
@@ -113,6 +115,7 @@ function Header({ d }: { d: ActivityDetail }) {
   const Icon = style.icon;
   const local = (d.garmin_summary?.startTimeLocal as string | undefined) ?? a.start_time_utc;
   const when = new Date(local.replace(" ", "T"));
+  const card = useMemo(() => buildCardModel(d, style.color, style.label), [d, style.color, style.label]);
   return (
     <header className="relative">
       <div
@@ -128,6 +131,9 @@ function Header({ d }: { d: ActivityDetail }) {
           {when.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}
         </span>
         <span className="text-dim">{a.timezone}</span>
+        <span className="ml-auto">
+          <ShareCardButton model={card} />
+        </span>
       </div>
       <h1 className="font-display text-5xl leading-[0.95] text-cream sm:text-7xl">{a.name}</h1>
       {typeof d.garmin_summary?.description === "string" && d.garmin_summary.description && (
