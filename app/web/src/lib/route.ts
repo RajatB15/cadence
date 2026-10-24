@@ -158,8 +158,11 @@ export function buildTrack(fit: FitData): Track | null {
           return [{ lat, lon, t: col("t", i), hr: col("hr", i), speed: col("speed", i), alt: col("alt", i), dist: col("dist", i) }];
         })
       : fit.route.map(([lat, lon]) => ({ lat, lon, t: null, hr: null, speed: null, alt: null, dist: null }));
-  if (points.length < 2) return null;
+  return finishTrack(points);
+}
 
+function finishTrack(points: TrackPoint[]): Track | null {
+  if (points.length < 2) return null;
   const cum = [0];
   for (let i = 1; i < points.length; i++) cum.push(cum[i - 1] + haversine(points[i - 1], points[i]));
   const meters = cum[cum.length - 1];
@@ -177,6 +180,26 @@ export function buildTrack(fit: FitData): Track | null {
     ],
     elevation: alts.length ? [Math.min(...alts), Math.max(...alts)] : null,
   };
+}
+
+/** One continuous line from several recordings in order (the days of a trek, the legs of a multisport event): each leg's
+ * distance and clock carry on from the one before, so counters and markers run across the whole event. */
+export function joinTracks(tracks: (Track | null)[]): Track | null {
+  const parts = tracks.filter((t): t is Track => t != null);
+  if (parts.length <= 1) return parts[0] ?? null;
+  const points: TrackPoint[] = [];
+  let dist = 0;
+  let time = 0;
+  for (const t of parts) {
+    const recorded = t.points.filter((p) => p.dist != null);
+    const timed = t.points.filter((p) => p.t != null);
+    for (const p of t.points) {
+      points.push({ ...p, dist: p.dist == null ? null : p.dist + dist, t: p.t == null ? null : p.t + time });
+    }
+    dist += recorded.length ? recorded[recorded.length - 1].dist! : t.meters;
+    time += timed.length ? timed[timed.length - 1].t! : 0;
+  }
+  return finishTrack(points);
 }
 
 /** Moving average that skips gaps, so GPS noise doesn't turn the line into confetti. */

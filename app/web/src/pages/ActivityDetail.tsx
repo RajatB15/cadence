@@ -3,10 +3,11 @@ import { clsx } from "clsx";
 import { ArrowLeft, CloudDownload, Gauge, HeartPulse, Map as MapIcon, Route as RouteIcon, Rows3 } from "lucide-react";
 import { motion } from "motion/react";
 import { Suspense, lazy, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import { Chart, chartBase, type ChartOption } from "../components/Chart";
 import { NoteGrid, VerdictChip, readyColor } from "../components/CoachNotes";
 import { WhatIfCard } from "../components/WhatIfCard";
+import { MoreMenu } from "../components/MoreMenu";
 import { ShareCardButton } from "../components/ShareCard";
 import { ClassContent } from "../components/StrengthClass";
 import { JsonTree, RecordTable, humanize } from "../components/DataViews";
@@ -60,6 +61,12 @@ export function ActivityPage() {
         <ArrowLeft size={12} /> All activities
       </Link>
       <Header d={d} />
+      {d.activity.event && (
+        <p className="text-sm text-mute">
+          Part of <Link to={`/events/${d.activity.event.id}`} className="font-semibold text-gold hover:underline">{d.activity.event.name}</Link>
+          {" "}— unlink it from the event page.
+        </p>
+      )}
       {missing.length > 0 && !READ_ONLY && (
         <div className="surface flex flex-wrap items-center gap-4 border-gold/40 px-6 py-4">
           <CloudDownload size={18} className={clsx("text-gold", fetchNow.isPending && "animate-pulse")} />
@@ -163,6 +170,7 @@ function PlannedVsActual({ d }: { d: ActivityDetail }) {
 
 function Header({ d }: { d: ActivityDetail }) {
   const a = d.activity;
+  const navigate = useNavigate();
   const style = activityStyle(a.type, a.family);
   const Icon = style.icon;
   const local = (d.garmin_summary?.startTimeLocal as string | undefined) ?? a.start_time_utc;
@@ -184,7 +192,14 @@ function Header({ d }: { d: ActivityDetail }) {
         </span>
         <span className="text-dim">{a.timezone}</span>
         <span className="ml-auto">
-          <ShareCardButton model={card} />
+          <span className="flex items-center gap-2">
+            <ShareCardButton model={card} />
+            {!READ_ONLY && !a.event && (
+              <MoreMenu
+                items={[{ label: "Group with other activities", hint: "Multi-day trek or multisport event", onSelect: () => navigate(`/activities?group=${a.id}`) }]}
+              />
+            )}
+          </span>
         </span>
       </div>
       <h1 className="font-display text-5xl leading-[0.95] text-cream sm:text-7xl">{a.name}</h1>
