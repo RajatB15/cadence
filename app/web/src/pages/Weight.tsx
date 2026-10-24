@@ -115,6 +115,7 @@ function WeightBody({ data }: { data: WeightResponse }) {
   }, [data]);
 
   const p = data.projection;
+  const last = data.points[data.points.length - 1];
   const latestBody = [...data.points].reverse().find((pt) => pt.body)?.body ?? null;
   const fat = data.latest_body_fat_pct ?? latestBody?.body_fat_pct ?? null;
   return (
@@ -123,6 +124,12 @@ function WeightBody({ data }: { data: WeightResponse }) {
         <Stat label="Trend weight">
           <CountUp value={data.latest_trend_kg ?? 0} format={kg} className="num text-5xl text-gold" />
           <span className="ml-2 text-mute">kg</span>
+          {last && (
+            <p className="mt-2 text-sm text-paper">
+              Last weigh-in <span className="num text-cream">{last.weight_kg.toFixed(1)} kg</span> · {formatDate(last.day)}
+              <span className="mt-0.5 block text-xs text-dim">The trend smooths daily water and salt swings, so it moves only part of the way to each reading.</span>
+            </p>
+          )}
         </Stat>
         <Stat label="4-week rate">
           {data.rate_kg_per_week == null ? (
