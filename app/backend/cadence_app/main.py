@@ -19,6 +19,7 @@ from sqlalchemy.orm import Session
 from cadence_app import backup, days, goal_store, journal, ocr, planner_store, profile as profile_store, push, strength, weather, weightlog
 from cadence_app.analytics import accuracy as accuracy_analytics
 from cadence_app.analytics import banister as banister_analytics
+from cadence_app.analytics import channels as channels_analytics
 from cadence_app.analytics import exercises
 from cadence_app.analytics import goals as goal_analytics
 from cadence_app.analytics import routes as route_analytics
@@ -705,7 +706,7 @@ def create_app(
             streams = out["fit"].get("streams") if out["fit"] else None
             out["coach"] = coach_notes.session(ctx, a.id, streams, out["garmin_summary"], named=label is not None)
             if out["coach"] is not None:
-                out["coach"]["what_if"] = coach_notes.whatif_card(whatif_analytics.for_activity(ctx, a.id), "session", ctx)
+                out["coach"]["what_if"] = coach_notes.whatif_card(whatif_analytics.for_activity(ctx, a.id, insights_service.lab_models(ctx)), "session", ctx)
             if a.source_id == "garmin" and ctx["geo"].get(a.id):
                 found = route_analytics.build(ctx["acts"], ctx["geo"], ctx["eff"], ctx["weather_runs"], ctx["as_of"])
                 out["route"] = route_analytics.for_activity(
@@ -772,7 +773,7 @@ def create_app(
             session, source_id, planner_store.listing(session, start - timedelta(days=62), start + timedelta(days=31)), today, clock.now()
         )
         built = reviews.build(ctx, kind, start, planned, insights_service.readiness_on)
-        card = coach_notes.whatif_card(whatif_analytics.for_period(ctx, built["start"], built["end"]), kind, ctx)
+        card = coach_notes.whatif_card(whatif_analytics.for_period(ctx, built["start"], built["end"], insights_service.lab_models(ctx)), kind, ctx)
         return {"has_data": True, "first": ctx["first"], "today": today, **built, "what_if": card}
 
     @app.get("/api/planner")
@@ -1145,12 +1146,22 @@ def create_app(
         ctx = insights_service.context(session, _active_source(session), clock.today())
         if ctx is None:
             return {"has_data": False}
-        fit_ = insights_service.banister_fit(ctx)
+        lab = insights_service.lab_models(ctx)
+        fit_ = lab["banister"]
         out = banister_analytics.public(fit_)
         if fit_["valid"]:
             first = fit_["series"][0]["day"]
-            out["curve"] = banister_analytics.curve(fit_, ctx["load"], ctx["as_of"], step=3, since=first)
-        return {"has_data": True, **out, "performance_label": "Aerobic efficiency (weekly median)", "headline": coach_notes.banister_headline(fit_),
+            out["curve"] = banister_analytics.curve(fit_, banister_analytics.effective(ctx["load"], fit_["alpha"]), ctx["as_of"], step=3, since=first)
+        extra = {
+            "fatigue": {k: v for k, v in lab["fatigue"].items() if not k.startswith("_")},
+            "saturation": lab["saturation"],
+            "channels": channels_analytics.public(lab["channels"]),
+            "model": lab["model"],
+            "explain_fatigue": coach_notes.fatigue_explain(lab["fatigue"]),
+            "explain_saturation": coach_notes.saturation_explain(lab["saturation"]),
+            "explain_channels": coach_notes.channels_explain(lab["channels"]),
+        }
+        return {"has_data": True, **out, **extra, "performance_label": "Aerobic efficiency (weekly median)", "headline": coach_notes.banister_headline(fit_),
                 "explain": coach_notes.model_explain(fit_)}
 
     @app.get("/api/lab/routes")
@@ -1168,11 +1179,15 @@ def create_app(
         ctx = insights_service.context(session, _active_source(session), clock.today())
         if ctx is None:
             return {"has_data": False}
-        fit_ = insights_service.banister_fit(ctx)
-        out = whatif_analytics.suggestions(ctx, fit_)
+        lab = insights_service.lab_models(ctx)
+        out = whatif_analytics.suggestions(ctx, lab)
         for b in out["bundles"].values():
             b["headline"] = coach_notes.whatif_headline({**b, "edits": range(b["n"]), "next_morning": None})
-        return {"has_data": True, **out, "actions": whatif_analytics.ACTIONS}
+            b["lines"] = coach_notes.whatif_lines(b)
+        for i in out["items"]:
+            i["lines"] = coach_notes.whatif_lines(i)
+        return {"has_data": True, **out, "actions": whatif_analytics.ACTIONS, "model": lab["model"], "freshness": lab["freshness"],
+                "explain_freshness": coach_notes.freshness_explain(lab["freshness"])}
 
     @app.get("/api/lab/whatif/replay")
     def lab_whatif_replay(edit: list[str] = Query(..., max_length=40), session: Session = Depends(get_session)) -> dict:
@@ -1185,10 +1200,10 @@ def create_app(
             if not aid.isdigit() or action not in whatif_analytics.ACTIONS:
                 raise HTTPException(400, "Use edit=<activity id>:<skip|easy|half>")
             edits.append({"activity_id": int(aid), "action": action})
-        result = whatif_analytics.compare(ctx, edits, banister=insights_service.banister_fit(ctx))
+        result = whatif_analytics.compare(ctx, edits, lab=insights_service.lab_models(ctx))
         if not result["valid"]:
             raise HTTPException(400, "None of those sessions can be replayed (only sessions from the last 8 weeks with a training load)")
-        return {**result, "headline": coach_notes.whatif_headline(result)}
+        return {**result, "headline": coach_notes.whatif_headline(result), "lines": coach_notes.whatif_lines(result)}
 
     @app.get("/{path:path}", include_in_schema=False)
     def web(path: str) -> Response:

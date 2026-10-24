@@ -20,6 +20,9 @@ from cadence_app import weather as weather_store
 from cadence_app.activity_types import activity_family
 from cadence_app.analytics import athlete as A
 from cadence_app.analytics import banister as B
+from cadence_app.analytics import channels as CH
+from cadence_app.analytics import fatigue_fit as FF
+from cadence_app.analytics import freshness as FR
 from cadence_app.analytics import habits as H
 from cadence_app.analytics import heat as W
 from cadence_app.analytics import performance as P
@@ -392,17 +395,47 @@ def assemble(
     return c
 
 
-_banister_cache: dict[tuple, dict] = {}
+_lab_cache: dict[tuple, dict] = {}
+
+
+def lab_models(c: dict) -> dict:
+    """Every personal-model analysis of the Lab, computed once while the data are unchanged (a few hundred ms).
+
+    Keys: saturation, banister, fatigue, channels, freshness and `model`, the personal constants the what-if replay uses
+    (only those that beat the standard ones on held-out data; otherwise the standard 42/7 days and linear load).
+    """
+    hrv, rhr = c["series"].get("hrv", {}), c["series"].get("resting_hr", {})
+    key = (c["source_id"], c["as_of"], len(c["acts"]), len(c["eff"]), round(sum(c["load"].values())), len(hrv), len(rhr))
+    if key in _lab_cache:
+        return _lab_cache[key]
+    obs = [(d, v) for d, v in B.weekly_series(c["eff"]) if d <= c["as_of"]]
+    sat = B.saturation(c["load"], obs, c["as_of"])
+    alpha = sat["alpha"] if sat.get("adopted") else 1.0
+    banister = B.fit(B.effective(c["load"], alpha), obs, c["as_of"])
+    banister["alpha"] = alpha
+    fatigue = FF.fit(c["load"], hrv, rhr, c["as_of"])
+    channels = CH.fit(c)
+    freshness = FR.fit(c)
+    sources, ctl, atl = [], A.CTL_DAYS, A.ATL_DAYS
+    if banister.get("adopted"):
+        ctl = banister["tau1"]
+        sources.append(f"fitness builds over {ctl} days")
+    if fatigue.get("adopted"):
+        atl = fatigue["tau"]
+        sources.append(f"fatigue fades over {atl} days (from your HRV and resting HR)")
+    elif banister.get("adopted"):
+        atl = banister["tau2"]
+        sources.append(f"fatigue fades over {atl} days")
+    if alpha < 1.0:
+        sources.append("very big days count for proportionally less")
+    model = {"ctl_days": ctl, "atl_days": atl, "alpha": alpha, "personal": bool(sources), "sources": sources}
+    _lab_cache.clear()
+    _lab_cache[key] = {"saturation": sat, "banister": banister, "fatigue": fatigue, "channels": channels, "freshness": freshness, "model": model}
+    return _lab_cache[key]
 
 
 def banister_fit(c: dict) -> dict:
-    """The personal impulse-response fit on weekly aerobic efficiency; cached while the data are unchanged (it takes ~0.3 s)."""
-    obs = B.weekly_series(c["eff"])
-    key = (c["source_id"], c["as_of"], len(c["eff"]), obs[-1] if obs else None, round(sum(c["load"].values())))
-    if key not in _banister_cache:
-        _banister_cache.clear()
-        _banister_cache[key] = B.fit(c["load"], obs, c["as_of"])
-    return _banister_cache[key]
+    return lab_models(c)["banister"]
 
 
 def heavy_lower_days(c: dict) -> set[date]:

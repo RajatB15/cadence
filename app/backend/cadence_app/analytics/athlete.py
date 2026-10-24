@@ -109,15 +109,18 @@ def daily_load(acts: list[Act]) -> Series:
     return dict(load)
 
 
-def pmc(load: Series, start: date, end: date) -> list[dict]:
-    """Fitness (CTL), fatigue (ATL), form (TSB = yesterday's CTL - ATL) and EWMA ACWR per day."""
+def pmc(load: Series, start: date, end: date, ctl_days: float = CTL_DAYS, atl_days: float = ATL_DAYS) -> list[dict]:
+    """Fitness (CTL), fatigue (ATL), form (TSB = yesterday's CTL - ATL) and EWMA ACWR per day.
+
+    The 42/7-day constants are the standard; `ctl_days`/`atl_days` let the what-if replay use your own (analytics/banister.py).
+    """
     ctl = atl = chronic = 0.0
     out = []
     for d in daterange(start, end):
         form = ctl - atl
         x = load.get(d, 0.0)
-        ctl += (x - ctl) / CTL_DAYS
-        atl += (x - atl) / ATL_DAYS
+        ctl += (x - ctl) / ctl_days
+        atl += (x - atl) / atl_days
         chronic += (x - chronic) / ACWR_CHRONIC_DAYS
         out.append(
             {

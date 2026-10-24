@@ -40,6 +40,59 @@ CV_GAIN = 0.95  # personal CV error must be ≤ 95 % of both baselines
 HORIZON = 35
 
 
+ALPHAS = (1.0, 0.9, 0.8, 0.7, 0.6, 0.5)
+
+
+def effective(load: A.Series, alpha: float) -> A.Series:
+    """Diminishing returns: each day's load raised to `alpha` (< 1 flattens big days), rescaled so typical days keep their size."""
+    if alpha >= 1.0:
+        return dict(load)
+    positive = [v for v in load.values() if v > 0]
+    if not positive:
+        return dict(load)
+    m = float(np.mean(positive))
+    return {d: (v ** alpha) * (m ** (1 - alpha)) if v > 0 else 0.0 for d, v in load.items()}
+
+
+def saturation(load: A.Series, obs: list[tuple[date, float]], as_of: date) -> dict:
+    """Does a big day buy proportionally less fitness? Picks alpha by held-out error at the standard 42/7-day constants.
+
+    alpha = 1 is "load counts linearly". A smaller alpha is only adopted if it predicts unseen weeks at least 5 % better
+    than linear load, so a flat-looking history can't talk the model into a curve.
+    """
+    obs = sorted((d, v) for d, v in obs if d <= as_of)
+    out: dict = {"valid": False, "adopted": False, "alpha": 1.0, "n": len(obs)}
+    active = sum(1 for v in load.values() if v > 0)
+    span = (obs[-1][0] - obs[0][0]).days if obs else 0
+    if len(obs) < MIN_OBS or span < MIN_SPAN_DAYS or active < MIN_ACTIVE_DAYS:
+        out["missing"] = f"at least {MIN_OBS} weeks of runs with heart rate over {MIN_SPAN_DAYS}+ days"
+        return out
+    start = min(min(load, default=obs[0][0]), obs[0][0])
+    days = (as_of - start).days + 1
+    idx = np.array([(d - start).days for d, _ in obs])
+    y = np.array([v for _, v in obs])
+    scores = {}
+    for a in ALPHAS:
+        eff = effective(load, a)
+        w = np.zeros(days)
+        for d, x in eff.items():
+            if start <= d <= as_of:
+                w[(d - start).days] = x
+        e1, e2 = _impulse(w, DEFAULT_TAUS[0])[idx], _impulse(w, DEFAULT_TAUS[1])[idx]
+        sq = 0.0
+        for test in np.array_split(np.arange(len(y)), CV_FOLDS):
+            train = np.setdiff1d(np.arange(len(y)), test)
+            p0, k1, k2, _ = _linear(e1[train], e2[train], y[train])
+            sq += float(np.sum((y[test] - (p0 + k1 * e1[test] - k2 * e2[test])) ** 2))
+        scores[a] = math.sqrt(sq / len(y))
+    best = min(scores, key=scores.get)
+    gain = 1 - scores[best] / scores[1.0] if scores[1.0] > 0 else 0.0
+    adopted = best < 1.0 and gain >= 1 - CV_GAIN
+    out.update(valid=True, adopted=bool(adopted), alpha=best if adopted else 1.0, best_alpha=best, gain_pct=round(gain * 100, 1),
+               cv={f"{a:g}": round(v, 5) for a, v in scores.items()})
+    return out
+
+
 def weekly_series(points: list[dict], key: str = "ef") -> list[tuple[date, float]]:
     """Weekly median of per-run values, dated at the week's midpoint."""
     weeks: dict[date, list[float]] = {}
@@ -154,6 +207,8 @@ def fit(load: A.Series, obs: list[tuple[date, float]], as_of: date) -> dict:
     if not adopted:
         out["why_not"] = ("fatigue or fitness did not come out as a positive effect" if not nondegenerate else
                           "it did not predict held-out weeks at least 5 % better than the standard 42/7-day constants and the plain average")
+    step = max(1, len(region) // 25)
+    out["region_pairs"] = [(f[1], f[2]) for f in region[::step]]
     out["series"] = [{"day": d, "observed": round(float(v), 4), "fitted": round(float(f), 4)} for (d, v), f in zip(obs, y - resid)]
     out["taper"] = taper(load, start, as_of, t1, t2, p0, k1, k2, region)
     out["_model"] = {"start": start, "taus": (t1, t2), "coef": (p0, k1, k2)}

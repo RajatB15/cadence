@@ -9,7 +9,7 @@ import { ErrorBlock, LoadingBlock, PageHeader, Segmented } from "../components/S
 import { api } from "../lib/api";
 import { formatDate } from "../lib/format";
 import { clockTime as hms, signed } from "../lib/goals";
-import type { AccuracyPoint, AccuracyStats, Headline, LabAccuracy, LabModel, LabRoutes, LabWhatIf, RouteView, WhatIfBundle, WhatIfPoint, WhatIfResult } from "../lib/types";
+import type { AccuracyPoint, AccuracyStats, ChannelsFit, FatigueFit, Freshness, Headline, LabAccuracy, LabModel, LabRoutes, LabWhatIf, RouteView, WhatIfBundle, SaturationFit, WhatIfExtras, WhatIfModel, WhatIfPoint, WhatIfResult } from "../lib/types";
 
 type Tab = "accuracy" | "model" | "routes" | "whatif";
 const TABS: { value: Tab; label: string }[] = [
@@ -78,8 +78,8 @@ function HeadlineBox({ h }: { h: Headline }) {
 function Explain({ items, title = "In plain words" }: { items: { q: string; a: string }[] | undefined; title?: string }) {
   if (!items?.length) return null;
   return (
-    <section className="surface p-5 sm:p-8">
-      <h2 className="mb-5 font-display text-3xl text-cream">{title}</h2>
+    <section className={title ? "surface p-5 sm:p-8" : ""}>
+      {title && <h2 className="mb-5 font-display text-3xl text-cream">{title}</h2>}
       <dl className="grid gap-x-10 gap-y-5 lg:grid-cols-2">
         {items.map((x) => (
           <div key={x.q}>
@@ -253,6 +253,7 @@ function ModelTab() {
             ) : (
               <ModelBody d={d as Extract<LabModel, { valid: true }>} />
             )}
+            <PersonalModel d={d} />
           </div>
         )
       }
@@ -429,6 +430,7 @@ function WhatIfTab() {
           <Empty>Sync some training to replay it.</Empty>
         ) : (
           <div className="space-y-6">
+            <FreshnessPanel fresh={d.freshness} explain={d.explain_freshness} model={d.model} />
             {Object.entries(d.bundles).map(([k, b]) => <Bundle key={k} b={b} />)}
             {!Object.keys(d.bundles).length && (
               <Empty>
@@ -448,6 +450,7 @@ function WhatIfTab() {
                         load {i.load} → {i.load_after}{i.rough ? " (rough)" : ""} · fitness <span className="text-sky">{signed(i.fitness_delta)}</span>
                         {i.next_morning_form != null && <> · next morning form <span className="text-lime">{signed(i.next_morning_form)}</span></>}
                       </span>
+                      <ExtraLines ex={i} className="basis-full" />
                     </li>
                   ))}
                 </ul>
@@ -473,6 +476,7 @@ function Bundle({ b }: { b: WhatIfBundle }) {
         {b.performance && <Stat label="Modelled performance" value={b.performance.delta_pct != null ? `${signed(b.performance.delta_pct, 2)}%` : "—"} hint={`personal ${b.performance.taus[0]}/${b.performance.taus[1]}-day model`} />}
       </div>
       <Trajectory rows={b.trajectory} />
+      <ExtraLines ex={b} className="mt-5" />
       {b.rough && <p className="mt-3 text-xs text-amber">Some sports have too few easy sessions for a personal easy rate, so those were simply halved.</p>}
     </Panel>
   );
@@ -550,6 +554,7 @@ function Custom({ d }: { d: Extract<LabWhatIf, { has_data: true }> }) {
         {state === "idle" && result && (
           <>
             <p className="mb-5 text-paper">{result.headline}</p>
+            <ExtraLines ex={result} className="mb-5" />
             {result.performance?.delta_pct != null && <p className="mb-4 text-sm text-mute">Your personal model puts performance {signed(result.performance.delta_pct, 2)}% at the end.</p>}
             <Trajectory rows={result.trajectory} />
           </>
@@ -558,5 +563,136 @@ function Custom({ d }: { d: Extract<LabWhatIf, { has_data: true }> }) {
       </div>
     </Panel>
     </div>
+  );
+}
+
+// ---- ranges, minutes by zone and what freshness is worth ------------------------------------------------
+
+const range = (r: [number, number] | null | undefined, digits = 1) => (!r ? "—" : r[0].toFixed(digits) === r[1].toFixed(digits) ? r[0].toFixed(digits) : `${r[0].toFixed(digits)} to ${r[1].toFixed(digits)}`);
+
+function ExtraLines({ ex, className }: { ex: WhatIfExtras; className?: string }) {
+  const lines = ex.lines ?? [];
+  const r = ex.ranges;
+  return (
+    <div className={clsx("text-sm", className)}>
+      {r && (
+        <p className="text-xs text-dim">
+          Plausible range (from {r.basis}): fitness {range(r.fitness_delta)}
+          {r.next_morning_form ? ` · next-morning form ${range(r.next_morning_form)}` : ""}
+          {r.avg_form_delta ? ` · average form ${range(r.avg_form_delta)}` : ""}.
+        </p>
+      )}
+      {lines.length > 0 && <ul className="mt-2 list-disc space-y-1 pl-5 text-mute">{lines.map((l) => <li key={l}>{l}</li>)}</ul>}
+    </div>
+  );
+}
+
+function FreshnessPanel({ fresh, explain, model }: { fresh: Freshness; explain: { q: string; a: string }[]; model: WhatIfModel }) {
+  const h = fresh.hard;
+  const option = useMemo<ChartOption>(
+    () => ({
+      ...chartBase,
+      grid: { ...chartBase.grid, bottom: 40 },
+      tooltip: { ...chartBase.tooltip, trigger: "item", formatter: (q: { data: [number, number, string] }) => `${formatDate(q.data[2])}<br/>form <b>${q.data[0]}</b> · ${q.data[1]}% of your recent best` },
+      xAxis: { ...chartBase.xAxis, type: "value", scale: true, name: "Form that morning (higher = fresher)", nameLocation: "middle", nameGap: 28, nameTextStyle: { color: "#5c5a55", fontSize: 11 } },
+      yAxis: { ...chartBase.yAxis, name: "Hard-run quality, % of recent best", nameTextStyle: { color: "#5c5a55", fontSize: 11 } },
+      series: [{ type: "scatter", symbolSize: 9, itemStyle: { color: "#d9b26a" }, data: (h.points ?? []).map((p) => [p.form, p.quality_pct, p.day]) }],
+    }),
+    [h.points],
+  );
+  return (
+    <Panel
+      title="Does starting fresh help you?" eyebrow="Measured on your own hard runs"
+      aside={<span className={clsx("chip", h.helpful ? "!border-lime/40 !text-lime" : "")}>{!h.enough ? `${h.n} of ${h.min} runs` : h.helpful ? "Yes, in your data" : "Not shown"}</span>}
+    >
+      <Explain items={explain} title="" />
+      {h.enough && h.points && h.points.length > 0 && (
+        <div className="mt-6">
+          <Chart option={option} height={260} label="Hard-run quality against form on the morning" />
+          <p className="mt-2 text-xs text-dim">Each dot is a hard run: its best 5 minutes against your best 5 minutes of the previous 90 days.</p>
+        </div>
+      )}
+      <p className="mt-4 text-xs text-dim">
+        The replay below uses {model.personal ? `your own constants (${model.sources.join("; ")})` : "the standard 42/7-day constants"}
+        {model.personal ? "" : "; your data have not yet beaten them on held-out weeks"}.
+      </p>
+    </Panel>
+  );
+}
+
+// ---- the other personal-model tests ---------------------------------------------------------------------------
+
+function PersonalModel({ d }: { d: Extract<LabModel, { has_data: true }> }) {
+  return (
+    <>
+      <Panel title="What Cadence uses for you" eyebrow="Each test below is adopted only if it beats the standard on unseen data">
+        {d.model.personal ? (
+          <ul className="list-disc space-y-1 pl-5 text-sm text-paper">{d.model.sources.map((x) => <li key={x}>{x}</li>)}</ul>
+        ) : (
+          <p className="text-sm text-mute">The standard model: fitness over 42 days, fatigue over 7, and every unit of load counted equally. None of the tests below has beaten it yet.</p>
+        )}
+        <Foot>These constants are used in the what-if replays. Fitness, fatigue and form on Home and Coach stay on the standard model so they stay comparable week to week.</Foot>
+      </Panel>
+      <FatiguePanel f={d.fatigue} explain={d.explain_fatigue} />
+      <SaturationPanel s={d.saturation} explain={d.explain_saturation} />
+      <ChannelsPanel ch={d.channels} explain={d.explain_channels} />
+    </>
+  );
+}
+
+function FatiguePanel({ f, explain }: { f: FatigueFit; explain: { q: string; a: string }[] }) {
+  const option = useMemo<ChartOption>(
+    () => ({
+      ...chartBase,
+      tooltip: { ...chartBase.tooltip, trigger: "axis" },
+      series: [
+        { name: "Your strain (weekly mean)", type: "line", symbol: "circle", symbolSize: 5, lineStyle: { color: "#6cc7ff", width: 1.5 }, itemStyle: { color: "#6cc7ff" }, data: (f.series ?? []).map((p) => [p.day, p.observed]) },
+        { name: "Expected from your load", type: "line", symbol: "none", lineStyle: { color: "#d9b26a", width: 2 }, data: (f.series ?? []).map((p) => [p.day, p.fitted]) },
+      ],
+    }),
+    [f.series],
+  );
+  return (
+    <Panel title="How fast you recover" eyebrow="From your overnight HRV and resting heart rate" aside={<span className={clsx("chip", f.adopted ? "!border-lime/40 !text-lime" : "")}>{f.adopted ? "In use" : "Standard kept"}</span>}>
+      {f.tau != null && (
+        <div className="mb-5 grid grid-cols-2 gap-6 sm:grid-cols-4">
+          <Stat label="Fatigue fades over" value={`${f.tau} days`} hint={`textbook ${f.default_tau} · data allow ${f.region![0]}–${f.region![1]}`} color="#ff6a55" />
+          <Stat label="Half gone after" value={`${f.half_life_days?.toFixed(0)} days`} />
+          <Stat label="Your fit" value={f.cv!.personal.toFixed(2)} hint="average miss on unseen nights" color={f.adopted ? "#c8f560" : undefined} />
+          <Stat label="Textbook 7 days" value={f.cv!.default.toFixed(2)} hint={f.cv!.gain_vs_default_pct >= 0 ? `yours ${Math.round(f.cv!.gain_vs_default_pct)}% closer` : `yours ${Math.round(-f.cv!.gain_vs_default_pct)}% further`} />
+        </div>
+      )}
+      <Explain items={explain} title="" />
+      {f.series && f.series.length > 4 && <div className="mt-6"><Chart option={option} height={220} label="Strain signal against what your training load predicts" /></div>}
+    </Panel>
+  );
+}
+
+function SaturationPanel({ s, explain }: { s: SaturationFit; explain: { q: string; a: string }[] }) {
+  return (
+    <Panel title="Do big days count for less?" eyebrow="Diminishing returns" aside={<span className={clsx("chip", s.adopted ? "!border-lime/40 !text-lime" : "")}>{s.adopted ? "In use" : "Linear kept"}</span>}>
+      {s.valid && (
+        <div className="mb-5 grid grid-cols-2 gap-6 sm:grid-cols-3">
+          <Stat label="A day with double the load builds" value={`${(2 ** s.alpha).toFixed(2)}×`} hint="textbook model: 2.00×" color={s.adopted ? "#c8f560" : undefined} />
+          <Stat label="Held-out gain" value={`${s.gain_pct != null ? Math.max(0, s.gain_pct).toFixed(0) : 0}%`} hint="needs 5% to be adopted" />
+        </div>
+      )}
+      <Explain items={explain} title="" />
+    </Panel>
+  );
+}
+
+function ChannelsPanel({ ch, explain }: { ch: ChannelsFit; explain: { q: string; a: string }[] }) {
+  return (
+    <Panel title="Easy minutes and hard minutes" eyebrow="Which kind of training moves your efficiency" aside={<span className={clsx("chip", ch.adopted ? "!border-lime/40 !text-lime" : "")}>{ch.adopted ? "In use" : "Not separable yet"}</span>}>
+      {ch.valid && ch.aerobic && ch.high && (
+        <div className="mb-5 grid grid-cols-2 gap-6 sm:grid-cols-4">
+          <Stat label="Easy hour a week" value={`${signed(ch.aerobic.pct_per_hour)}%`} hint={`efficiency · range ${signed(ch.aerobic.ci[0])} to ${signed(ch.aerobic.ci[1])}`} color="#5be3b0" />
+          <Stat label="Hard hour a week" value={`${signed(ch.high.pct_per_hour)}%`} hint={`efficiency · range ${signed(ch.high.ci[0])} to ${signed(ch.high.ci[1])}`} color="#ff6a55" />
+          <Stat label="Weeks used" value={ch.n} />
+        </div>
+      )}
+      <Explain items={explain} title="" />
+    </Panel>
   );
 }
