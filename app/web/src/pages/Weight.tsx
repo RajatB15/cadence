@@ -121,13 +121,13 @@ function WeightBody({ data }: { data: WeightResponse }) {
   return (
     <div className="space-y-6">
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <Stat label="Trend weight">
-          <CountUp value={data.latest_trend_kg ?? 0} format={kg} className="num text-5xl text-gold" />
+        <Stat label="Last weigh-in">
+          <CountUp value={last?.weight_kg ?? data.latest_trend_kg ?? 0} format={kg} className="num text-5xl text-gold" />
           <span className="ml-2 text-mute">kg</span>
-          {last && (
-            <p className="mt-2 text-sm text-paper">
-              Last weigh-in <span className="num text-cream">{last.weight_kg.toFixed(1)} kg</span> · {formatDate(last.day)}
-              <span className="mt-0.5 block text-xs text-dim">The trend smooths daily water and salt swings, so it moves only part of the way to each reading.</span>
+          {last && <p className="mt-2 text-sm text-mute">{formatDate(last.day)}</p>}
+          {data.latest_trend_kg != null && (
+            <p className="mt-1 text-xs text-dim">
+              Smoothed trend {data.latest_trend_kg.toFixed(1)} kg: an average of recent weigh-ins that ignores daily water and salt swings. Goals and the rate use it.
             </p>
           )}
         </Stat>
