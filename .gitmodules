@@ -1,0 +1,3 @@
+[submodule "food-data"]
+	path = food-data
+	url = https://github.com/RajatB15/cadence-food-data.git
