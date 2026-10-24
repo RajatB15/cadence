@@ -1,5 +1,6 @@
-import { Download, Share2 } from "lucide-react";
+import { Download, ImageUp, Share2 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { BASEMAPS, type Basemap } from "../lib/mapStyle";
 import { Segmented } from "./Shell";
 import { Sheet } from "./Sheet";
 import {
@@ -17,7 +18,7 @@ import {
 } from "../lib/shareCard";
 
 type Kind = "image" | "video";
-type Backdrop = "dark" | "transparent";
+type Backdrop = "dark" | "transparent" | "photo";
 
 /** Share button + sheet: a still card (opaque or transparent PNG) and, with GPS, a route video at 1x–2x. */
 export function ShareCardButton({ model }: { model: CardModel }) {
@@ -39,6 +40,9 @@ function ShareBody({ model }: { model: CardModel }) {
   const [kind, setKind] = useState<Kind>("image");
   const [backdrop, setBackdrop] = useState<Backdrop>("dark");
   const [speed, setSpeed] = useState<VideoSpeed>(1);
+  const [basemap, setBasemap] = useState<Basemap>("dark");
+  const [photo, setPhoto] = useState<ImageBitmap | null>(null);
+  const fileInput = useRef<HTMLInputElement>(null);
   const [videoOk, setVideoOk] = useState<boolean | null>(null);
   const [busy, setBusy] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -55,14 +59,30 @@ function ShareBody({ model }: { model: CardModel }) {
 
   const video = kind === "video";
   const transparent = !video && backdrop === "transparent";
+  const shownPhoto = !video && backdrop === "photo" ? photo : null;
+
+  const pickPhoto = async (file: File | undefined) => {
+    if (!file) return;
+    setError(null);
+    try {
+      const bitmap = await createImageBitmap(file);
+      setPhoto((old) => {
+        old?.close();
+        return bitmap;
+      });
+      setBackdrop("photo");
+    } catch {
+      setError("That file couldn't be read as a picture. Try a JPEG or PNG.");
+    }
+  };
 
   const make = async (): Promise<File> => {
     if (video) {
       abort.current = new AbortController();
-      const blob = await renderVideo(model, speed, setBusy, abort.current.signal);
+      const blob = await renderVideo(model, { speed, basemap, onProgress: setBusy, signal: abort.current.signal });
       return new File([blob], fileName(model, "mp4", false), { type: "video/mp4" });
     }
-    const blob = await renderPng(model, transparent);
+    const blob = await renderPng(model, transparent, shownPhoto);
     return new File([blob], fileName(model, "png", transparent), { type: "image/png" });
   };
 
@@ -93,7 +113,7 @@ function ShareBody({ model }: { model: CardModel }) {
 
   return (
     <div className="space-y-6">
-      <Preview model={model} transparent={transparent} />
+      <Preview model={model} transparent={transparent} photo={shownPhoto} />
 
       {hasRoute && (
         <Segmented
@@ -115,10 +135,18 @@ function ShareBody({ model }: { model: CardModel }) {
             options={[
               { value: "dark" as Backdrop, label: "Dark" },
               { value: "transparent" as Backdrop, label: "Transparent" },
+              { value: "photo" as Backdrop, label: "Photo" },
             ]}
             value={backdrop}
-            onChange={setBackdrop}
+            onChange={(v) => (v === "photo" && !photo ? fileInput.current?.click() : setBackdrop(v))}
           />
+          <input ref={fileInput} type="file" accept="image/*" className="hidden" onChange={(e) => { pickPhoto(e.target.files?.[0]); e.target.value = ""; }} />
+          {backdrop === "photo" && (
+            <button type="button" className="pop pop-ghost inline-flex items-center gap-2" onClick={() => fileInput.current?.click()}>
+              <ImageUp size={14} /> {photo ? "Choose a different photo" : "Choose a photo"}
+            </button>
+          )}
+          {backdrop === "photo" && <p className="text-xs text-dim">Picked from your gallery and used only in this window. It is cropped to fill and dimmed so the text reads.</p>}
           {transparent && <p className="text-xs text-dim">A PNG with no backdrop, to lay over a photo or story in another app.</p>}
         </div>
       )}
@@ -132,11 +160,14 @@ function ShareBody({ model }: { model: CardModel }) {
             value={speed}
             onChange={setSpeed}
           />
+          <p className="eyebrow pt-2">Map</p>
+          <Segmented label="Map style" options={BASEMAPS} value={basemap} onChange={setBasemap} />
           <p className="text-xs text-dim">
-            {videoSeconds(speed).toFixed(1)} s of route drawing, then a short hold. MP4 can't carry transparency, so video keeps the
-            dark backdrop.
+            A 3D terrain flyover that follows you along the route: {videoSeconds(speed).toFixed(1)} s of travel plus a short intro and
+            closing view. Rendering waits for map tiles frame by frame, so it takes about a minute: keep this window open. MP4 can't carry
+            transparency.
           </p>
-          {videoBlocked && <p className="text-sm text-coral">This browser can't encode video. Try Safari 16.4+ or a current Chrome.</p>}
+          {videoBlocked && <p className="text-sm text-coral">This browser can't render 3D video (it needs WebGL 2 and the WebCodecs video encoder). Try Safari 16.4+ or a current Chrome.</p>}
         </div>
       )}
 
@@ -167,26 +198,26 @@ function ShareBody({ model }: { model: CardModel }) {
           </button>
         )}
       </div>
-      <p className="text-xs text-dim">Made on this device from your own activity. Nothing is uploaded.</p>
+      <p className="text-xs text-dim">Made on this device from your own activity; nothing is uploaded. {video ? "Video fetches map tiles for the area, the same as the Route map." : ""}</p>
     </div>
   );
 }
 
-function Preview({ model, transparent }: { model: CardModel; transparent: boolean }) {
+function Preview({ model, transparent, photo }: { model: CardModel; transparent: boolean; photo: ImageBitmap | null }) {
   const ref = useRef<HTMLCanvasElement>(null);
   const stable = useMemo(() => model, [model]);
   useEffect(() => {
     const canvas = ref.current;
     if (!canvas) return;
     let alive = true;
-    const paint = () => alive && drawCard(canvas.getContext("2d")!, stable, { transparent, progress: 1 });
+    const paint = () => alive && drawCard(canvas.getContext("2d")!, stable, { transparent, progress: 1, photo });
     paint();
     // The card fonts may still be loading on first open; repaint once they are.
     document.fonts?.ready.then(paint);
     return () => {
       alive = false;
     };
-  }, [stable, transparent]);
+  }, [stable, transparent, photo]);
   return (
     <div
       className="mx-auto w-full max-w-[280px] overflow-hidden border border-line"
