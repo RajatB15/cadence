@@ -24,3 +24,6 @@ dist/
 
 # Server address for scripts/deploy.sh
 .deploy-host
+
+# Personal deploy cheat sheet.
+deploy.md
