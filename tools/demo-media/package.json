@@ -1,0 +1,9 @@
+{
+  "name": "cadence-demo-media",
+  "private": true,
+  "type": "module",
+  "description": "Records a scripted tour of the Cadence UI (demo data only) and encodes README and social media",
+  "dependencies": {
+    "playwright-core": "^1.49.1"
+  }
+}
