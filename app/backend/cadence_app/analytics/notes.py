@@ -1194,5 +1194,5 @@ def whatif_card(w: dict | None, scope: str, c: dict | None = None) -> dict | Non
     n = w["flagged"]
     these = "that session" if n == 1 else f"those {n} sessions"
     return {"tone": "info", "title": f"{n} session{'s' if n != 1 else ''} could have been easier", "scope": scope, "link": link,
-            "text": f"Had {these} been kept easy at the same length, the model has you {_effects(w['replay'])}. A small price for fresher legs on the days that count.",
+            "text": f"Had {these} been kept easy at the same length, the model has you {_effects(w['replay'])}. That only pays off if you spend the freshness on a hard session; if the next days are easy anyway, it just means a little less fitness.",
             "action": _easy_phrase(c), "sessions": w["sessions"]}
