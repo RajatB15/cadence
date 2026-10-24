@@ -671,13 +671,13 @@ def create_app(
                             path, activity_family(a.activity_type), fit.offset_minutes(a.timezone)
                         )
         ctx = insights_service.context(session, a.source_id, clock.today())
+        label = strength.get(session, a) if activity_family(a.activity_type) == "strength" else None
         if ctx:
             streams = out["fit"].get("streams") if out["fit"] else None
-            out["coach"] = coach_notes.session(ctx, a.id, streams, out["garmin_summary"])
+            out["coach"] = coach_notes.session(ctx, a.id, streams, out["garmin_summary"], named=label is not None)
         day_plans = planner_store.reconcile(session, a.source_id, planner_store.listing(session, a.local_date, a.local_date), clock.today(), clock.now())
         out["planned"] = next((p for p in day_plans if (p.get("activity") or {}).get("id") == a.id), None)
         if activity_family(a.activity_type) == "strength":
-            label = strength.get(session, a)
             if label and out["fit"] and out["fit"].get("streams"):
                 s = out["fit"]["streams"]
                 label["segments"] = exercises.segment(s.get("t") or [], s.get("heart_rate") or [], label["blocks"], ctx["zones"] if ctx else None)

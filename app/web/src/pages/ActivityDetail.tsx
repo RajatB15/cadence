@@ -621,19 +621,34 @@ const SPLIT_PRIORITY = [
 function Strength({ d }: { d: ActivityDetail }) {
   const fitSets = (d.fit?.messages.set_mesgs ?? []).filter((s) => s.set_type !== "rest");
   // Garmin reports a summarized set's duration in milliseconds; the table formats durations as seconds.
-  const summarySets = ((d.garmin_summary?.summarizedExerciseSets as Json[] | undefined) ?? []).map((s) =>
-    typeof s.duration === "number" ? { ...s, duration: s.duration / 1000 } : s,
-  );
+  const summarySets: Json[] = ((d.garmin_summary?.summarizedExerciseSets as Json[] | undefined) ?? []).map((s) => ({
+    ...s,
+    ...(typeof s.duration === "number" ? { duration: s.duration / 1000 } : {}),
+    ...(s.category === "UNKNOWN" ? { category: "Not named on the watch" } : {}),
+  }));
+  const watchUnnamed = summarySets.length > 0 && summarySets.every((s) => !s.category || s.category === "Not named on the watch");
+  const named = (d.strength?.label?.blocks.length ?? 0) > 0;
+  const sum = (key: string) => summarySets.reduce((t, s) => t + (typeof s[key] === "number" ? (s[key] as number) : 0), 0);
   const workouts = Array.isArray(d.workouts) ? d.workouts : [];
   if (!fitSets.length && !summarySets.length && !workouts.length) return null;
   return (
     <Section icon={<Rows3 size={22} />} title="Sets & exercises">
       <div className="space-y-8">
-        {summarySets.length > 0 && (
+        {summarySets.length > 0 && named && watchUnnamed ? (
           <div>
-            <p className="eyebrow mb-3">By exercise (Garmin)</p>
-            <RecordTable rows={summarySets} />
+            <p className="eyebrow mb-3">Counted by the watch</p>
+            <p className="num text-paper">
+              {sum("sets")} sets · {sum("reps")} reps{sum("duration") > 0 && ` · ${formatDuration(sum("duration"))} working`}
+            </p>
+            <p className="mt-1 text-sm text-dim">The watch didn't record which exercises these were; the exercises you named are listed with the class above.</p>
           </div>
+        ) : (
+          summarySets.length > 0 && (
+            <div>
+              <p className="eyebrow mb-3">By exercise (Garmin)</p>
+              <RecordTable rows={summarySets} />
+            </div>
+          )
         )}
         {fitSets.length > 0 && (
           <div>

@@ -142,3 +142,10 @@ def test_screenshot_reads_with_tesseract_when_vision_is_absent(env, monkeypatch)
     assert r.status_code == 200, r.text
     assert [b["name"] for b in r.json()["blocks"]] == ["Get Stronger", "Core"]
     assert client.post("/api/strength/ocr", content=b"not an image", headers={**MUTATE, "Content-Type": "image/png"}).status_code == 400
+
+
+def test_coach_only_flags_unnamed_exercises_until_you_name_them():
+    unknown = {"summarizedExerciseSets": [{"category": "UNKNOWN", "sets": 8, "reps": 80}]}
+    c = ctx([act(500, D0 + timedelta(days=40), (3000, 600, 0, 0, 0), family="strength", load=60, distance_m=None)])
+    flagged = lambda **kw: any(n["id"] == "strength_labels" for n in notes.session(c, 500, None, unknown, **kw)["notes"])  # noqa: E731
+    assert flagged() and not flagged(named=True)

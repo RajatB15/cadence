@@ -129,7 +129,7 @@ def verdicts(c: dict | None) -> dict[int, dict]:
 # ---- per session ---------------------------------------------------------------------
 
 
-def session(c: dict, activity_id: int, streams: dict | None = None, summary: dict | None = None) -> dict | None:  # noqa: C901
+def session(c: dict, activity_id: int, streams: dict | None = None, summary: dict | None = None, named: bool = False) -> dict | None:  # noqa: C901
     a = c["act_by_id"].get(activity_id)
     if a is None:
         return None
@@ -329,7 +329,7 @@ def session(c: dict, activity_id: int, streams: dict | None = None, summary: dic
                                   "Fastest 5 km+ run on record" if not quicker else f"Fastest 5 km+ run since {fmt_day(quicker[-1].day)}",
                                   f"{fmt_pace(1000 / a.speed_mps)}/km grade-adjusted average."))
 
-    if a.family == "strength" and summary:
+    if a.family == "strength" and summary and not named:  # `named`: the user saved this session's exercises in Cadence
         sets = summary.get("summarizedExerciseSets") or []
         if sets and all(x.get("category") in (None, "UNKNOWN", "WARM_UP") for x in sets):
             notes.append(note("strength_labels", "info", "Missing data", "Exercises aren't named",
