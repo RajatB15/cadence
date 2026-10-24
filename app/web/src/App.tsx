@@ -3,6 +3,7 @@ import { lazy, Suspense } from "react";
 import { BrowserRouter, Route, Routes } from "react-router-dom";
 import { LoadingBlock, Shell } from "./components/Shell";
 import { ActivitiesPage } from "./pages/Activities";
+import { GoalsPage } from "./pages/Goals";
 import { OverviewPage } from "./pages/Overview";
 import { PlanPage } from "./pages/Plan";
 import { ReviewPage } from "./pages/Review";
@@ -15,6 +16,7 @@ const WeightPage = lazy(() => import("./pages/Weight").then((m) => ({ default: m
 const MetricPage = lazy(() => import("./pages/Metric").then((m) => ({ default: m.MetricPage })));
 const ActivityPage = lazy(() => import("./pages/ActivityDetail").then((m) => ({ default: m.ActivityPage })));
 const CoachPage = lazy(() => import("./pages/Coach").then((m) => ({ default: m.CoachPage })));
+const LabPage = lazy(() => import("./pages/Lab").then((m) => ({ default: m.LabPage })));
 const ScorePage = lazy(() => import("./pages/Score").then((m) => ({ default: m.ScorePage })));
 
 const queryClient = new QueryClient({
@@ -59,6 +61,15 @@ export function App() {
               }
             />
             <Route path="plan" element={<PlanPage />} />
+            <Route path="goals" element={<GoalsPage />} />
+            <Route
+              path="lab"
+              element={
+                <Suspense fallback={<LoadingBlock height={640} />}>
+                  <LabPage />
+                </Suspense>
+              }
+            />
             <Route path="review" element={<ReviewPage />} />
             <Route path="activities" element={<ActivitiesPage />} />
             <Route

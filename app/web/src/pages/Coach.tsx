@@ -59,7 +59,10 @@ export function CoachPage() {
             Train like an <em className="text-gold">athlete.</em>
           </>
         }
-      />
+      >
+        <Link to="/goals" className="pop pop-ghost">Goals</Link>
+        <Link to="/lab" className="pop pop-ghost">Lab</Link>
+      </PageHeader>
       <SectionNav />
       <div className="space-y-6">
         <Readiness d={d} />
@@ -1019,6 +1022,11 @@ function Methods() {
         <li><b className="text-paper">Intensity balance</b>: heart-rate zone time on runs, rides and swims (walks excluded), plus the share of hard sessions; sprint sessions count as hard by anaerobic training effect.</li>
         <li><b className="text-paper">Aerobic efficiency</b>: grade-adjusted speed per beat above resting HR on non-interval runs ≥ 3 km (running VO₂ is linear in speed, and %VO₂ reserve tracks %HR reserve), shown as pace at your median running HR; Theil–Sen trend.</li>
         <li><b className="text-paper">Heart-rate drift and durability</b>: Pa:HR decoupling on grade-adjusted pace (Minetti), first vs second half after a 10-minute warm-up; late-run fade compares the last 20 minutes of 75-minute-plus runs with minutes 10–30.</li>
+        <li><b className="text-paper">Prediction accuracy</b> (Lab): predicted vs actual load for your planned sessions, plus a walk-forward test where every past session is predicted only from the ones before it. Error is judged on the log of actual ÷ predicted, with a t-interval (Altman &amp; Bland 1983); a bias is only called with 10+ sessions and an interval that excludes 1, and then predictions are scaled by that ratio shrunk by n/(n+10) and capped at 0.7–1.4.</li>
+        <li><b className="text-paper">Personal fitness model</b> (Lab): the Banister impulse-response model with τ1 and τ2 found by grid search on weekly aerobic efficiency (Banister 1975; Calvert 1976; Hellard et al. 2006). Used only if it predicts held-out weeks 5% better than the standard 42/7-day constants and the plain average; plausible ranges come from an F-test with the sample size shrunk for autocorrelation.</li>
+        <li><b className="text-paper">Repeated routes</b> (Lab): sessions are matched from Garmin's summary (start/end points, bounding box, distance within 7%, climb), then compared on efficiency with a Theil–Sen trend. Weather is shown as context and not adjusted for.</li>
+        <li><b className="text-paper">What-ifs</b> (Lab): the same fitness/fatigue and acute:chronic model rerun with one session skipped, halved or kept easy at your own easy load per minute. Model output, not a measurement; later choices are not re-simulated.</li>
+        <li><b className="text-paper">Goals</b>: run times use the critical-speed model with a Monte Carlo over today's level and its Theil–Sen trend (halved, capped at +10%); ride, swim and runs without a fit use your best recent session and a labelled heuristic on the monthly gain still needed; distance goals use a +10% weekly long-session ladder with recovery weeks; weight goals use the trend line against 0.25–1% of body weight a week.</li>
         <li><b className="text-paper">Sleep</b>: your need is where more sleep stops lifting overnight HRV (8 h until your data shows a plateau); regularity is the Sleep Regularity Index from onset and wake times.</li>
       </ul>
     </details>

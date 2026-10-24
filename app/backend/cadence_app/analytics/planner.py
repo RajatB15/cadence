@@ -250,6 +250,11 @@ def _similar(c: dict, sport: str, kind: str, heavy: bool | None = None, effort: 
     return out
 
 
+def _calibration(c: dict, sport: str) -> dict | None:
+    cal = c.get("calibration") or {}
+    return cal.get(sport) or cal.get("all")
+
+
 def predict(c: dict, model: dict, day: date, option: dict, planned: list[dict]) -> dict:
     """What this option does: load, strain, tomorrow's fitness/form/readiness, recovery and what it builds."""
     sport, kind = option["sport"], option["kind"]
@@ -267,7 +272,11 @@ def predict(c: dict, model: dict, day: date, option: dict, planned: list[dict]) 
             if how == "similar":
                 load, basis = est, label
                 break
-    hist = [a.load for a in similar]
+    raw_load = load
+    cal = _calibration(c, sport)
+    scale = cal["factor"] if cal else 1.0
+    load *= scale  # a bias in your own realised plans (analytics/accuracy.py), shrunk and capped
+    hist = [a.load * scale for a in similar]
     te = [a.aerobic_te for a in similar if a.aerobic_te]
     as_of = c["as_of"]
 
@@ -291,6 +300,8 @@ def predict(c: dict, model: dict, day: date, option: dict, planned: list[dict]) 
     return {
         "weather": outlook,
         "load": round(load),
+        "load_raw": round(raw_load),
+        "calibration": {"factor": cal["factor"], "n": cal["n"]} if cal else None,
         "load_range": [round(min(hist)), round(max(hist))] if len(hist) >= 3 else None,
         "similar_n": len(similar),
         "similar_load": round(median(hist)) if hist else None,

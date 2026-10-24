@@ -30,7 +30,10 @@ export function PlanPage() {
   const p = w.projection;
   return (
     <>
-      <PageHeader eyebrow="Next 7 days" title={<>Plan your <em className="text-gold">week.</em></>} />
+      <PageHeader eyebrow="Next 7 days" title={<>Plan your <em className="text-gold">week.</em></>}>
+        <Link to="/goals" className="pop pop-ghost">Goals</Link>
+        <Link to="/lab?tab=accuracy" className="pop pop-ghost">How accurate?</Link>
+      </PageHeader>
       {p && (
         <p className="-mt-6 mb-8 text-sm text-mute">
           Following the plan (~{p.weekly_load} load a week) takes your fitness from <span className="num text-sky">{p.fitness_now.toFixed(0)}</span> to about{" "}

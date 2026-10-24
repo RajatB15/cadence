@@ -1,6 +1,6 @@
 import * as Tooltip from "@radix-ui/react-tooltip";
 import { clsx } from "clsx";
-import { Activity, Archive, CalendarCheck, Gauge, LayoutGrid, Scale, Settings2 } from "lucide-react";
+import { Activity, Archive, CalendarCheck, FlaskConical, Flag, Gauge, LayoutGrid, Scale, Settings2 } from "lucide-react";
 import { motion } from "motion/react";
 import type { ReactNode } from "react";
 import { NavLink, Outlet, useLocation, useMatch } from "react-router-dom";
@@ -13,7 +13,9 @@ const NAV = [
   { to: "/plan", label: "Plan", icon: CalendarCheck },
   { to: "/weight", label: "Weight", icon: Scale },
   { to: "/activities", label: "Activities", icon: Activity },
-  // The phone tab bar has room for six: the Vault stays one tap away in Settings.
+  // The phone tab bar has room for six: Goals and the Lab open from Plan and Coach, the Vault from Settings.
+  { to: "/goals", label: "Goals", icon: Flag, desktopOnly: true },
+  { to: "/lab", label: "Lab", icon: FlaskConical, desktopOnly: true },
   { to: "/vault", label: "Vault", icon: Archive, desktopOnly: true },
   { to: "/settings", label: "Settings", icon: Settings2 },
 ];

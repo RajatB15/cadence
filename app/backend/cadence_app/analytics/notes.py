@@ -927,3 +927,136 @@ def brief(c: dict) -> dict:
         "fix": [f for f in findings if f["severity"] in ("alert", "warn")][:3],
         "wins": [f for f in findings if f["severity"] == "good"][:2],
     }
+
+
+# ---- lab: prediction accuracy, personal fitness model, repeated routes, what-ifs ----------------------------
+
+
+def accuracy_headline(report: dict) -> dict:
+    """One honest sentence about how far to trust the planner's load predictions."""
+    plans, back = report["plans"]["overall"], report["backtest"]
+    if plans.get("enough"):
+        src, n, basis = plans, plans["n"], "your planned sessions"
+    elif back.get("enough"):
+        src, n, basis = back, back["n"], "a walk-forward test on your history"
+    else:
+        return {"tone": "info", "text": "Not enough sessions yet to score the load predictions. Plan sessions on the Plan page and do them; each one adds a data point."}
+    ci = src["ratio_ci"]
+    text = f"Typical error {src['typical_error_pct']}% (n={n}, {basis}); {src['within_25_pct']}% of sessions landed within 25% of the prediction."
+    if src["biased"]:
+        text += f" It runs {'low' if src['bias_pct'] > 0 else 'high'} by about {abs(src['bias_pct'])}% (interval {ci[0]:.2f}–{ci[1]:.2f}× actual/predicted)."
+    elif src["n"] >= report["min_bias_n"]:
+        text += " No consistent over- or under-prediction."
+    else:
+        text += f" With fewer than {report['min_bias_n']} sessions nothing is corrected."
+    return {"tone": "warn" if src["biased"] else "good" if src["typical_error_pct"] <= 15 else "info", "text": text}
+
+
+def banister_headline(fit: dict) -> dict:
+    if not fit.get("valid"):
+        return {"tone": "info", "text": f"Your personal fitness model needs {fit['missing']}."}
+    r = fit["region"]
+    span = f"fitness builds over about {fit['tau1']} days and fatigue fades in about {fit['tau2']} (plausible range {r['tau1'][0]}–{r['tau1'][1]} and {r['tau2'][0]}–{r['tau2'][1]})"
+    if fit["adopted"]:
+        return {"tone": "good", "text": f"In your data, {span}; that beat the standard 42/7-day constants on held-out weeks by {fit['cv']['gain_vs_default_pct']:.0f}%."}
+    if fit.get("consistent_with_default"):
+        return {"tone": "info", "text": f"Your data are consistent with the standard 42/7-day constants, so those stay ({span} was the best fit, but not clearly better)."}
+    return {"tone": "info", "text": f"A personal fit ({span}) did not clearly beat the standard constants on held-out weeks, so the standard 42/7 stay in use."}
+
+
+def route_notes(route: dict) -> list[dict]:
+    out = []
+    latest, vs = route["latest"], route["latest"]["vs_prior"]
+    if latest.get("pr") and route["n"] >= 4:
+        out.append(note("route_pr", "good", "route", "Fastest time on this route", f"{fmt_pace(latest['time_s'] / route['distance_km'])}/km over {route['distance_km']} km, best of {route['n']} efforts."))
+    if vs["ef_pct"] is not None and abs(vs["ef_pct"]) >= 2:
+        better = vs["ef_pct"] > 0
+        hot = vs["temperature"] is not None and abs(vs["temperature"]) >= 5
+        detail = f"Efficiency {'+' if better else ''}{vs['ef_pct']:.1f}% against your previous efforts here (speed per beat above resting HR)."
+        if hot:
+            detail += f" It was {abs(vs['temperature']):.0f}°C {'warmer' if vs['temperature'] > 0 else 'cooler'} than usual, which is context and not adjusted for."
+        out.append(note("route_effort", "good" if better else "info", "route", "Better value for the heart rate" if better else "Less speed for the heart rate", detail))
+    t = route.get("trend")
+    if t and t["significant"]:
+        up = t["change_pct"] > 0
+        out.append(note("route_trend", "good" if up else "warn", "route", f"Efficiency on this route is {'up' if up else 'down'} {abs(t['change_pct']):.1f}%",
+                        f"Theil–Sen over {t['n']} efforts across {t['span_days']} days; 95% interval {t['ci_pct'][0]:+.1f}% to {t['ci_pct'][1]:+.1f}%."))
+    return out
+
+
+def whatif_headline(r: dict) -> str:
+    e, nm = r["end"], r.get("next_morning")
+    n = len(r["edits"])
+    what = "that session" if n == 1 else f"those {n} sessions"
+    parts = [f"Had you changed {what}, the model puts fitness {abs(e['fitness_delta']):.1f} points {'lower' if e['fitness_delta'] < 0 else 'higher'}"
+             + (f" ({abs(e['fitness_delta_pct']):.1f}%)" if e.get("fitness_delta_pct") is not None else "")]
+    if nm:
+        parts.append(f"and the next morning's form {abs(nm['form_delta']):.1f} points {'fresher' if nm['form_delta'] > 0 else 'more tired'}")
+    over_b, over_a = r["acwr_days_over"]
+    if over_b != over_a:
+        parts.append(f"with {over_b} → {over_a} days above a 1.3 acute:chronic ratio")
+    return ", ".join(parts) + ". Model output, not a measurement."
+
+
+# ---- goals -------------------------------------------------------------------------------------------
+
+
+def _clock_time(seconds: float) -> str:
+    h, rem = divmod(round(seconds), 3600)
+    m, s = divmod(rem, 60)
+    return f"{h}:{m:02d}:{s:02d}" if h else f"{m}:{s:02d}"
+
+
+def _pct_band(p: float) -> str:
+    """A Monte Carlo share is never certain: cap what is shown."""
+    return "over 95%" if p >= 0.95 else "under 5%" if p <= 0.05 else f"about {round(p * 100)}%"
+
+
+def goal_headline(a: dict) -> dict:
+    """One plain sentence on where a goal stands; the numbers behind it travel in the assessment."""
+    state = a.get("state")
+    if state == "closed":
+        return {"tone": "info", "text": "Achieved." if a["status"] == "achieved" else "Dropped."}
+    if state in ("no_data", "no_basis"):
+        return {"tone": "info", "text": a.get("reason") or "Not enough data yet."}
+    if a.get("overdue"):
+        return {"tone": "warn", "text": "The goal date has passed. Mark it achieved, move the date or drop it."}
+    kind, out = a["kind"], a.get("outlook")
+    if kind == "weight":
+        gap = abs(a["gap_kg"])
+        if a.get("achieved_hint"):
+            return {"tone": "good", "text": f"The trend is at {a['current_kg']} kg, at or past the {a['target_kg']:g} kg target."}
+        text = f"{gap:.1f} kg to go from a trend of {a['current_kg']} kg."
+        req = a.get("required")
+        if req and req["wrong_way"]:
+            return {"tone": "warn", "text": text + " By the date you set, the weight would have to move the other way; check the target."}
+        if req and req["too_fast"]:
+            return {"tone": "warn", "text": text + f" That date needs {abs(req['pct_wk']):.1f}% of body weight a week, faster than is usually compatible with training well."}
+        if a.get("rate_flag") == "wrong_way":
+            return {"tone": "warn", "text": text + " The trend is currently moving away from it."}
+        if a.get("rate_flag") == "too_fast":
+            return {"tone": "warn", "text": text + f" The current rate ({a['rate_pct_wk']:+.1f}%/wk) is faster than is usually compatible with training well."}
+        if out:
+            return {"tone": "good" if out["band"] in ("likely", "plausible") else "warn", "text": text + f" At the current rate that is {out['band']} by the date."}
+        return {"tone": "info", "text": text + (f" At a steady 0.5%/wk that is around {fmt_day(a['steady'])}." if a.get("steady") else "")}
+    if kind == "distance":
+        got = a.get("longest_recent")
+        if a.get("achieved_hint"):
+            return {"tone": "good", "text": f"You have already covered {a['spec']['distance_m'] / 1000:g} km in one session."}
+        text = f"Longest recent session {got['distance_m'] / 1000:.1f} km." if got else ""
+        if a.get("ladder"):
+            text += f" A +10%/week ladder gets there in about {a['ladder']['weeks_needed']} weeks (earliest {fmt_day(a['earliest'])})."
+        if out:
+            text += f" That is {out['band']} by your date ({out['spare_weeks']:+.0f} weeks spare)."
+        return {"tone": "good" if out and out["band"] == "likely" else "warn" if out and out["band"] == "unlikely" else "info", "text": text.strip()}
+    now_s, target = a.get("current_s"), a["spec"].get("target_s")
+    if now_s is None:
+        return {"tone": "info", "text": a.get("reason") or "Not enough data yet."}
+    label = a["spec"]["label"]
+    text = f"Today's level points to {_clock_time(now_s)} for {label} ({a['basis']})."
+    proj = a.get("projected")
+    if proj and a.get("days_left") is not None:
+        text += f" By the date: {_clock_time(proj['p10_s'])}–{_clock_time(proj['p90_s'])} (middle 80%)."
+    if target and out:
+        text += f" Target {_clock_time(target)}: {out['band']}" + (f" ({_pct_band(out['probability'])})" if out.get("probability") is not None else " (a heuristic on the gain still needed)") + "."
+    return {"tone": "good" if out and out["band"] in ("likely",) else "warn" if out and out["band"] == "unlikely" else "info", "text": text}

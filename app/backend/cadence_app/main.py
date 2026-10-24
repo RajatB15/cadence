@@ -16,8 +16,13 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from cadence_app import backup, days, journal, ocr, planner_store, profile as profile_store, push, strength, weather, weightlog
+from cadence_app import backup, days, goal_store, journal, ocr, planner_store, profile as profile_store, push, strength, weather, weightlog
+from cadence_app.analytics import accuracy as accuracy_analytics
+from cadence_app.analytics import banister as banister_analytics
 from cadence_app.analytics import exercises
+from cadence_app.analytics import goals as goal_analytics
+from cadence_app.analytics import routes as route_analytics
+from cadence_app.analytics import whatif as whatif_analytics
 from cadence_app.analytics import body as body_analytics
 from cadence_app.analytics import plan as training_plan
 from cadence_app.analytics import planner as session_planner
@@ -52,7 +57,6 @@ from cadence_app.sync import latest_runs, run_demo_sync, utcnow
 
 SAFE_METHODS = {"GET", "HEAD", "OPTIONS"}
 ALLOWED_HOSTS = ["127.0.0.1", "localhost"]
-WEIGHT_GOAL_KEY = "weight_goal_kg"
 
 # higher_is_better: None means context-dependent.
 METRICS: dict[str, dict] = {
@@ -110,6 +114,29 @@ class TrainingGoalRequest(BaseModel):
     distance: Literal["5k", "10k", "half", "marathon"] | None = None
     date: RaceDate | None = None
     target_s: int | None = Field(default=None, ge=600, le=8 * 3600)
+
+
+class GoalRequest(BaseModel):
+    kind: Literal["race", "performance", "distance", "weight"]
+    sport: Literal["run", "ride", "swim"] | None = None
+    title: str | None = Field(default=None, max_length=120)
+    date: RaceDate | None = None
+    distance_m: float | None = Field(default=None, gt=0)
+    label: str | None = Field(default=None, max_length=40)
+    target_s: int | None = Field(default=None, ge=60, le=72 * 3600)
+    speed_kmh: float | None = Field(default=None, gt=0, le=100)
+    target_kg: float | None = Field(default=None, ge=30, le=300)
+
+
+class GoalPatch(BaseModel):
+    title: str | None = Field(default=None, max_length=120)
+    date: RaceDate | None = None
+    distance_m: float | None = Field(default=None, gt=0)
+    label: str | None = Field(default=None, max_length=40)
+    target_s: int | None = Field(default=None, ge=60, le=72 * 3600)
+    speed_kmh: float | None = Field(default=None, gt=0, le=100)
+    target_kg: float | None = Field(default=None, ge=30, le=300)
+    status: Literal["active", "achieved", "dropped"] | None = None
 
 
 class JournalDayRequest(BaseModel):
@@ -689,8 +716,17 @@ def create_app(
         blocks = exercises.parse(body.text)
         return strength.view(body.text, blocks)
 
+    def _plan_history(session: Session, source_id: str) -> list[dict]:
+        today = clock.today()
+        return planner_store.reconcile(
+            session, source_id, planner_store.listing(session, date(2000, 1, 1), today + timedelta(days=planner_store.HORIZON_DAYS)), today, clock.now()
+        )
+
     def _plan_options(session: Session, ctx: dict, day: date, sport: str, strength_text: str | None = None) -> list[dict]:
         today = clock.today()
+        source_id = _active_source(session)
+        # A bias in your own realised plans corrects new predictions (see analytics/accuracy.py).
+        ctx["calibration"] = accuracy_analytics.calibration(accuracy_analytics.score_plans(_plan_history(session, source_id)))
         start, end = planner_store.window(today)
         planned = planner_store.listing(session, start, end + timedelta(days=7))
         if sport == "run":
@@ -948,15 +984,8 @@ def create_app(
 
     @app.put("/api/settings/weight-goal")
     def set_weight_goal(body: WeightGoalRequest, session: Session = Depends(get_session)) -> dict:
-        existing = session.get(AppSetting, WEIGHT_GOAL_KEY)
-        if body.goal_kg is None:
-            if existing:
-                session.delete(existing)
-        elif existing:
-            existing.value = str(body.goal_kg)
-        else:
-            session.add(AppSetting(key=WEIGHT_GOAL_KEY, value=str(body.goal_kg)))
-        session.commit()
+        today = clock.today()
+        goal_store.set_weight_target(session, body.goal_kg, _weight_summary(session, today).latest_trend_kg, today, clock.now())
         return {"goal_kg": body.goal_kg}
 
     @app.get("/api/journal")
@@ -1038,13 +1067,118 @@ def create_app(
     @app.put("/api/settings/goal")
     def set_training_goal(body: TrainingGoalRequest, session: Session = Depends(get_session)) -> dict:
         if body.distance is None or body.date is None:
-            insights_service.save_goal(session, None)
+            goal_store.set_primary_race(session, None, clock.today(), clock.now())
             return {"goal": None}
         if body.date < clock.today():
             raise HTTPException(400, "Goal date is in the past")
         goal = {"distance": body.distance, "date": body.date, "target_s": body.target_s}
-        insights_service.save_goal(session, goal)
+        goal_store.set_primary_race(session, goal, clock.today(), clock.now())
         return {"goal": insights_service._goal_dict(goal)}  # pylint: disable=protected-access
+
+    # ---- goals ----
+
+    @app.get("/api/goals")
+    def goals_list(session: Session = Depends(get_session)) -> dict:
+        today = clock.today()
+        source_id = _active_source(session)
+        ctx = insights_service.context(session, source_id, today)
+        readings = _weight_readings(session)
+        items = []
+        for g in goal_store.listing(session):
+            if g["status"] != "active":
+                closed = {**goal_analytics.fields(g, today), "state": "closed"}
+                items.append({**closed, "headline": coach_notes.goal_headline(closed)})
+                continue
+            w = goal_analytics.weight_inputs(weight_analytics.summarize(readings, today, g["spec"].get("target_kg"))) if g["kind"] == "weight" else None
+            a = goal_analytics.assess(g, ctx, today, w)
+            items.append({**a, "headline": coach_notes.goal_headline(a)})
+        plan_goal = goal_store.primary_run_goal(session, today)
+        return {"today": today, "goals": items, "plan_goal_id": plan_goal["id"] if plan_goal else None,
+                "summary": goal_analytics.summarise_set(items), "has_training": ctx is not None}
+
+    @app.post("/api/goals", status_code=201)
+    def goals_create(body: GoalRequest, session: Session = Depends(get_session)) -> dict:
+        today = clock.today()
+        start = _weight_summary(session, today).latest_trend_kg if body.kind == "weight" else None
+        try:
+            return goal_store.create(session, body.model_dump(), today, clock.now(), start)
+        except goal_store.GoalError as err:
+            raise HTTPException(400, str(err)) from err
+
+    @app.patch("/api/goals/{goal_id}")
+    def goals_update(goal_id: int, body: GoalPatch, session: Session = Depends(get_session)) -> dict:
+        try:
+            out = goal_store.update(session, goal_id, body.model_dump(exclude_unset=True), clock.today(), clock.now())
+        except goal_store.GoalError as err:
+            raise HTTPException(400, str(err)) from err
+        if out is None:
+            raise HTTPException(404, "Not found")
+        return out
+
+    @app.delete("/api/goals/{goal_id}")
+    def goals_delete(goal_id: int, session: Session = Depends(get_session)) -> dict:
+        if not goal_store.delete(session, goal_id):
+            raise HTTPException(404, "Not found")
+        return {"deleted": True}
+
+    # ---- lab: how far to trust the models, and what-ifs ----
+
+    @app.get("/api/lab/accuracy")
+    def lab_accuracy(session: Session = Depends(get_session)) -> dict:
+        ctx = insights_service.context(session, _active_source(session), clock.today())
+        if ctx is None:
+            return {"has_data": False}
+        rep = accuracy_analytics.report(ctx, _plan_history(session, _active_source(session)))
+        return {"has_data": True, **rep, "headline": coach_notes.accuracy_headline(rep)}
+
+    @app.get("/api/lab/model")
+    def lab_model(session: Session = Depends(get_session)) -> dict:
+        ctx = insights_service.context(session, _active_source(session), clock.today())
+        if ctx is None:
+            return {"has_data": False}
+        fit_ = insights_service.banister_fit(ctx)
+        out = banister_analytics.public(fit_)
+        if fit_["valid"]:
+            first = fit_["series"][0]["day"]
+            out["curve"] = banister_analytics.curve(fit_, ctx["load"], ctx["as_of"], step=3, since=first)
+        return {"has_data": True, **out, "performance_label": "Aerobic efficiency (weekly median)", "headline": coach_notes.banister_headline(fit_)}
+
+    @app.get("/api/lab/routes")
+    def lab_routes(session: Session = Depends(get_session)) -> dict:
+        ctx = insights_service.context(session, _active_source(session), clock.today())
+        if ctx is None:
+            return {"has_data": False}
+        out = route_analytics.build(ctx["acts"], ctx["geo"], ctx["eff"], ctx["weather_runs"], ctx["as_of"])
+        for r in out["routes"]:
+            r["notes"] = coach_notes.route_notes(r)
+        return {"has_data": True, **out, "routes": out["routes"][:12]}
+
+    @app.get("/api/lab/whatif")
+    def lab_whatif(session: Session = Depends(get_session)) -> dict:
+        ctx = insights_service.context(session, _active_source(session), clock.today())
+        if ctx is None:
+            return {"has_data": False}
+        fit_ = insights_service.banister_fit(ctx)
+        out = whatif_analytics.suggestions(ctx, fit_)
+        for b in out["bundles"].values():
+            b["headline"] = coach_notes.whatif_headline({**b, "edits": range(b["n"]), "next_morning": None})
+        return {"has_data": True, **out, "actions": whatif_analytics.ACTIONS}
+
+    @app.get("/api/lab/whatif/replay")
+    def lab_whatif_replay(edit: list[str] = Query(..., max_length=40), session: Session = Depends(get_session)) -> dict:
+        ctx = insights_service.context(session, _active_source(session), clock.today())
+        if ctx is None:
+            raise HTTPException(409, "Sync some training first")
+        edits = []
+        for item in edit[:20]:
+            aid, _, action = item.partition(":")
+            if not aid.isdigit() or action not in whatif_analytics.ACTIONS:
+                raise HTTPException(400, "Use edit=<activity id>:<skip|easy|half>")
+            edits.append({"activity_id": int(aid), "action": action})
+        result = whatif_analytics.compare(ctx, edits, banister=insights_service.banister_fit(ctx))
+        if not result["valid"]:
+            raise HTTPException(400, "None of those sessions can be replayed (only sessions from the last 8 weeks with a training load)")
+        return {**result, "headline": coach_notes.whatif_headline(result)}
 
     @app.get("/{path:path}", include_in_schema=False)
     def web(path: str) -> Response:
@@ -1073,8 +1207,7 @@ def _body_dict(weight_kg: float, prof: dict | None, today: date) -> dict | None:
 
 
 def _goal(session: Session) -> float | None:
-    setting = session.get(AppSetting, WEIGHT_GOAL_KEY)
-    return float(setting.value) if setting else None
+    return goal_store.weight_target(session)
 
 
 def _active_source(session: Session) -> str:
@@ -1082,14 +1215,18 @@ def _active_source(session: Session) -> str:
     return "garmin" if garmin and garmin.last_synced_at else "demo"
 
 
-def _weight_summary(session: Session, today: date) -> weight_analytics.WeightSummary:
+def _weight_readings(session: Session) -> list[tuple[date, float]]:
     rows = session.execute(
         select(WeightReading.local_date, func.avg(WeightReading.weight_kg))
         .where(WeightReading.source_id.in_((_active_source(session), weightlog.SOURCE_ID)))
         .group_by(WeightReading.local_date)
         .order_by(WeightReading.local_date)
     ).all()
-    return weight_analytics.summarize([(d, w) for d, w in rows], today, _goal(session))
+    return [(d, w) for d, w in rows]
+
+
+def _weight_summary(session: Session, today: date) -> weight_analytics.WeightSummary:
+    return weight_analytics.summarize(_weight_readings(session), today, _goal(session))
 
 
 def _raw_meta(raw: vault_model) -> dict:

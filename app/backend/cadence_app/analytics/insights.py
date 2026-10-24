@@ -13,11 +13,13 @@ from statistics import fmean, median, pstdev
 from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
 
+from cadence_app import goal_store
 from cadence_app import journal as journal_store
 from cadence_app import strength as strength_store
 from cadence_app import weather as weather_store
 from cadence_app.activity_types import activity_family
 from cadence_app.analytics import athlete as A
+from cadence_app.analytics import banister as B
 from cadence_app.analytics import habits as H
 from cadence_app.analytics import heat as W
 from cadence_app.analytics import performance as P
@@ -25,14 +27,13 @@ from cadence_app.analytics import plan as training_plan
 from cadence_app.analytics import recovery as R
 from cadence_app.analytics import strain as S
 from cadence_app.garmin import fit, vault
-from cadence_app.models import Activity, ActivityAnalysis, AppSetting, DailyMetric, DayHeartHistogram, RawResponse, WeightReading
+from cadence_app.models import Activity, ActivityAnalysis, DailyMetric, DayHeartHistogram, RawResponse, WeightReading
 from cadence_app.sync import utcnow
 
 log = logging.getLogger(__name__)
 ANALYSIS_VERSION = 2
 MIN_ANALYSIS_S = 10 * 60
 SEVERITY_ORDER = {"alert": 0, "warn": 1, "info": 2, "good": 3}
-GOAL_KEY = "training_goal"
 SPIKE_RATIO = 1.10
 DAY = timedelta(days=1)
 
@@ -82,29 +83,18 @@ def load_acts(session: Session, source_id: str) -> list[A.Act]:
     return acts
 
 
-def load_goal(session: Session) -> dict | None:
-    setting = session.get(AppSetting, GOAL_KEY)
-    if not setting:
-        return None
-    try:
-        raw = json.loads(setting.value)
-        return {"distance": raw["distance"], "date": date.fromisoformat(raw["date"]), "target_s": raw.get("target_s")}
-    except (ValueError, KeyError, TypeError):
-        return None
+GEO_FIELDS = ("startLatitude", "startLongitude", "endLatitude", "endLongitude", "minLatitude", "maxLatitude", "minLongitude", "maxLongitude", "elevationGain")
 
 
-def save_goal(session: Session, goal: dict | None) -> None:
-    existing = session.get(AppSetting, GOAL_KEY)
-    if goal is None:
-        if existing:
-            session.delete(existing)
-    else:
-        value = json.dumps({"distance": goal["distance"], "date": goal["date"].isoformat(), "target_s": goal.get("target_s")})
-        if existing:
-            existing.value = value
-        else:
-            session.add(AppSetting(key=GOAL_KEY, value=value))
-    session.commit()
+def load_geo(session: Session) -> dict[int, dict]:
+    """Activity id → the few summary fields route matching needs (GPS start/end, bounding box, climb)."""
+    summaries = vault.activity_summaries(session)
+    out = {}
+    for aid, record_id in session.execute(select(Activity.id, Activity.source_record_id).where(Activity.source_id == "garmin")):
+        s = summaries.get(record_id)
+        if s and s.get("startLatitude") is not None:
+            out[aid] = {k: s.get(k) for k in GEO_FIELDS}
+    return out
 
 
 def load_weights(session: Session, source_id: str) -> list[tuple[date, float]]:
@@ -302,7 +292,7 @@ def context(session: Session, source_id: str, today: date, now: datetime | None 
         source_id, load_series(session, source_id), load_acts(session, source_id), today,
         analyses=load_analyses(session) if garmin else {},
         zones=hr_zones(session) if garmin else None,
-        goal=load_goal(session),
+        goal=goal_store.primary_run_goal(session, today),
         weights=load_weights(session, source_id),
         strength=strength_labelling(session, today) if garmin else None,
         journal={"behaviours": [journal_store.behaviour_dict(b) for b in journal_store.catalogue(session)],
@@ -311,6 +301,7 @@ def context(session: Session, source_id: str, today: date, now: datetime | None 
         hr_hists=load_hr_histograms(session, today) if garmin else None,
         weather=weather_store.by_activity(session, source_id) if weather_on else None,
         forecast=weather_store.forecast(session, now or utcnow()) if weather_on else None,
+        geo=load_geo(session) if garmin else None,
     )
 
 
@@ -319,7 +310,7 @@ def assemble(
     analyses: dict[int, dict] | None = None, zones: dict | None = None, goal: dict | None = None,
     weights: list[tuple[date, float]] | None = None, strength: dict | None = None, journal: dict | None = None,
     labels: dict[int, dict] | None = None, hr_hists: dict[date, tuple[dict, dict]] | None = None,
-    weather: dict[int, dict] | None = None, forecast: list[dict] | None = None,
+    weather: dict[int, dict] | None = None, forecast: list[dict] | None = None, geo: dict[int, dict] | None = None,
 ) -> dict | None:
     """Pure assembly of the shared context from loaded data (tests build contexts with this directly)."""
     if not series and not acts:
@@ -390,6 +381,7 @@ def assemble(
     c["heat"] = heat_model
     c["weather_runs"] = {aid: {**w, "hot": W.hot(w), "cost_pct": W.cost_pct(heat_model, w)[0]} for aid, w in weather.items()}
     c["forecast"] = forecast or []
+    c["geo"] = geo or {}
     c["utc_offset"] = datetime.now().astimezone().utcoffset() or timedelta(0)
     c["start_hour"] = W.usual_start_hour([a.start_local for a in acts if a.family == "run" and a.start_local and a.day > as_of - timedelta(days=90)])
     c["strain"] = strain_days(c, hr_hists or {})
@@ -398,6 +390,19 @@ def assemble(
     c["strength_content"] = strength_overview(c)
     c["habits"] = habit_insights(c)
     return c
+
+
+_banister_cache: dict[tuple, dict] = {}
+
+
+def banister_fit(c: dict) -> dict:
+    """The personal impulse-response fit on weekly aerobic efficiency; cached while the data are unchanged (it takes ~0.3 s)."""
+    obs = B.weekly_series(c["eff"])
+    key = (c["source_id"], c["as_of"], len(c["eff"]), obs[-1] if obs else None, round(sum(c["load"].values())))
+    if key not in _banister_cache:
+        _banister_cache.clear()
+        _banister_cache[key] = B.fit(c["load"], obs, c["as_of"])
+    return _banister_cache[key]
 
 
 def heavy_lower_days(c: dict) -> set[date]:
@@ -499,7 +504,7 @@ def readiness_now(c: dict, now: datetime | None = None) -> dict | None:
 def build(session: Session, source_id: str, today: date) -> dict:
     ctx = context(session, source_id, today)
     if ctx is None:
-        return {"has_data": False, "goal": _goal_dict(load_goal(session))}
+        return {"has_data": False, "goal": _goal_dict(goal_store.primary_run_goal(session, today))}
     as_of, series, load = ctx["as_of"], ctx["series"], ctx["load"]
     pmc, pmc_by_day = ctx["pmc"], ctx["pmc_by_day"]
     ready_days = [r for d in A.daterange(as_of - timedelta(days=89), as_of) if (r := readiness_on(ctx, d)) is not None]
@@ -541,7 +546,7 @@ def build(session: Session, source_id: str, today: date) -> dict:
         },
         "effects": [e.__dict__ for e in ctx["effects"]],
         "plan": training_plan.weekly_plan(ctx),
-        "goal": _goal_dict(ctx["goal"] or load_goal(session)),
+        "goal": _goal_dict(ctx["goal"] or goal_store.primary_run_goal(session, today)),
         "performance": ctx["performance"],
         "hrv_guided": ctx["hrv_guided"],
         "recovery": ctx["recovery"],

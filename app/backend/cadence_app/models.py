@@ -185,6 +185,23 @@ class ActivityWeather(Base):
     computed_at: Mapped[datetime] = mapped_column(DateTime)
 
 
+class Goal(Base):
+    """A target: a race, a performance, a single-session distance or a weight. Spec is JSON (see goal_store)."""
+
+    __tablename__ = "goals"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    kind: Mapped[str] = mapped_column(String(16))  # race | performance | distance | weight
+    sport: Mapped[str | None] = mapped_column(String(16))  # run | ride | swim; none for weight
+    title: Mapped[str] = mapped_column(String(120))
+    spec: Mapped[str] = mapped_column(Text)
+    target_date: Mapped[date | None] = mapped_column(Date, index=True)
+    status: Mapped[str] = mapped_column(String(12), index=True)  # active | achieved | dropped
+    start_value: Mapped[float | None] = mapped_column(Float)  # weight when the goal was set (progress)
+    created_at: Mapped[datetime] = mapped_column(DateTime)
+    closed_at: Mapped[datetime | None] = mapped_column(DateTime)
+
+
 class StrengthTemplate(Base):
     __tablename__ = "strength_templates"
 

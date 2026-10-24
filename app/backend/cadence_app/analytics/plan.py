@@ -56,7 +56,7 @@ def _goal_phase(goal: dict, ws: date) -> dict | None:
     if race_ws < ws:
         return None
     weeks_out = (race_ws - ws).days // 7
-    taper = GOALS[goal["distance"]]["taper_weeks"]
+    taper = goal.get("taper_weeks") or GOALS[goal["distance"]]["taper_weeks"]  # custom goals (analytics/goals.py) carry their own
     if weeks_out == 0:
         return {"phase": "race", "week_in_block": None, "weeks_to_race": 0}
     if weeks_out <= taper:

@@ -17,7 +17,14 @@ import type {
   DayDetail,
   GarminStatus,
   GoalDistance,
+  GoalInput,
+  GoalsResponse,
+  GoalView,
   Insights,
+  LabAccuracy,
+  LabModel,
+  LabRoutes,
+  LabWhatIf,
   MetricSeries,
   Overview,
   PushStatus,
@@ -27,6 +34,7 @@ import type {
   SyncRun,
   TrainingGoal,
   VaultItemMeta,
+  WhatIfResult,
   WeightResponse,
 } from "./types";
 
@@ -153,6 +161,17 @@ export const api = {
   deleteWeight: (day: string) => request<{ deleted: string }>(`/api/weight/entries/${day}`, { method: "DELETE" }),
   setGoal: (goal: { distance: GoalDistance; date: string; target_s: number | null } | null) =>
     request<{ goal: TrainingGoal | null }>("/api/settings/goal", { method: "PUT", body: JSON.stringify(goal ?? {}) }),
+  goals: () => request<GoalsResponse>("/api/goals"),
+  createGoal: (goal: GoalInput) => request<{ id: number }>("/api/goals", { method: "POST", body: JSON.stringify(goal) }),
+  updateGoal: (id: number, patch: Partial<GoalInput> & { status?: GoalView["status"] }) =>
+    request<{ id: number }>(`/api/goals/${id}`, { method: "PATCH", body: JSON.stringify(patch) }),
+  deleteGoal: (id: number) => request<{ deleted: boolean }>(`/api/goals/${id}`, { method: "DELETE" }),
+  labAccuracy: () => request<LabAccuracy>("/api/lab/accuracy"),
+  labModel: () => request<LabModel>("/api/lab/model"),
+  labRoutes: () => request<LabRoutes>("/api/lab/routes"),
+  labWhatIf: () => request<LabWhatIf>("/api/lab/whatif"),
+  labReplay: (edits: { id: number; action: string }[]) =>
+    request<WhatIfResult>(`/api/lab/whatif/replay?${edits.map((e) => `edit=${e.id}:${e.action}`).join("&")}`),
   sources: () => request<SourceInfo[]>("/api/sources"),
   syncDemo: () => request<SyncRun>("/api/sync/demo", { method: "POST" }),
   garminStatus: () => request<GarminStatus>("/api/garmin/status"),
