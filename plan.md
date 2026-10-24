@@ -130,11 +130,15 @@ Gate: nothing presented as measured that isn't; every formula cited with its sou
 
 Local food log tuned for home-cooked Indian food; no Garmin involvement.
 
-- [x] Personal dish library (`foodlog.py`, tables `food_dishes`/`food_entries`, migration 0012): about 80 starter dishes with rounded typical per-serving values (not measured; to be cross-checked against IFCT 2017), editable, plus your own dishes. Entries copy nutrition at log time.
+- [x] (superseded by the the source site entry below) Personal dish library (`foodlog.py`, tables `food_dishes`/`food_entries`, migration 0012): about 80 starter dishes with rounded typical per-serving values (not measured; to be cross-checked against IFCT 2017), editable, plus your own dishes. Entries copy nutrition at log time.
 - [x] Quick entry for eating out, copy-yesterday, recent dishes first, per-entry spread (home +/-20%, out +/-30%, packaged +/-10%) shown as daily kcal ranges; unlogged days are "not logged", averages need 4 logged days; protein g/kg against the ISSN 2017 reference range.
 - [x] `/api/food*` routes, phone-writable; backend tests in `tests/test_foodlog.py`.
 - [x] Food page and "Log food" chip on Overview (code written, frontend typechecks and unit tests pass for the new files).
 - [ ] Verify the Food page in a browser at desktop and phone widths, then rebuild and restart the service.
+- [x] Food source changed to the food library (2026-10-25, replacing the starter, INDB and IFCT dishes). A personal-use, polite, resumable crawl (`food-data/tools/crawl_library.py`) stores per-100 g values, portions with grams, the full nutrient table, the `verified` flag and the named recipe source for each page. The data lives in the private `cadence-food-data` repo, mounted as the `food-data/` submodule; nothing from it is committed here (this repo is public). `cadence_app/food_import.py` builds `catalogue.json`: drops rows that can't be right, merges alias pages (identical nutrient tables) into one dish with search aliases, keeps portions and the source note. `foodlog.py` loads it, retires the older built-in dishes (entries keep their own copy; edited ones become yours) and keeps your own dishes.
+- [x] Grams are the standard unit: per-100 g nutrition and a weight for every portion; log by portion x count or by grams.
+- Known limits: the source's numbers are calculated from web recipes and marked unverified (spot check vs IFCT 2017: paneer -13%, cooked rice -24%); the app labels them as estimates with their source. IFCT 2017 / INDB are no longer used; re-adding IFCT as a cross-check is possible.
+- [ ] Finish the crawl (about 9,000 pages, several hours), run `food_import`, spot-check the catalogue against IFCT, then restart the service.
 - [ ] Later: intake vs estimated energy use (`analytics/body.py` ranges) and vs training load; edit/deactivate dishes in the UI; LLM text/photo estimates (last stage).
 
 ### Stage 4: Personal Analytics (Ideas 3-6)

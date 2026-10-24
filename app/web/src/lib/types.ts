@@ -1320,6 +1320,20 @@ export interface FoodDish {
   spread_pct: number;
   builtin: boolean;
   active: boolean;
+  source: "library" | "mine";
+  ref_code: string | null;
+  /** Weight of one serving as eaten, in grams. */
+  unit_g: number | null;
+  per_100g: { kcal: number; protein_g: number; carbs_g: number; fat_g: number } | null;
+  basis: "library" | "estimate";
+  /** Where the numbers come from, e.g. the recipe site the source site calculated them from. */
+  note: string | null;
+  /** Other names for the same food, searched alongside the name. */
+  aliases: string[];
+  /** Household portions with their weights; the first is the default serving. */
+  portions: { unit: string; grams: number }[];
+  /** Can be logged by grams (it has a weight). */
+  grams_ok: boolean;
 }
 
 export interface FoodEntry {
@@ -1329,6 +1343,7 @@ export interface FoodEntry {
   dish_id: number | null;
   name: string;
   servings: number;
+  grams: number | null;
   kcal: number;
   protein_g: number | null;
   carbs_g: number | null;
@@ -1366,6 +1381,7 @@ export interface FoodEntryInput {
   meal: Meal;
   dish_id?: number;
   servings?: number;
+  grams?: number;
   eating_out?: boolean;
   name?: string;
   kcal?: number;
@@ -1379,6 +1395,8 @@ export interface FoodDishInput {
   protein_g: number;
   carbs_g: number;
   fat_g: number;
+  /** Weight of one serving in grams, so the dish can also be logged by weight. */
+  grams?: number;
 }
 
 // ---- check-in, recovery and outcomes ------------------------------------------------------
