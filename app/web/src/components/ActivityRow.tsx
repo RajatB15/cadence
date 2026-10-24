@@ -1,5 +1,6 @@
 import { clsx } from "clsx";
-import { ChevronRight } from "lucide-react";
+import { Check, ChevronRight } from "lucide-react";
+import type { ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { VerdictChip } from "./CoachNotes";
 import { formatDuration, formatKm, formatPace, parseDay } from "../lib/format";
@@ -23,7 +24,16 @@ function IntensityStrip({ i }: { i: NonNullable<ActivityItem["intensity"]> }) {
   );
 }
 
-export function ActivityRow({ a, compact = false }: { a: ActivityItem; compact?: boolean }) {
+export function ActivityRow({
+  a,
+  compact = false,
+  selection,
+}: {
+  a: ActivityItem;
+  compact?: boolean;
+  /** When set, the row picks the activity (for grouping into an event) instead of opening it. */
+  selection?: { selected: boolean; toggle: () => void };
+}) {
   const style = activityStyle(a.type, a.family);
   const Icon = style.icon;
   const day = parseDay(a.local_date);
@@ -36,15 +46,28 @@ export function ActivityRow({ a, compact = false }: { a: ActivityItem; compact?:
     !compact && a.training_load != null && { label: "load", value: Math.round(a.training_load).toString() },
   ].filter(Boolean) as { label: string; value: string }[];
 
+  const rowClass = clsx(
+    "group -mx-3 flex w-full items-center gap-4 px-3 text-left transition-colors hover:bg-slate/60",
+    compact ? "py-3.5" : "py-5",
+    selection?.selected && "bg-slate/60",
+  );
+  const Wrap = ({ children }: { children: ReactNode }) =>
+    selection ? (
+      <button type="button" role="checkbox" aria-checked={selection.selected} aria-label={`Select ${a.name}`} onClick={selection.toggle} className={rowClass}>
+        <span className={clsx("grid h-5 w-5 shrink-0 place-items-center border", selection.selected ? "border-lime bg-lime text-ink" : "border-line-strong")}>
+          {selection.selected && <Check size={14} strokeWidth={3} />}
+        </span>
+        {children}
+      </button>
+    ) : (
+      <Link to={`/activities/${a.id}`} className={rowClass}>
+        {children}
+      </Link>
+    );
+
   return (
     <li>
-      <Link
-        to={`/activities/${a.id}`}
-        className={clsx(
-          "group -mx-3 flex items-center gap-4 px-3 transition-colors hover:bg-slate/60",
-          compact ? "py-3.5" : "py-5",
-        )}
-      >
+      <Wrap>
       <div className="w-12 shrink-0 text-center">
         <p className="font-display text-3xl leading-none text-cream">{day.getDate()}</p>
         <p className="eyebrow mt-1 !text-[10px]">
@@ -63,6 +86,7 @@ export function ActivityRow({ a, compact = false }: { a: ActivityItem; compact?:
           {style.label}
           {a.intensity && <IntensityStrip i={a.intensity} />}
           {a.verdict && <VerdictChip v={a.verdict} />}
+          {a.event && <span className="chip !py-0 text-gold" title={`Part of ${a.event.name}`}>{a.event.name}</span>}
         </p>
       </div>
       <dl className="flex gap-5 text-right sm:gap-7">
@@ -73,8 +97,8 @@ export function ActivityRow({ a, compact = false }: { a: ActivityItem; compact?:
           </div>
         ))}
       </dl>
-      <ChevronRight size={16} className="shrink-0 text-dim transition-transform group-hover:translate-x-0.5 group-hover:text-paper" />
-      </Link>
+      {!selection && <ChevronRight size={16} className="shrink-0 text-dim transition-transform group-hover:translate-x-0.5 group-hover:text-paper" />}
+      </Wrap>
     </li>
   );
 }

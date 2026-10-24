@@ -16,7 +16,7 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from cadence_app import backup, days, foodlog, goal_store, journal, ocr, planner_store, profile as profile_store, push, strength, weather, weightlog, wellbeing_store
+from cadence_app import backup, days, events, foodlog, goal_store, journal, ocr, planner_store, profile as profile_store, push, strength, weather, weightlog, wellbeing_store
 from cadence_app.analytics import accuracy as accuracy_analytics
 from cadence_app.analytics import banister as banister_analytics
 from cadence_app.analytics import channels as channels_analytics
@@ -48,6 +48,7 @@ from cadence_app.models import (
     AppSetting,
     DailyMetric,
     DatasetState,
+    Event,
     ReminderDismissal,
     Source,
     SyncRun,
@@ -243,6 +244,19 @@ class ProfileRequest(BaseModel):
     height_cm: float = Field(ge=profile_store.MIN_HEIGHT_CM, le=profile_store.MAX_HEIGHT_CM)
     birth_date: RaceDate
     sex: Literal["male", "female"]
+
+
+class EventCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+    activity_ids: list[int] = Field(min_length=1, max_length=200)
+
+
+class EventRename(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+
+
+class EventLink(BaseModel):
+    activity_ids: list[int] = Field(min_length=1, max_length=200)
 
 
 class StrengthText(BaseModel):
@@ -715,10 +729,11 @@ def create_app(
         ctx = insights_service.context(session, source_id, clock.today())
         verdicts = coach_notes.verdicts(ctx)
         mix = {a.id: i for a in ctx["acts"] if (i := coach_notes.intensity(a))} if ctx else {}
+        member = events.membership(session)
         return {
             "total": len(rows),
             "families": counts,
-            "items": [_activity_dict(a, verdicts, mix) for a in rows[offset : offset + limit]],
+            "items": [_activity_dict(a, verdicts, mix, member) for a in rows[offset : offset + limit]],
         }
 
     @app.get("/api/activities/summary")
@@ -738,7 +753,7 @@ def create_app(
     def activity_detail(activity_id: int, session: Session = Depends(get_session)) -> dict:
         a = _activity_for(session, activity_id)
         out: dict = {
-            "activity": _activity_dict(a),
+            "activity": _activity_dict(a, member=events.membership(session)),
             "garmin_summary": None,
             "detail": None,
             "workouts": None,
@@ -937,6 +952,60 @@ def create_app(
     @app.delete("/api/strength/{activity_id}")
     def strength_delete(activity_id: int, session: Session = Depends(get_session)) -> dict:
         strength.delete(session, _activity_for(session, activity_id))
+        return {"deleted": True}
+
+    @app.get("/api/events")
+    def events_list(session: Session = Depends(get_session)) -> dict:
+        return {"items": events.listing(session)}
+
+    @app.get("/api/events/{event_id}")
+    def events_get(event_id: int, session: Session = Depends(get_session)) -> dict:
+        out = events.get(session, event_id)
+        if out is None:
+            raise HTTPException(404, "Event not found")
+        return out
+
+    def _event_acts(session: Session, ids: list[int]) -> list[Activity]:
+        return [_activity_for(session, i) for i in dict.fromkeys(ids)]
+
+    @app.post("/api/events")
+    def events_create(body: EventCreate, session: Session = Depends(get_session)) -> dict:
+        try:
+            event_id = events.create(session, body.name, _event_acts(session, body.activity_ids), clock.now())
+        except ValueError as exc:
+            raise HTTPException(400, str(exc)) from None
+        return events.get(session, event_id)
+
+    @app.patch("/api/events/{event_id}")
+    def events_rename(event_id: int, body: EventRename, session: Session = Depends(get_session)) -> dict:
+        if session.get(Event, event_id) is None:
+            raise HTTPException(404, "Event not found")
+        try:
+            events.rename(session, event_id, body.name)
+        except ValueError as exc:
+            raise HTTPException(400, str(exc)) from None
+        return events.get(session, event_id)
+
+    @app.post("/api/events/{event_id}/activities")
+    def events_link(event_id: int, body: EventLink, session: Session = Depends(get_session)) -> dict:
+        if session.get(Event, event_id) is None:
+            raise HTTPException(404, "Event not found")
+        try:
+            events.link(session, event_id, _event_acts(session, body.activity_ids))
+            session.commit()
+        except ValueError as exc:
+            session.rollback()
+            raise HTTPException(400, str(exc)) from None
+        return events.get(session, event_id)
+
+    @app.delete("/api/events/{event_id}/activities/{activity_id}")
+    def events_unlink(event_id: int, activity_id: int, session: Session = Depends(get_session)) -> dict:
+        events.unlink(session, event_id, _activity_for(session, activity_id))
+        return {"event": events.get(session, event_id)}
+
+    @app.delete("/api/events/{event_id}")
+    def events_delete(event_id: int, session: Session = Depends(get_session)) -> dict:
+        events.delete_event(session, event_id)
         return {"deleted": True}
 
     @app.post("/api/activities/{activity_id}/fetch")
@@ -1482,7 +1551,11 @@ def _run_dict(run: SyncRun) -> dict:
     }
 
 
-def _activity_dict(a: Activity, verdicts: dict[int, dict] | None = None, mix: dict[int, dict] | None = None) -> dict:
+def _activity_dict(
+    a: Activity, verdicts: dict[int, dict] | None = None, mix: dict[int, dict] | None = None,
+    member: dict[tuple[str, str], tuple[int, str]] | None = None,
+) -> dict:
+    event = (member or {}).get((a.source_id, a.source_record_id))
     return {
         "id": a.id,
         "source_id": a.source_id,
@@ -1505,6 +1578,7 @@ def _activity_dict(a: Activity, verdicts: dict[int, dict] | None = None, mix: di
         "aerobic_te": a.aerobic_te,
         "verdict": (verdicts or {}).get(a.id),
         "intensity": (mix or {}).get(a.id),
+        "event": {"id": event[0], "name": event[1]} if event else None,
     }
 
 

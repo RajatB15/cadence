@@ -18,6 +18,8 @@ import type {
   StrengthLabel,
   ActivityItem,
   ActivityLog,
+  EventDetail,
+  EventSummary,
   CredentialStatus,
   DayDetail,
   GarminStatus,
@@ -128,6 +130,17 @@ export const api = {
     request<Behaviour>("/api/journal/behaviours", { method: "POST", body: JSON.stringify(b) }),
   updateBehaviour: (key: string, patch: { active?: boolean }) =>
     request<Behaviour>(`/api/journal/behaviours/${encodeURIComponent(key)}`, { method: "PATCH", body: JSON.stringify(patch) }),
+  events: () => request<{ items: EventSummary[] }>("/api/events"),
+  event: (id: number) => request<EventDetail>(`/api/events/${id}`),
+  createEvent: (name: string, activityIds: number[]) =>
+    request<EventDetail>("/api/events", { method: "POST", body: JSON.stringify({ name, activity_ids: activityIds }) }),
+  renameEvent: (id: number, name: string) =>
+    request<EventDetail>(`/api/events/${id}`, { method: "PATCH", body: JSON.stringify({ name }) }),
+  linkToEvent: (id: number, activityIds: number[]) =>
+    request<EventDetail>(`/api/events/${id}/activities`, { method: "POST", body: JSON.stringify({ activity_ids: activityIds }) }),
+  unlinkFromEvent: (id: number, activityId: number) =>
+    request<{ event: EventDetail | null }>(`/api/events/${id}/activities/${activityId}`, { method: "DELETE" }),
+  deleteEvent: (id: number) => request<{ deleted: boolean }>(`/api/events/${id}`, { method: "DELETE" }),
   parseStrength: (text: string) => request<StrengthLabel>("/api/strength/parse", { method: "POST", body: JSON.stringify({ text }) }),
   readScreenshot: async (file: Blob): Promise<StrengthLabel> => {
     // Raw image body: read on the Cadence machine; nothing is stored until you save.
