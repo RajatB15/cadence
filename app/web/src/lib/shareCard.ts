@@ -314,7 +314,7 @@ export function drawCard(ctx: CanvasRenderingContext2D, m: CardModel, { transpar
     ctx.font = `600 24px ${FONT}`;
     ctx.fillText(s.label.toUpperCase(), x, statsTop + 255);
     ctx.fillStyle = CREAM;
-    ctx.font = `600 66px ${MONO}`;
+    ctx.font = `600 58px ${MONO}`;
     const v = live(s);
     ctx.fillText(v, x, statsTop + 330);
     if (s.unit) {

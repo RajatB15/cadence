@@ -81,12 +81,14 @@ export async function renderFlyover(m: CardModel, { speed, basemap, onProgress, 
   const track = m.track;
   if (!track) throw new Error("This activity has no GPS route.");
   await fontsReady();
-  const { Output, Mp4OutputFormat, BufferTarget, CanvasSource, QUALITY_HIGH } = await import("mediabunny");
+  const { Output, Mp4OutputFormat, BufferTarget, CanvasSource, QUALITY_HIGH, QUALITY_MEDIUM } = await import("mediabunny");
 
   const holder = document.createElement("div");
   holder.setAttribute("aria-hidden", "true");
   holder.style.cssText = `position:fixed;left:-10000px;top:0;width:${CARD_W}px;height:${CARD_H}px;pointer-events:none`;
   document.body.appendChild(holder);
+  // Touch devices (phones, iPads) get a 720p render: a 1080x1920 WebGL scene plus satellite tiles can exhaust a phone's graphics memory.
+  const scale = matchMedia("(pointer: coarse)").matches ? 2 / 3 : 1;
   const gate = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
   let map: MapLibreMap | null = null;
   let output: { cancel: () => Promise<void> } | null = null;
@@ -95,7 +97,7 @@ export async function renderFlyover(m: CardModel, { speed, basemap, onProgress, 
       container: holder,
       style: STYLES[basemap],
       bounds: track.bounds as LngLatBoundsLike,
-      pixelRatio: 1,
+      pixelRatio: scale,
       interactive: false,
       attributionControl: false,
       fadeDuration: 0,
@@ -142,15 +144,16 @@ export async function renderFlyover(m: CardModel, { speed, basemap, onProgress, 
     mp.addSource("head", { type: "geojson", data: point(coords[0][0], coords[0][1]) });
     mp.addSource("start", { type: "geojson", data: point(coords[0][0], coords[0][1]) });
     const join = { "line-join": "round", "line-cap": "round" } as const;
+    // Drawn into a 1080-wide frame that is viewed small on a phone, so much heavier than the on-screen map's line.
     const width = (lo: number, hi: number): ExpressionSpecification => ["interpolate", ["linear"], ["zoom"], 10, lo, 16, hi];
     const stops: [number, string][] = m.heat?.stops ?? [[0, LIME], [1, LIME]];
-    mp.addLayer({ id: "route-dim", type: "line", source: "route", layout: join, paint: { "line-color": "#f2e8cf", "line-opacity": 0.22, "line-width": width(2, 4) } });
-    mp.addLayer({ id: "route-casing", type: "line", source: "route", layout: join, paint: { "line-gradient": revealed([[0, "#0b0b0c"], [1, "#0b0b0c"]], 0), "line-width": width(6, 13), "line-opacity": 0.75 } });
-    mp.addLayer({ id: "route-glow", type: "line", source: "route", layout: join, paint: { "line-gradient": revealed(stops, 0), "line-width": width(10, 24), "line-blur": width(6, 14), "line-opacity": 0.45 } });
-    mp.addLayer({ id: "route-line", type: "line", source: "route", layout: join, paint: { "line-gradient": revealed(stops, 0), "line-width": width(3, 7) } });
-    mp.addLayer({ id: "start-pin", type: "circle", source: "start", paint: { "circle-radius": 11, "circle-color": "#0b0b0c", "circle-stroke-color": LIME, "circle-stroke-width": 4, "circle-pitch-alignment": "map" } });
-    mp.addLayer({ id: "head-halo", type: "circle", source: "head", paint: { "circle-radius": 24, "circle-color": LIME, "circle-opacity": 0.3, "circle-pitch-alignment": "map" } });
-    mp.addLayer({ id: "head", type: "circle", source: "head", paint: { "circle-radius": 11, "circle-color": LIME, "circle-stroke-color": "#0b0b0c", "circle-stroke-width": 3, "circle-pitch-alignment": "map" } });
+    mp.addLayer({ id: "route-dim", type: "line", source: "route", layout: join, paint: { "line-color": "#f2e8cf", "line-opacity": 0.22, "line-width": width(5, 9) } });
+    mp.addLayer({ id: "route-casing", type: "line", source: "route", layout: join, paint: { "line-gradient": revealed([[0, "#0b0b0c"], [1, "#0b0b0c"]], 0), "line-width": width(17, 38), "line-opacity": 0.85 } });
+    mp.addLayer({ id: "route-glow", type: "line", source: "route", layout: join, paint: { "line-gradient": revealed(stops, 0), "line-width": width(26, 56), "line-blur": width(14, 30), "line-opacity": 0.5 } });
+    mp.addLayer({ id: "route-line", type: "line", source: "route", layout: join, paint: { "line-gradient": revealed(stops, 0), "line-width": width(10, 24) } });
+    mp.addLayer({ id: "start-pin", type: "circle", source: "start", paint: { "circle-radius": 16, "circle-color": "#0b0b0c", "circle-stroke-color": LIME, "circle-stroke-width": 6, "circle-pitch-alignment": "map" } });
+    mp.addLayer({ id: "head-halo", type: "circle", source: "head", paint: { "circle-radius": 36, "circle-color": LIME, "circle-opacity": 0.3, "circle-pitch-alignment": "map" } });
+    mp.addLayer({ id: "head", type: "circle", source: "head", paint: { "circle-radius": 17, "circle-color": LIME, "circle-stroke-color": "#0b0b0c", "circle-stroke-width": 5, "circle-pitch-alignment": "map" } });
     mp.setSky(SKY);
     mp.setTerrain(TERRAIN);
 
@@ -196,11 +199,16 @@ export async function renderFlyover(m: CardModel, { speed, basemap, onProgress, 
     };
 
     const canvas = makeCanvas();
+    canvas.width = Math.round(CARD_W * scale);
+    canvas.height = Math.round(CARD_H * scale);
     const ctx = canvas.getContext("2d")!;
+    ctx.scale(scale, scale);
+    let lost = false;
+    mp.getCanvas().addEventListener("webglcontextlost", () => (lost = true));
     const target = new BufferTarget();
     const out = new Output({ format: new Mp4OutputFormat(), target });
     output = out;
-    const source = new CanvasSource(canvas, { codec: "avc", bitrate: QUALITY_HIGH });
+    const source = new CanvasSource(canvas, { codec: "avc", bitrate: scale < 1 ? QUALITY_MEDIUM : QUALITY_HIGH });
     out.addVideoTrack(source, { frameRate: FPS });
     await out.start();
 
@@ -214,6 +222,7 @@ export async function renderFlyover(m: CardModel, { speed, basemap, onProgress, 
 
     for (let f = 0; f < total; f++) {
       if (signal.aborted) throw new DOMException("Cancelled", "AbortError");
+      if (lost) throw new Error("The browser ran out of graphics memory. Close other tabs, or try the Dark map and a faster speed.");
       let p = 0;
       let cam: Cam;
       if (f < introF) {

@@ -76,39 +76,61 @@ function ShareBody({ model }: { model: CardModel }) {
     }
   };
 
-  const make = async (): Promise<File> => {
-    if (video) {
-      abort.current = new AbortController();
-      const blob = await renderVideo(model, { speed, basemap, onProgress: setBusy, signal: abort.current.signal });
-      return new File([blob], fileName(model, "mp4", false), { type: "video/mp4" });
-    }
-    const blob = await renderPng(model, transparent, shownPhoto);
-    return new File([blob], fileName(model, "png", transparent), { type: "image/png" });
-  };
+  // The file is made first and shared from a fresh tap: browsers (iOS especially) refuse navigator.share() once the tap that
+  // asked for it is old, which a minute-long video render always is.
+  const [ready, setReady] = useState<File | null>(null);
+  useEffect(() => {
+    setReady(null);
+    setError(null);
+    if (video) return;
+    let stale = false;
+    renderPng(model, transparent, shownPhoto).then(
+      (blob) => !stale && setReady(new File([blob], fileName(model, "png", transparent), { type: "image/png" })),
+      (e: Error) => !stale && setError(e.message),
+    );
+    return () => {
+      stale = true;
+    };
+  }, [model, video, transparent, shownPhoto]);
+  useEffect(() => {
+    setReady(null);
+  }, [speed, basemap]);
 
-  const run = async (how: "share" | "save") => {
+  const renderNow = async () => {
     setError(null);
     setBusy(0);
+    abort.current = new AbortController();
     try {
-      const file = await make();
-      if (how === "share" && navigator.canShare?.({ files: [file] })) {
-        await navigator.share({ files: [file], title: model.title });
-      } else {
-        const url = URL.createObjectURL(file);
-        const a = Object.assign(document.createElement("a"), { href: url, download: file.name });
-        a.click();
-        setTimeout(() => URL.revokeObjectURL(url), 10_000);
-      }
+      const blob = await renderVideo(model, { speed, basemap, onProgress: setBusy, signal: abort.current.signal });
+      setReady(new File([blob], fileName(model, "mp4", false), { type: "video/mp4" }));
     } catch (e) {
       const err = e as Error;
-      if (err.name !== "AbortError") setError(err.message || "Couldn't create the file.");
+      if (err.name !== "AbortError") setError(err.message || "Couldn't render the video.");
     } finally {
       setBusy(null);
       abort.current = null;
     }
   };
 
-  const canShareFiles = typeof navigator !== "undefined" && typeof navigator.canShare === "function";
+  const share = async () => {
+    if (!ready) return;
+    setError(null);
+    try {
+      await navigator.share({ files: [ready], title: model.title });
+    } catch (e) {
+      const err = e as Error;
+      if (err.name !== "AbortError") setError(`Sharing didn't work (${err.name}: ${err.message || "no details"}). Use Save and share the file from your gallery or Files.`);
+    }
+  };
+
+  const save = () => {
+    if (!ready) return;
+    const url = URL.createObjectURL(ready);
+    Object.assign(document.createElement("a"), { href: url, download: ready.name }).click();
+    setTimeout(() => URL.revokeObjectURL(url), 10_000);
+  };
+
+  const canShareFiles = !!ready && typeof navigator.canShare === "function" && navigator.canShare({ files: [ready] });
   const videoBlocked = hasRoute && videoOk === false;
 
   return (
@@ -171,7 +193,7 @@ function ShareBody({ model }: { model: CardModel }) {
         </div>
       )}
 
-      {busy != null && video && (
+      {busy != null && (
         <div className="h-1.5 bg-line" role="progressbar" aria-valuenow={Math.round(busy * 100)} aria-valuemin={0} aria-valuemax={100}>
           <div className="h-full bg-lime transition-[width]" style={{ width: `${Math.max(3, busy * 100)}%` }} />
         </div>
@@ -179,25 +201,35 @@ function ShareBody({ model }: { model: CardModel }) {
       {error && <p className="text-sm text-coral">{error}</p>}
 
       <div className="flex flex-wrap gap-3">
-        {canShareFiles && (
-          <button type="button" className="pop pop-lime inline-flex items-center gap-2" disabled={busy != null || (video && videoOk !== true)} onClick={() => run("share")}>
-            <Share2 size={14} /> {busy != null ? (video ? "Rendering…" : "Preparing…") : "Share"}
+        {video && !ready && (
+          <button type="button" className="pop pop-lime inline-flex items-center gap-2" disabled={busy != null || videoOk !== true} onClick={renderNow}>
+            {busy != null ? "Rendering…" : "Render video"}
           </button>
         )}
-        <button
-          type="button"
-          className={canShareFiles ? "pop pop-ghost inline-flex items-center gap-2" : "pop pop-lime inline-flex items-center gap-2"}
-          disabled={busy != null || (video && videoOk !== true)}
-          onClick={() => run("save")}
-        >
-          <Download size={14} /> {video ? "Save MP4" : "Save PNG"}
-        </button>
-        {busy != null && video && (
+        {video && busy != null && (
           <button type="button" className="pop pop-ghost" onClick={() => abort.current?.abort()}>
             Cancel
           </button>
         )}
+        {(!video || ready) && (
+          <>
+            {(canShareFiles || !ready) && (
+              <button type="button" className="pop pop-lime inline-flex items-center gap-2" disabled={!canShareFiles} onClick={share}>
+                <Share2 size={14} /> Share
+              </button>
+            )}
+            <button
+              type="button"
+              className={canShareFiles ? "pop pop-ghost inline-flex items-center gap-2" : "pop pop-lime inline-flex items-center gap-2"}
+              disabled={!ready}
+              onClick={save}
+            >
+              <Download size={14} /> {video ? "Save MP4" : "Save PNG"}
+            </button>
+          </>
+        )}
       </div>
+      {video && ready && <p className="text-xs text-dim">Video ready ({(ready.size / 1e6).toFixed(1)} MB). Changing the speed or map renders a new one.</p>}
       <p className="text-xs text-dim">Made on this device from your own activity; nothing is uploaded. {video ? "Video fetches map tiles for the area, the same as the Route map." : ""}</p>
     </div>
   );
