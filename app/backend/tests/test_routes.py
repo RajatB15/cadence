@@ -69,3 +69,15 @@ def test_results_are_json_serialisable():
     acts = runs(6)
     eff = [{"id": a.id, "day": a.day, "ef": 1.0 + 0.02 * i, "hr": 150, "rhr": 50.0} for i, a in enumerate(acts)]
     json.dumps(jsonable_encoder(RT.build(acts, {a.id: HOME for a in acts}, eff, {}, acts[-1].day)))
+
+
+def test_an_activity_finds_its_place_on_its_route():
+    acts = runs(6)
+    eff = [{"id": a.id, "day": a.day, "ef": 1.0 + 0.02 * i, "hr": 150, "rhr": 50.0} for i, a in enumerate(acts)]
+    report = RT.build(acts, {a.id: HOME for a in acts}, eff, {}, acts[-1].day)
+    mid = RT.for_activity(report, acts[2].id)
+    assert mid["n"] == 6 and mid["this"]["rank"] == 4 and mid["this"]["earlier_efforts"] == 2 and not mid["this"]["is_best"]
+    assert mid["this"]["vs_prior"]["time_s"] < 0 and mid["this"]["vs_prior"]["ef_pct"] > 0
+    last = RT.for_activity(report, acts[-1].id)
+    assert last["this"]["is_best"] and last["this"]["rank"] == 1 and last["this"]["vs_prior"]["ef_pct"] > 0
+    assert RT.for_activity(report, 99999) is None

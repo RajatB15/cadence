@@ -87,6 +87,7 @@ export interface ActivityDetail {
   missing: string[];
   stored: Record<string, { fetched_at: string; status: number; bytes: number }>;
   coach: SessionCoach | null;
+  route: ActivityRoute | null;
   strength: { label: StrengthLabel | null; templates: { id: number; name: string; text: string }[] } | null;
   planned: PlannedSessionView | null;
 }
@@ -132,7 +133,31 @@ export interface Note extends Finding {
   metrics: string[];
 }
 
+export interface WhatIfCard {
+  tone: "good" | "info";
+  title: string;
+  scope: "home" | "week" | "month" | "session";
+  text: string;
+  action: string | null;
+  link: string;
+  sessions?: { id: number; day: string; name: string; load: number; load_after: number; kind: string }[];
+}
+
+export interface ActivityRoute {
+  id: number;
+  name: string;
+  sport: "run" | "ride";
+  n: number;
+  distance_km: number;
+  best: { id: number; day: string; time_s: number };
+  median_time_s: number;
+  trend: { n: number; span_days: number; change_pct: number; ci_pct: [number, number]; significant: boolean } | null;
+  notes: Finding[];
+  this: (RouteEffort & { rank: number; of: number; is_best: boolean; earlier_efforts: number; vs_prior: { time_s: number | null; avg_hr: number | null; ef_pct: number | null; temperature: number | null } }) | null;
+}
+
 export interface SessionCoach {
+  what_if?: WhatIfCard | null;
   verdict: Verdict | null;
   intensity: { easy_pct: number; moderate_pct: number; hard_pct: number; kind: "easy" | "grey" | "hard" } | null;
   readiness: { score: number; label: string } | null;
@@ -177,6 +202,7 @@ export interface RecentSession {
 }
 
 export interface Brief {
+  what_if: WhatIfCard | null;
   as_of: string;
   readiness: ReadinessToday | null;
   readiness_trend: { day: string; score: number }[];
@@ -354,6 +380,7 @@ export interface WeekSummary {
 
 export interface Review {
   has_data: true;
+  what_if: WhatIfCard | null;
   first: string;
   today: string;
   kind: "week" | "month";
@@ -961,6 +988,7 @@ export type LabAccuracy =
       as_of: string;
       min_bias_n: number;
       headline: Headline;
+      explain: { q: string; a: string }[];
       plans: {
         overall: AccuracyStats;
         by_sport: Record<string, AccuracyStats>;
@@ -978,6 +1006,7 @@ export type LabModel =
   | ({
       has_data: true;
       headline: Headline;
+      explain: { q: string; a: string }[];
       performance_label: string;
       n: number;
       min_obs: number;

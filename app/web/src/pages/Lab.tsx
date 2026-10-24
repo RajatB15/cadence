@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { clsx } from "clsx";
 import { Bike, ChevronDown, Footprints, Info } from "lucide-react";
-import { useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { Chart, chartBase, type ChartOption } from "../components/Chart";
 import { NoteGrid } from "../components/CoachNotes";
@@ -13,16 +13,16 @@ import type { AccuracyPoint, AccuracyStats, Headline, LabAccuracy, LabModel, Lab
 
 type Tab = "accuracy" | "model" | "routes" | "whatif";
 const TABS: { value: Tab; label: string }[] = [
-  { value: "accuracy", label: "Accuracy" },
+  { value: "accuracy", label: "Predictions" },
   { value: "model", label: "Fitness model" },
   { value: "routes", label: "Routes" },
   { value: "whatif", label: "What-ifs" },
 ];
 const INTRO: Record<Tab, string> = {
-  accuracy: "Does the planner's load prediction hold up? Scored against what you actually did.",
-  model: "How quickly your own fitness builds and fades, fitted from your data and only used if it beats the standard constants.",
-  routes: "Sessions that covered the same ground, compared by effort rather than raw pace.",
-  whatif: "Replay recent weeks with one session changed and see what the fitness model says.",
+  accuracy: "Cadence predicts how hard each planned session will be. Here is how often it was right.",
+  model: "Does your body build and shed fitness at the textbook speed, or at its own? Tested on your data.",
+  routes: "Runs and rides you have repeated, compared by effort rather than raw pace. Each session page shows its own route too.",
+  whatif: "Replay recent weeks with one session changed to see what an easier day would have bought.",
 };
 
 const mmss = (s: number) => {
@@ -75,6 +75,23 @@ function HeadlineBox({ h }: { h: Headline }) {
   );
 }
 
+function Explain({ items, title = "In plain words" }: { items: { q: string; a: string }[] | undefined; title?: string }) {
+  if (!items?.length) return null;
+  return (
+    <section className="surface p-5 sm:p-8">
+      <h2 className="mb-5 font-display text-3xl text-cream">{title}</h2>
+      <dl className="grid gap-x-10 gap-y-5 lg:grid-cols-2">
+        {items.map((x) => (
+          <div key={x.q}>
+            <dt className="eyebrow mb-1.5 !text-gold">{x.q}</dt>
+            <dd className="text-sm leading-relaxed text-paper">{x.a}</dd>
+          </div>
+        ))}
+      </dl>
+    </section>
+  );
+}
+
 function Stat({ label, value, hint, color }: { label: string; value: ReactNode; hint?: ReactNode; color?: string }) {
   return (
     <div>
@@ -109,8 +126,9 @@ function AccuracyTab() {
         ) : (
           <div className="space-y-6">
             <HeadlineBox h={d.headline} />
+            <Explain items={d.explain} />
             <div className="grid gap-6 lg:grid-cols-2">
-              <Panel title="Your planned sessions" eyebrow="Predicted when you chose it · actual after">
+              <Panel title="Your planned sessions" eyebrow="Real test: predicted when you chose it, scored after">
                 <Scores s={d.plans.overall} minBias={d.min_bias_n} empty="Plan a session on the Plan page and do it; it appears here once matched." />
                 {d.plans.followed && (
                   <p className="mt-4 text-sm text-mute">
@@ -118,16 +136,16 @@ function AccuracyTab() {
                   </p>
                 )}
               </Panel>
-              <Panel title="Walk-forward test" eyebrow="Every past session predicted from the ones before it">
+              <Panel title="Walk-forward test" eyebrow="Instant check: each past session predicted from the ones before it">
                 <Scores s={d.backtest} minBias={d.min_bias_n} empty="Needs 5+ sessions with heart-rate zones." />
                 {d.backtest.window && <p className="mt-4 text-xs text-dim">{formatDate(d.backtest.window[0])} to {formatDate(d.backtest.window[1])}, given each session's duration and time in zones.</p>}
               </Panel>
             </div>
-            <Panel title="Predicted against actual load" eyebrow="On the line = exactly right">
+            <Panel title="Predicted against what happened" eyebrow="Dashed line = a perfect prediction · above it the session cost more than predicted">
               <Scatter plans={d.plans.points} backtest={d.backtest.points ?? []} />
             </Panel>
             <div className="grid gap-6 lg:grid-cols-2">
-              <Panel title="Self-correction" eyebrow="Applied to new predictions">
+              <Panel title="Does Cadence correct itself?" eyebrow="Only when it is clearly off">
                 {Object.keys(d.calibration).length ? (
                   <ul className="space-y-3 text-sm">
                     {Object.entries(d.calibration).map(([sport, c]) => (
@@ -139,12 +157,12 @@ function AccuracyTab() {
                   </ul>
                 ) : (
                   <p className="text-sm text-mute">
-                    No correction. A bias must show in {d.min_bias_n}+ realised sessions with an interval that excludes 1 before predictions are scaled.
+                    Not at the moment. Predictions are only nudged once they have been consistently high or low across {d.min_bias_n}+ sessions, so one odd week never changes anything.
                   </p>
                 )}
-                <Foot>Corrections are shrunk towards 1 by n/(n+10) and capped at 0.7–1.4. Predictions that were corrected say so on the Plan page, and the check always scores the uncorrected number.</Foot>
+                <Foot>The nudge is deliberately timid (it moves only part of the way and never more than 30–40%). Corrected predictions say so on the Plan page, and this page always scores the original, uncorrected number.</Foot>
               </Panel>
-              <Panel title="Recent sessions" eyebrow="Predicted vs actual load">
+              <Panel title="Latest sessions" eyebrow="Predicted → actual load">
                 {d.plans.recent.length ? (
                   <ul className="text-sm">
                     {d.plans.recent.map((r) => (
@@ -157,7 +175,7 @@ function AccuracyTab() {
                 ) : (
                   <p className="text-sm text-mute">No matched sessions yet.</p>
                 )}
-                {d.form && <p className="mt-4 text-xs text-dim">Next-morning form: typically {d.form.typical_abs_error} points off (n={d.form.n}); it includes anything unplanned that day.</p>}
+                {d.form && <p className="mt-4 text-xs text-dim">Tomorrow-morning form was typically {d.form.typical_abs_error} points off the prediction (across {d.form.n} sessions); anything unplanned that day adds to that.</p>}
               </Panel>
             </div>
           </div>
@@ -172,14 +190,14 @@ function Scores({ s, minBias, empty }: { s: AccuracyStats; minBias: number; empt
   return (
     <>
       <div className="grid grid-cols-2 gap-6 sm:grid-cols-3">
-        <Stat label="Typical error" value={`${s.typical_error_pct}%`} hint={`n=${s.n}`} />
-        <Stat label="Within 25%" value={`${s.within_25_pct}%`} hint={`${s.within_10_pct}% within 10%`} color="#6cc7ff" />
+        <Stat label="Typical miss" value={`${s.typical_error_pct}%`} hint={`across ${s.n} sessions`} />
+        <Stat label="Close calls" value={`${s.within_25_pct}%`} hint={`within 25% of prediction (${s.within_10_pct}% within 10%)`} color="#6cc7ff" />
         <Stat
-          label="Bias" value={s.biased ? `${signed(s.bias_pct!, 0)}%` : "none"} color={s.biased ? "#ffbe55" : "#c8f560"}
-          hint={s.n < minBias ? `needs ${minBias}+ to call` : `actual/predicted ${s.ratio_ci![0].toFixed(2)}–${s.ratio_ci![1].toFixed(2)}`}
+          label="Leans" value={s.biased ? `${signed(s.bias_pct!, 0)}%` : "no"} color={s.biased ? "#ffbe55" : "#c8f560"}
+          hint={s.n < minBias ? `too early to say (needs ${minBias}+)` : s.biased ? `sessions cost ${signed(s.bias_pct!, 0)}% vs predicted` : "no consistent over- or under-prediction"}
         />
       </div>
-      {s.range_coverage_pct != null && <p className="mt-4 text-xs text-dim">The shown load range held {s.range_coverage_pct}% of outcomes (n={s.range_n}).</p>}
+      {s.range_coverage_pct != null && <p className="mt-4 text-xs text-dim">The low–high range shown on the Plan page contained the real load {s.range_coverage_pct}% of the time.</p>}
     </>
   );
 }
@@ -226,10 +244,11 @@ function ModelTab() {
         ) : (
           <div className="space-y-6">
             <HeadlineBox h={d.headline} />
+            <Explain items={d.explain} />
             {!d.valid ? (
-              <Panel title="Not enough data yet" eyebrow="Minimum-data rule">
-                <p className="text-sm text-mute">Needs {d.missing}. Minimum {d.min_obs} weekly points.</p>
-                <Foot>A fit with fewer points would chase noise: fitness and fatigue constants trade off against each other, and the data are strongly autocorrelated.</Foot>
+              <Panel title="Not enough data yet" eyebrow="Needs more weeks first">
+                <p className="text-sm text-mute">Needs {d.missing}.</p>
+                <Foot>With fewer weeks the maths would fit random wobble and look convincing while being wrong, so it waits.</Foot>
               </Panel>
             ) : (
               <ModelBody d={d as Extract<LabModel, { valid: true }>} />
@@ -258,36 +277,36 @@ function ModelBody({ d }: { d: Extract<LabModel, { has_data: true }> & { valid: 
   return (
     <>
       <Panel
-        title="Your time constants" eyebrow={d.adopted ? "In use" : "Not in use — the standard 42/7 days stay"}
+        title="Your numbers" eyebrow={d.adopted ? "Used for what-ifs and the rest estimate" : "Not used: the standard 42/7 days stay"}
         aside={<span className={clsx("chip", d.adopted ? "!border-lime/40 !text-lime" : "")}>{d.adopted ? "Adopted" : "Standard kept"}</span>}
       >
         <div className="grid grid-cols-2 gap-6 sm:grid-cols-4">
-          <Stat label="Fitness builds over" value={`${d.tau1} d`} hint={`plausible ${r.tau1[0]}–${r.tau1[1]} · standard ${d.default_taus![0]}`} color="#6cc7ff" />
-          <Stat label="Fatigue fades in" value={`${d.tau2} d`} hint={`plausible ${r.tau2[0]}–${r.tau2[1]} · standard ${d.default_taus![1]}`} color="#ff6a55" />
-          <Stat label="Weeks fitted" value={d.n} hint={`${d.span_days} days · effective n≈${r.n_eff}`} />
-          <Stat label="In-sample R²" value={d.r2 ?? "—"} hint="flatters the fit; see below" />
+          <Stat label="Fitness builds over" value={`${d.tau1} days`} hint={`textbook ${d.default_taus![0]} · data allow ${r.tau1[0]}–${r.tau1[1]}`} color="#6cc7ff" />
+          <Stat label="Fatigue fades in" value={`${d.tau2} days`} hint={`textbook ${d.default_taus![1]} · data allow ${r.tau2[0]}–${r.tau2[1]}`} color="#ff6a55" />
+          <Stat label="Weeks used" value={d.n} hint={`over ${d.span_days} days`} />
+          <Stat label="Follows past weeks" value={d.r2 != null ? `${Math.round(d.r2 * 100)}%` : "—"} hint="looks flattering; the test below is what counts" />
         </div>
         {!d.adopted && d.why_not && <p className="mt-5 text-sm text-mute">Why: {d.why_not}.</p>}
       </Panel>
-      <Panel title="Held-out test" eyebrow="Blocked cross-validation, 5 folds in time order">
+      <Panel title="The honesty test" eyebrow="Predict weeks the model never saw (average miss, lower is better)">
         <div className="grid grid-cols-3 gap-6">
-          <Stat label="Personal" value={cv.personal.toFixed(3)} hint="RMSE on unseen weeks" color={d.adopted ? "#c8f560" : undefined} />
-          <Stat label="Standard 42/7" value={cv.default.toFixed(3)} hint={`personal ${signed(cv.gain_vs_default_pct, 0)}% better`} />
-          <Stat label="Plain average" value={cv.mean.toFixed(3)} hint={`personal ${signed(cv.gain_vs_mean_pct, 0)}% better`} />
+          <Stat label="Your fit" value={cv.personal.toFixed(2)} hint="average miss on unseen weeks" color={d.adopted ? "#c8f560" : undefined} />
+          <Stat label="Textbook 42/7" value={cv.default.toFixed(2)} hint={cv.gain_vs_default_pct >= 0 ? `your fit is ${Math.round(cv.gain_vs_default_pct)}% closer` : `your fit is ${Math.round(-cv.gain_vs_default_pct)}% further off`} />
+          <Stat label="Just guess the average" value={cv.mean.toFixed(2)} hint="the lazy baseline" />
         </div>
-        <Foot>Adopted only when the personal pair is at least 5% better than both baselines on weeks it never saw. The plausible ranges come from an F-test with the sample size shrunk for autocorrelation, so they are wide when data are thin.</Foot>
+        <Foot>Your numbers are only used when they beat both the textbook numbers and the plain average by at least 5% on weeks they never saw. The "data allow" ranges show how much the data cannot tell apart: wide means unsure.</Foot>
       </Panel>
-      <Panel title={d.performance_label} eyebrow="Observed against the modelled curve">
+      <Panel title="Your efficiency, and what the model expected" eyebrow={`${d.performance_label}: dots are real weeks, the line is the model`}>
         <Chart option={option} height={320} label="Observed and modelled aerobic efficiency" />
         {d.taper && (
           <p className="mt-5 text-sm text-mute">
             {d.taper.peak_day === 0
               ? "If you stopped training now, this model has no further gain to offer."
               : <>If you stopped now, the model peaks after about <span className="num text-paper">{d.taper.peak_day}</span> days
-                (anywhere from {d.taper.range[0]} to {d.taper.range[1]} across the constants the data cannot rule out){d.taper.gain_pct != null && <>, roughly {signed(d.taper.gain_pct)}% above today</>}. A model statement, not a taper prescription.</>}
+                (anywhere from {d.taper.range[0]} to {d.taper.range[1]} across the constants the data cannot rule out){d.taper.gain_pct != null && <>, roughly {signed(d.taper.gain_pct)}% above today</>}. How the model behaves, not a taper plan.</>}
           </p>
         )}
-        <Foot>Performance here is a weekly median of aerobic efficiency (speed per beat above resting HR), a fitness proxy and not a test result. Impulse-response models fit by least squares are fragile with this little data (Hellard et al. 2006), which is why the held-out test decides.</Foot>
+        <Foot>"Efficiency" is how fast you run per heartbeat above your resting rate, taken as a weekly median: a proxy for fitness, not a race result. Models like this are fragile with little data (Hellard et al. 2006), which is why the unseen-weeks test decides.</Foot>
       </Panel>
     </>
   );
@@ -482,11 +501,14 @@ function Trajectory({ rows }: { rows: WhatIfPoint[] }) {
 }
 
 function Custom({ d }: { d: Extract<LabWhatIf, { has_data: true }> }) {
-  const [id, setId] = useState<number | "">("");
+  const [params] = useSearchParams();
+  const wanted = Number(params.get("session"));
+  const [id, setId] = useState<number | "">(d.recent.some((r) => r.id === wanted) ? wanted : "");
   const [action, setAction] = useState<keyof typeof ACTION_LABEL>("easy");
   const [result, setResult] = useState<WhatIfResult | null>(null);
   const [state, setState] = useState<"idle" | "loading" | "error">("idle");
   const [error, setError] = useState("");
+  const started = useRef(false);
   const run = async (next: number | "", act: keyof typeof ACTION_LABEL) => {
     if (next === "") return;
     setState("loading");
@@ -498,8 +520,16 @@ function Custom({ d }: { d: Extract<LabWhatIf, { has_data: true }> }) {
       setState("error");
     }
   };
+  useEffect(() => {
+    if (!started.current && id !== "") {
+      started.current = true;
+      document.getElementById("replay")?.scrollIntoView({ block: "center" });
+      void run(id, action);
+    }
+  });
   if (!d.recent.length) return null;
   return (
+    <div id="replay">
     <Panel title="Replay one session" eyebrow={`Any session with a load from the last ${d.window_days / 7} weeks`}>
       <div className="flex flex-wrap items-end gap-4">
         <label className="min-w-0 flex-1 basis-64">
@@ -527,5 +557,6 @@ function Custom({ d }: { d: Extract<LabWhatIf, { has_data: true }> }) {
         {state === "idle" && !result && <p className="text-sm text-dim">Pick a session to see the replay.</p>}
       </div>
     </Panel>
+    </div>
   );
 }

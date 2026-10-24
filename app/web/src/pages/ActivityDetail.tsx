@@ -1,20 +1,22 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { clsx } from "clsx";
-import { ArrowLeft, CloudDownload, Gauge, HeartPulse, Map as MapIcon, Rows3 } from "lucide-react";
+import { ArrowLeft, CloudDownload, Gauge, HeartPulse, Map as MapIcon, Route as RouteIcon, Rows3 } from "lucide-react";
 import { motion } from "motion/react";
 import { Suspense, lazy, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Link, useParams } from "react-router-dom";
 import { Chart, chartBase, type ChartOption } from "../components/Chart";
 import { NoteGrid, VerdictChip, readyColor } from "../components/CoachNotes";
+import { WhatIfCard } from "../components/WhatIfCard";
 import { ShareCardButton } from "../components/ShareCard";
 import { ClassContent } from "../components/StrengthClass";
 import { JsonTree, RecordTable, humanize } from "../components/DataViews";
 import { ErrorBlock, LoadingBlock, Segmented } from "../components/Shell";
 import { READ_ONLY, api } from "../lib/api";
-import { formatDuration, formatPace } from "../lib/format";
+import { formatDate, formatDuration, formatPace } from "../lib/format";
+import { clockTime, signed } from "../lib/goals";
 import { activityStyle } from "../lib/metrics";
 import { buildCardModel } from "../lib/shareCard";
-import type { ActivityDetail, FitData, Json, SessionCoach as SessionCoachData } from "../lib/types";
+import type { ActivityDetail, ActivityRoute, FitData, Json, SessionCoach as SessionCoachData } from "../lib/types";
 
 const ZONE_COLORS = ["#5c5a55", "#6cc7ff", "#5be3b0", "#c8f560", "#ffbe55", "#ff6a55", "#ff3b6b"];
 const STREAM_STYLE: Record<string, { label: string; color: string; unit: string; area?: boolean }> = {
@@ -77,6 +79,8 @@ export function ActivityPage() {
       )}
       <HeadlineStats d={d} />
       {d.coach && (d.coach.notes.length > 0 || d.coach.verdict) && <SessionCoach coach={d.coach} />}
+      <WhatIfCard card={d.coach?.what_if} />
+      {d.route && <RouteSection r={d.route} />}
       {d.planned && <PlannedVsActual d={d} />}
       <ClassContent d={d} />
       {d.fit?.error && <p className="text-sm text-coral">FIT file couldn't be decoded: {d.fit.error}</p>}
@@ -88,6 +92,54 @@ export function ActivityPage() {
     </div>
   );
 }
+
+function RouteSection({ r }: { r: ActivityRoute }) {
+  const t = r.this;
+  const v = t?.vs_prior;
+  const sentences: string[] = [];
+  if (t) {
+    if (t.is_best) sentences.push(`Your fastest time on this route, out of ${t.of} efforts.`);
+    else sentences.push(`${ordinal(t.rank)} fastest of ${t.of} efforts here (best ${clockTime(r.best.time_s)} on ${formatDate(r.best.day)}).`);
+    if (v?.ef_pct != null && Math.abs(v.ef_pct) >= 2) {
+      sentences.push(`Per heartbeat above resting, you ran ${Math.abs(v.ef_pct).toFixed(1)}% ${v.ef_pct > 0 ? "better" : "worse"} than your earlier efforts here, so ${v.ef_pct > 0 ? "fitness is showing" : "it was a harder day for the same speed"}.`);
+    }
+    if (v?.temperature != null && Math.abs(v.temperature) >= 5) {
+      sentences.push(`It was ${Math.abs(v.temperature).toFixed(0)}°C ${v.temperature > 0 ? "warmer" : "cooler"} than usual, which is shown for context and not adjusted for.`);
+    }
+  }
+  const trend = r.trend?.significant ? r.trend : null;
+  return (
+    <Section icon={<RouteIcon size={22} />} title="On this route" aside={<Link to="/lab?tab=routes" className="text-xs font-semibold tracking-widest text-mute uppercase hover:text-paper">All routes →</Link>}>
+      <p className="mb-5 text-sm text-mute">{r.name} · {r.distance_km} km · covered {r.n} times</p>
+      {t && (
+        <div className="mb-5 grid grid-cols-2 gap-6 sm:grid-cols-4">
+          <Fact label="This time" value={clockTime(t.time_s)} hint={t.is_best ? "fastest" : `${ordinal(t.rank)} of ${t.of}`} color={t.is_best ? "#c8f560" : undefined} />
+          <Fact label="Against usual" value={v?.time_s != null ? `${v.time_s <= 0 ? "−" : "+"}${clockTime(Math.abs(v.time_s))}` : "—"} hint={t.earlier_efforts ? `vs median of ${t.earlier_efforts} earlier` : "first effort"} color={v?.time_s != null ? (v.time_s <= 0 ? "#c8f560" : "#ffbe55") : undefined} />
+          <Fact label="Heart rate" value={t.avg_hr ?? "—"} hint={v?.avg_hr != null ? `${signed(v.avg_hr)} bpm vs usual` : undefined} color="#ff6a55" />
+          <Fact label="Value per beat" value={v?.ef_pct != null ? `${signed(v.ef_pct)}%` : "—"} hint="speed per heartbeat above rest" color="#6cc7ff" />
+        </div>
+      )}
+      <ul className="space-y-1.5 text-sm text-paper">{sentences.map((x) => <li key={x}>{x}</li>)}</ul>
+      {trend && (
+        <p className="mt-3 text-sm text-mute">
+          Across {trend.n} efforts over {trend.span_days} days your value per heartbeat here has moved {signed(trend.change_pct)}% (range {signed(trend.ci_pct[0])} to {signed(trend.ci_pct[1])}%).
+        </p>
+      )}
+    </Section>
+  );
+}
+
+function Fact({ label, value, hint, color }: { label: string; value: ReactNode; hint?: ReactNode; color?: string }) {
+  return (
+    <div>
+      <p className="eyebrow mb-1">{label}</p>
+      <p className="num text-2xl" style={{ color: color ?? "#f2e8cf" }}>{value}</p>
+      {hint && <p className="mt-0.5 text-xs text-dim">{hint}</p>}
+    </div>
+  );
+}
+
+const ordinal = (n: number) => `${n}${["th", "st", "nd", "rd"][n % 100 > 10 && n % 100 < 14 ? 0 : Math.min(n % 10, 4) % 4] ?? "th"}`;
 
 function PlannedVsActual({ d }: { d: ActivityDetail }) {
   const p = d.planned!;

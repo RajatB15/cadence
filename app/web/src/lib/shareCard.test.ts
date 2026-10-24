@@ -9,7 +9,7 @@ const fit = (route: [number, number][]): FitData =>
 const detail = (over: Partial<ActivityDetail["activity"]>, f: FitData | null): ActivityDetail =>
   ({
     activity: { id: 1, source_id: "demo", start_time_utc: "2026-01-02 07:00:00", timezone: "UTC", type: "running", family: "run", name: "Morning Run", duration_s: 1800, distance_m: 5000, avg_hr: null, max_hr: null, elevation_gain_m: null, calories: null, training_load: null, ...over },
-    garmin_summary: null, detail: null, workouts: null, fit: f, missing: [], stored: {}, coach: null, strength: null, planned: null,
+    garmin_summary: null, detail: null, workouts: null, fit: f, missing: [], stored: {}, coach: null, route: null, strength: null, planned: null,
   }) as ActivityDetail;
 
 describe("share card", () => {

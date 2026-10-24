@@ -699,9 +699,16 @@ def create_app(
                         )
         ctx = insights_service.context(session, a.source_id, clock.today())
         label = strength.get(session, a) if activity_family(a.activity_type) == "strength" else None
+        out["route"] = None
         if ctx:
             streams = out["fit"].get("streams") if out["fit"] else None
             out["coach"] = coach_notes.session(ctx, a.id, streams, out["garmin_summary"], named=label is not None)
+            if out["coach"] is not None:
+                out["coach"]["what_if"] = coach_notes.whatif_card(whatif_analytics.for_activity(ctx, a.id), "session", ctx)
+            if a.source_id == "garmin" and ctx["geo"].get(a.id):
+                found = route_analytics.build(ctx["acts"], ctx["geo"], ctx["eff"], ctx["weather_runs"], ctx["as_of"])
+                out["route"] = route_analytics.for_activity(
+                    {**found, "routes": [{**r, "notes": coach_notes.route_notes(r)} for r in found["routes"] if a.id in r["member_ids"]]}, a.id)
         day_plans = planner_store.reconcile(session, a.source_id, planner_store.listing(session, a.local_date, a.local_date), clock.today(), clock.now())
         out["planned"] = next((p for p in day_plans if (p.get("activity") or {}).get("id") == a.id), None)
         if activity_family(a.activity_type) == "strength":
@@ -763,8 +770,9 @@ def create_app(
         planned = planner_store.reconcile(
             session, source_id, planner_store.listing(session, start - timedelta(days=62), start + timedelta(days=31)), today, clock.now()
         )
-        return {"has_data": True, "first": ctx["first"], "today": today,
-                **reviews.build(ctx, kind, start, planned, insights_service.readiness_on)}
+        built = reviews.build(ctx, kind, start, planned, insights_service.readiness_on)
+        card = coach_notes.whatif_card(whatif_analytics.for_period(ctx, built["start"], built["end"]), kind, ctx)
+        return {"has_data": True, "first": ctx["first"], "today": today, **built, "what_if": card}
 
     @app.get("/api/planner")
     def planner_week(session: Session = Depends(get_session)) -> dict:
@@ -1129,7 +1137,7 @@ def create_app(
         if ctx is None:
             return {"has_data": False}
         rep = accuracy_analytics.report(ctx, _plan_history(session, _active_source(session)))
-        return {"has_data": True, **rep, "headline": coach_notes.accuracy_headline(rep)}
+        return {"has_data": True, **rep, "headline": coach_notes.accuracy_headline(rep), "explain": coach_notes.accuracy_explain(rep)}
 
     @app.get("/api/lab/model")
     def lab_model(session: Session = Depends(get_session)) -> dict:
@@ -1141,7 +1149,8 @@ def create_app(
         if fit_["valid"]:
             first = fit_["series"][0]["day"]
             out["curve"] = banister_analytics.curve(fit_, ctx["load"], ctx["as_of"], step=3, since=first)
-        return {"has_data": True, **out, "performance_label": "Aerobic efficiency (weekly median)", "headline": coach_notes.banister_headline(fit_)}
+        return {"has_data": True, **out, "performance_label": "Aerobic efficiency (weekly median)", "headline": coach_notes.banister_headline(fit_),
+                "explain": coach_notes.model_explain(fit_)}
 
     @app.get("/api/lab/routes")
     def lab_routes(session: Session = Depends(get_session)) -> dict:

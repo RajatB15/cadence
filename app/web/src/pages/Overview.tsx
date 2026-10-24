@@ -24,6 +24,7 @@ import { Ring, SEVERITY, VerdictChip, readyColor } from "../components/CoachNote
 import { CountUp } from "../components/CountUp";
 import { RefreshChip } from "../components/RefreshButton";
 import { EmptyState } from "../components/EmptyState";
+import { WhatIfCard } from "../components/WhatIfCard";
 import { Sheet } from "../components/Sheet";
 import { DemoChip, ErrorBlock, LoadingBlock } from "../components/Shell";
 import { Sparkline } from "../components/Sparkline";
@@ -145,6 +146,8 @@ function Dashboard({ data }: { data: Extract<Overview, { has_data: true }> }) {
       {coach?.tonight && <TonightRow t={coach.tonight} />}
 
       {coach && coach.recent.items.length > 0 && <RecentSessions recent={coach.recent} />}
+
+      {coach && <WhatIfCard card={coach.what_if} />}
 
       {coach && coach.week.items.length > 0 && <WeekStrip coach={coach} onOpen={() => setSheet("week")} />}
 
