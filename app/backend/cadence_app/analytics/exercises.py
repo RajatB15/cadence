@@ -44,9 +44,17 @@ def classify(name: str) -> dict:
     return {"name": name.strip(), "pattern": pattern, "muscles": MUSCLES.get(pattern, []), "loaded": bool(re.search(LOADED, n))}
 
 
+# "Endurance WOD: 50s ON, 15s OFF", "PACE Along: 40s ON, 20s OFF": a work/rest interval line heads a block.
+INTERVAL_TITLE = r"\b\d+\s*(s|sec|secs|seconds|min|mins)\s*(on|work)\b.{0,12}\b\d+\s*(s|sec|secs|seconds|min|mins)\s*(off|rest)\b"
+
+
+def _interval_title(line: str) -> bool:
+    return len(line.split()) <= 9 and bool(re.search(INTERVAL_TITLE, line.lower()))
+
+
 def _title_like(line: str) -> bool:
     # Taglines end in sentence punctuation or run long; titles are short labels.
-    return len(line.split()) <= 5 and not re.search(r"[.!?,]$", line) and "," not in line
+    return _interval_title(line) or (len(line.split()) <= 5 and not re.search(r"[.!?,]$", line) and "," not in line)
 
 
 def _header_word(line: str) -> bool:
@@ -61,12 +69,12 @@ def parse(text: str) -> list[dict]:
     Exercises are lines the dictionary recognises, plus unrecognised lines sandwiched between exercises. A block's
     name is the last title-like line before its first exercise. A line starting with "#" is always a block title.
     """
-    lines = [re.sub(r"\s+", " ", ln).strip(" •-–—*\t") for ln in text.splitlines()]
+    lines = [re.sub(r"^\d{1,2}[.)]\s+", "", re.sub(r"\s+", " ", ln).strip(" •-–—*\t")) for ln in text.splitlines()]  # "1. Air Squats"
     lines = [ln for ln in lines if ln and not re.match(NOISE, ln.lower())]
     known = [ln.startswith("#") is False and classify(ln)["pattern"] is not None for ln in lines]
     is_ex = list(known)
     for i in range(1, len(lines) - 1):
-        if not lines[i].startswith("#") and known[i - 1] and known[i + 1] and _title_like(lines[i]) and not _header_word(lines[i]):
+        if not lines[i].startswith("#") and known[i - 1] and known[i + 1] and _title_like(lines[i]) and not _header_word(lines[i]) and not _interval_title(lines[i]):
             is_ex[i] = True
     blocks: list[dict] = []
     title: str | None = None
@@ -96,7 +104,7 @@ def block_kind(block: dict) -> str:
     patterns = [e["pattern"] for e in block["exercises"]]
     if re.search(CORE_BLOCK, name) or (patterns and patterns.count("core") / len(patterns) > 0.5):
         return "core"
-    if re.search(CONDITIONING_BLOCK, name) or (patterns and patterns.count("plyometric") / len(patterns) >= 0.5):
+    if re.search(CONDITIONING_BLOCK, name) or _interval_title(name) or (patterns and patterns.count("plyometric") / len(patterns) >= 0.5):
         return "conditioning"
     if re.search(HEAVY_BLOCK, name) or any(e["loaded"] and e["pattern"] in LOWER | {"push", "pull"} for e in block["exercises"]):
         return "strength"

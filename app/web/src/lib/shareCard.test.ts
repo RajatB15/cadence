@@ -63,6 +63,16 @@ describe("share card", () => {
     expect(m.panel.rows[0].right).toBe("5 sets · 50 reps");
   });
 
+  it("shows the saved class, not Garmin's UNKNOWN sets", () => {
+    const d = detail({ family: "strength", type: "strength_training", distance_m: null }, null);
+    d.garmin_summary = { summarizedExerciseSets: [{ category: "UNKNOWN", sets: 8, reps: 80 }] };
+    expect(buildCardModel(d, "#f00", "Strength").panel.rows).toEqual([]);
+    d.strength = { label: { text: "x", summary: {} as never, blocks: [{ name: "Endurance WOD: 50s ON, 15s OFF", kind: "conditioning", exercises: [{}, {}, {}] as never }] }, templates: [] } as never;
+    const m = buildCardModel(d, "#f00", "Strength");
+    expect(m.panel.rowsTitle).toBe("Class blocks");
+    expect(m.panel.rows.map((r) => [r.label, r.right])).toEqual([["Endurance WOD: 50s ON, 15s OFF", "3 exercises"]]);
+  });
+
   it("leaves the panel empty when nothing was recorded", () => {
     const m = buildCardModel(detail({ family: "strength" }, null), "#f00", "Strength");
     expect(m.panel).toEqual({ hr: null, zones: null, rowsTitle: "", rows: [] });

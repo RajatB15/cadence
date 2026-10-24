@@ -120,7 +120,7 @@ function LabelForm({ id, initial, templates, onDone, canCancel }: {
   const save = useMutation({
     mutationFn: () => api.saveStrength(id, text, template.trim() || null),
     onSuccess: () => {
-      for (const key of ["activity", "insights", "overview"]) client.invalidateQueries({ queryKey: [key] });
+      for (const key of ["activity", "insights", "overview", "planner", "day"]) client.invalidateQueries({ queryKey: [key] });
       onDone();
     },
   });
