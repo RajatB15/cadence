@@ -41,6 +41,7 @@ function ShareBody({ model }: { model: CardModel }) {
   const [backdrop, setBackdrop] = useState<Backdrop>("dark");
   const [speed, setSpeed] = useState<VideoSpeed>(1);
   const [basemap, setBasemap] = useState<Basemap>("dark");
+  const [quality, setQuality] = useState<"hd" | "sd">("hd");
   const [photo, setPhoto] = useState<ImageBitmap | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
   const [videoOk, setVideoOk] = useState<boolean | null>(null);
@@ -94,14 +95,14 @@ function ShareBody({ model }: { model: CardModel }) {
   }, [model, video, transparent, shownPhoto]);
   useEffect(() => {
     setReady(null);
-  }, [speed, basemap]);
+  }, [speed, basemap, quality]);
 
   const renderNow = async () => {
     setError(null);
     setBusy(0);
     abort.current = new AbortController();
     try {
-      const blob = await renderVideo(model, { speed, basemap, onProgress: setBusy, signal: abort.current.signal });
+      const blob = await renderVideo(model, { speed, basemap, quality, onProgress: setBusy, signal: abort.current.signal });
       setReady(new File([blob], fileName(model, "mp4", false), { type: "video/mp4" }));
     } catch (e) {
       const err = e as Error;
@@ -184,6 +185,16 @@ function ShareBody({ model }: { model: CardModel }) {
           />
           <p className="eyebrow pt-2">Map</p>
           <Segmented label="Map style" options={BASEMAPS} value={basemap} onChange={setBasemap} />
+          <p className="eyebrow pt-2">Quality</p>
+          <Segmented
+            label="Video quality"
+            options={[
+              { value: "hd" as const, label: "1080p" },
+              { value: "sd" as const, label: "720p, smaller" },
+            ]}
+            value={quality}
+            onChange={setQuality}
+          />
           <p className="text-xs text-dim">
             A 3D terrain flyover that follows you along the route: {videoSeconds(speed).toFixed(1)} s of travel plus a short intro and
             closing view. Rendering waits for map tiles frame by frame, so it takes about a minute: keep this window open. MP4 can't carry

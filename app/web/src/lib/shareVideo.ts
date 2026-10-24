@@ -9,6 +9,8 @@ setWorkerUrl(workerUrl);
 export interface VideoOptions {
   speed: number;
   basemap: Basemap;
+  /** hd = 1080x1920 at 12 Mbps; sd = 720x1280 at 5 Mbps, for devices that run out of graphics memory at hd. */
+  quality: "hd" | "sd";
   onProgress: (done: number) => void;
   signal: AbortSignal;
 }
@@ -77,18 +79,17 @@ function revealed(stops: [number, string][], p: number): ExpressionSpecification
  * stepped one frame at a time, so every frame waits for its tiles. Draws the card's text over it.
  * Fetches map tiles from the same keyless providers as the Route map; the activity itself never leaves the device.
  */
-export async function renderFlyover(m: CardModel, { speed, basemap, onProgress, signal }: VideoOptions): Promise<Blob> {
+export async function renderFlyover(m: CardModel, { speed, basemap, quality, onProgress, signal }: VideoOptions): Promise<Blob> {
   const track = m.track;
   if (!track) throw new Error("This activity has no GPS route.");
   await fontsReady();
-  const { Output, Mp4OutputFormat, BufferTarget, CanvasSource, QUALITY_HIGH, QUALITY_MEDIUM } = await import("mediabunny");
+  const { Output, Mp4OutputFormat, BufferTarget, CanvasSource } = await import("mediabunny");
 
   const holder = document.createElement("div");
   holder.setAttribute("aria-hidden", "true");
   holder.style.cssText = `position:fixed;left:-10000px;top:0;width:${CARD_W}px;height:${CARD_H}px;pointer-events:none`;
   document.body.appendChild(holder);
-  // Touch devices (phones, iPads) get a 720p render: a 1080x1920 WebGL scene plus satellite tiles can exhaust a phone's graphics memory.
-  const scale = matchMedia("(pointer: coarse)").matches ? 2 / 3 : 1;
+  const scale = quality === "sd" ? 2 / 3 : 1;
   const gate = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
   let map: MapLibreMap | null = null;
   let output: { cancel: () => Promise<void> } | null = null;
@@ -208,7 +209,7 @@ export async function renderFlyover(m: CardModel, { speed, basemap, onProgress, 
     const target = new BufferTarget();
     const out = new Output({ format: new Mp4OutputFormat(), target });
     output = out;
-    const source = new CanvasSource(canvas, { codec: "avc", bitrate: scale < 1 ? QUALITY_MEDIUM : QUALITY_HIGH });
+    const source = new CanvasSource(canvas, { codec: "avc", bitrate: scale < 1 ? 5_000_000 : 12_000_000 });
     out.addVideoTrack(source, { frameRate: FPS });
     await out.start();
 
@@ -222,7 +223,7 @@ export async function renderFlyover(m: CardModel, { speed, basemap, onProgress, 
 
     for (let f = 0; f < total; f++) {
       if (signal.aborted) throw new DOMException("Cancelled", "AbortError");
-      if (lost) throw new Error("The browser ran out of graphics memory. Close other tabs, or try the Dark map and a faster speed.");
+      if (lost) throw new Error("The browser ran out of graphics memory. Choose 720p quality, close other tabs, or try the Dark map.");
       let p = 0;
       let cam: Cam;
       if (f < introF) {
