@@ -134,6 +134,7 @@ export interface Note extends Finding {
 }
 
 export interface WhatIfCard {
+  lines?: string[];
   tone: "good" | "info";
   title: string;
   scope: "home" | "week" | "month" | "session";
@@ -1008,6 +1009,13 @@ export type LabModel =
       has_data: true;
       headline: Headline;
       explain: { q: string; a: string }[];
+      explain_fatigue: { q: string; a: string }[];
+      explain_saturation: { q: string; a: string }[];
+      explain_channels: { q: string; a: string }[];
+      fatigue: FatigueFit;
+      saturation: SaturationFit;
+      channels: ChannelsFit;
+      model: WhatIfModel;
       performance_label: string;
       n: number;
       min_obs: number;
@@ -1079,7 +1087,42 @@ export interface WhatIfPoint {
   alt_acwr: number | null;
 }
 
-export interface WhatIfResult {
+export interface WhatIfRanges {
+  fitness_delta: [number, number] | null;
+  next_morning_form: [number, number] | null;
+  avg_form_delta: [number, number] | null;
+  n_pairs: number;
+  basis: string;
+}
+
+export interface WhatIfPayoff {
+  status: "measured" | "unproven" | "unmeasured";
+  n_hard?: number;
+  needed?: number;
+  per10_pct?: number | null;
+  ci_per10_pct?: [number, number] | null;
+  total_gain_pct?: number | null;
+  items: { after: number; session_id: number; name: string; day: string; form_delta: number; payoff: { gain_pct: number; ci_pct: [number, number] } | null }[];
+}
+
+export interface WhatIfModel {
+  ctl_days: number;
+  atl_days: number;
+  alpha: number;
+  personal: boolean;
+  sources: string[];
+}
+
+export interface WhatIfExtras {
+  ranges: WhatIfRanges;
+  zones: { before: { aerobic: number; high: number }; after: { aerobic: number; high: number }; zone3_minutes: number };
+  channels: { ef_pct: number; ci: [number, number]; aerobic_hours_per_week: number; high_hours_per_week: number } | null;
+  payoff: WhatIfPayoff;
+  model: WhatIfModel;
+  lines?: string[];
+}
+
+export interface WhatIfResult extends WhatIfExtras {
   valid: true;
   rough: boolean;
   window_days: number;
@@ -1094,7 +1137,7 @@ export interface WhatIfResult {
   headline: string;
 }
 
-export interface WhatIfBundle {
+export interface WhatIfBundle extends WhatIfExtras {
   label: string;
   n: number;
   end: WhatIfResult["end"];
@@ -1114,7 +1157,10 @@ export type LabWhatIf =
       window_days: number;
       actions: Record<"skip" | "easy" | "half", string>;
       easy_rates: Record<string, { rate: number | null; n: number }>;
-      items: { id: number; day: string; name: string; family: string; kind: "grey" | "hard_again"; load: number; load_after: number; fitness_delta: number; fitness_delta_pct: number | null; next_morning_form: number | null; rough: boolean }[];
+      model: WhatIfModel;
+      freshness: Freshness;
+      explain_freshness: { q: string; a: string }[];
+      items: ({ id: number; day: string; name: string; family: string; kind: "grey" | "hard_again"; load: number; load_after: number; fitness_delta: number; fitness_delta_pct: number | null; next_morning_form: number | null; rough: boolean } & WhatIfExtras)[];
       bundles: Record<string, WhatIfBundle>;
       recent: { id: number; day: string; name: string; family: string; load: number }[];
     };
@@ -1203,4 +1249,53 @@ export interface GoalInput {
   target_s?: number | null;
   speed_kmh?: number | null;
   target_kg?: number | null;
+}
+
+export interface Freshness {
+  hard: {
+    n: number;
+    enough: boolean;
+    min: number;
+    helpful?: boolean;
+    significant?: boolean;
+    per10_pct?: number;
+    ci_per10_pct?: [number, number];
+    split?: { cut: number; fresh_n: number; tired_n: number; diff_pct: number; ci_pct: [number, number] } | null;
+    points?: { day: string; form: number; quality_pct: number }[];
+  };
+  easy: { n: number; enough: boolean; min: number; per10_pct?: number; ci_per10_pct?: [number, number]; helpful?: boolean; significant?: boolean };
+}
+
+export interface FatigueFit {
+  valid: boolean;
+  adopted: boolean;
+  n?: number;
+  missing?: string;
+  why_not?: string;
+  tau?: number;
+  half_life_days?: number;
+  default_tau?: number;
+  region?: [number, number];
+  cv?: { personal: number; default: number; mean: number; gain_vs_default_pct: number; gain_vs_mean_pct: number };
+  series?: { day: string; observed: number; fitted: number }[];
+}
+
+export interface SaturationFit {
+  valid: boolean;
+  adopted: boolean;
+  alpha: number;
+  missing?: string;
+  gain_pct?: number;
+  cv?: Record<string, number>;
+}
+
+export interface ChannelsFit {
+  valid: boolean;
+  adopted: boolean;
+  missing?: string;
+  why_not?: string;
+  n?: number;
+  aerobic?: { pct_per_hour: number; ci: [number, number] };
+  high?: { pct_per_hour: number; ci: [number, number] };
+  gain_vs_total_pct?: number;
 }

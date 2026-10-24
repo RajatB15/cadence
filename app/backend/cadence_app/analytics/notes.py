@@ -18,6 +18,7 @@ from cadence_app.analytics.insights import (
     finding,
     fmt_clock,
     heavy_lower_days,
+    lab_models,
     readiness_now,
     readiness_on,
     recommend,
@@ -927,7 +928,7 @@ def brief(c: dict) -> dict:
         "tonight": c.get("tonight"),
         "fix": [f for f in findings if f["severity"] in ("alert", "warn")][:3],
         "wins": [f for f in findings if f["severity"] == "good"][:2],
-        "what_if": whatif_card(WI.opportunity(c), "home", c),
+        "what_if": whatif_card(WI.opportunity(c, lab_models(c)), "home", c),
     }
 
 
@@ -1159,12 +1160,16 @@ def _points(v: float) -> str:
     return f"{v:.0f} point{'' if round(v) == 1 else 's'}"
 
 
+def _span(r: list[float] | None, unit: str = "") -> str:
+    return f" ({r[0]:g} to {r[1]:g}{unit} across plausible settings)" if r and r[0] != r[1] else ""
+
+
 def _effects(w: dict) -> str:
     bits = []
     if w.get("avg_form_delta") is not None and w["avg_form_delta"] >= 0.5:
         bits.append(f"{_points(w['avg_form_delta'])} fresher on average")
     if w.get("next_morning_form") is not None and w["next_morning_form"] >= 1:
-        bits.append(f"{_points(w['next_morning_form'])} fresher the next morning")
+        bits.append(f"{_points(w['next_morning_form'])} fresher the next morning{_span((w.get('ranges') or {}).get('next_morning_form'))}")
     over_b, over_a = (w.get("acwr_days_over") or (0, 0))
     if over_b > over_a:
         bits.append(f"{over_b - over_a} fewer day{'s' if over_b - over_a != 1 else ''} with a spiking workload ratio")
@@ -1172,7 +1177,44 @@ def _effects(w: dict) -> str:
     text = "a little fresher" if not bits else bits[0] if len(bits) == 1 else ", ".join(bits[:-1]) + " and " + bits[-1]
     cost = abs(w["fitness_delta"])
     pct = f" ({abs(w['fitness_delta_pct']):.1f}%)" if w.get("fitness_delta_pct") is not None else ""
-    return f"{text}, for about {cost:.1f} fitness point{'' if round(cost, 1) == 1 else 's'}{pct}"
+    r = (w.get("ranges") or {}).get("fitness_delta")
+    span = f", between {abs(r[1]):.1f} and {abs(r[0]):.1f} across plausible settings" if r and round(r[0], 1) != round(r[1], 1) else ""
+    return f"{text}, for about {cost:.1f} fitness point{'' if round(cost, 1) == 1 else 's'}{pct}{span}"
+
+
+def whatif_lines(w: dict) -> list[str]:
+    """The extra plain-language lines under a what-if: which minutes move, what the efficiency model says, what freshness is worth to you."""
+    lines = []
+    z = w.get("zones") or {}
+    if z:
+        b, a = z["before"], z["after"]
+        if b == a and z.get("zone3_minutes"):
+            lines.append(f"Your {z['zone3_minutes']} Zone 3 minutes count as aerobic work either way, so no aerobic or hard minutes would change.")
+        elif b["high"] > a["high"]:
+            lines.append(f"It swaps {b['high'] - a['high']} minutes of Zone 4–5 work for easier minutes ({b['aerobic']} → {a['aerobic']} aerobic minutes).")
+        elif a["aerobic"] < b["aerobic"]:
+            lines.append(f"It removes {b['aerobic'] - a['aerobic']} aerobic minutes.")
+    ch = w.get("channels")
+    if ch and (abs(ch["ef_pct"]) >= 0.05 or ch["ci"][0] != ch["ci"][1]) and not (ch["aerobic_hours_per_week"] == 0 and ch["high_hours_per_week"] == 0):
+        lines.append(f"Your own efficiency data put the effect on aerobic efficiency at {ch['ef_pct']:+.1f}% (95% range {ch['ci'][0]:+.1f} to {ch['ci'][1]:+.1f}%): easy and hard minutes were separable enough to count.")
+    pay = w.get("payoff") or {}
+    status = pay.get("status")
+    if status == "measured":
+        top = next((i for i in pay["items"] if i["payoff"]), None)
+        line = f"In your data, hard runs come out about {pay['per10_pct']:.0f}% closer to your best when you start 10 points fresher"
+        if top:
+            line += f", so roughly {top['payoff']['gain_pct']:+.1f}% on {top['name']} ({top['payoff']['ci_pct'][0]:+.1f} to {top['payoff']['ci_pct'][1]:+.1f}%)."
+        else:
+            line += "; no hard run followed within four days here."
+        lines.append(line)
+    elif status == "unproven":
+        lines.append(f"Across your last {pay['n_hard']} hard runs, starting fresher has not been shown to improve them, so the freshness may buy nothing measurable.")
+    elif status == "unmeasured" and pay.get("n_hard") is not None:
+        lines.append(f"Only {pay['n_hard']} of the {pay['needed']} hard runs needed to tell whether freshness helps you are measured so far.")
+    model = w.get("model") or {}
+    if model.get("personal"):
+        lines.append("Using your personal settings: " + "; ".join(model["sources"]) + ".")
+    return lines
 
 
 def whatif_card(w: dict | None, scope: str, c: dict | None = None) -> dict | None:
@@ -1184,15 +1226,103 @@ def whatif_card(w: dict | None, scope: str, c: dict | None = None) -> dict | Non
     if scope == "session":
         kind = "a grey-zone session (too hard to be easy, too easy to be hard)" if w["kind"] == "grey" else "a hard session right after another hard one"
         return {"tone": "info", "title": "If this had stayed easy", "scope": scope, "link": f"/lab?tab=whatif&session={w['activity_id']}",
-                "text": f"This was {kind}. Kept easy at the same duration, load {w['load']} would have been about {w['load_after']}, leaving you {_effects(w)}. "
-                        "The model's view, not a measurement.", "action": _easy_phrase(c)}
+                "text": f"This was {kind}. Kept easy at the same duration, load {w['load']} would have been about {w['load_after']}, leaving you {_effects(w)}.",
+                "lines": whatif_lines(w), "action": _easy_phrase(c)}
     if not w["flagged"] or not w.get("replay"):
         if w["easy_kept"] >= 2:
-            return {"tone": "good", "title": "Easy days stayed easy", "scope": scope, "link": link, "action": None,
+            return {"tone": "good", "title": "Easy days stayed easy", "scope": scope, "link": link, "action": None, "lines": [],
                     "text": f"{w['easy_kept']} easy sessions in {when} and none in the grey zone or stacked on a hard day. That discipline is what lets your hard days work."}
         return None
     n = w["flagged"]
     these = "that session" if n == 1 else f"those {n} sessions"
+    r = w["replay"]
+    close = "" if (r.get("payoff") or {}).get("status") == "measured" else " That only pays off if you spend the freshness on a hard session; if the next days are easy anyway, it just means a little less fitness."
     return {"tone": "info", "title": f"{n} session{'s' if n != 1 else ''} could have been easier", "scope": scope, "link": link,
-            "text": f"Had {these} been kept easy at the same length, the model has you {_effects(w['replay'])}. That only pays off if you spend the freshness on a hard session; if the next days are easy anyway, it just means a little less fitness.",
-            "action": _easy_phrase(c), "sessions": w["sessions"]}
+            "text": f"Had {these} been kept easy at the same length, the model has you {_effects(r)}.{close}",
+            "lines": whatif_lines(r), "action": _easy_phrase(c), "sessions": w["sessions"]}
+
+
+# ---- the other personal-model tests, in plain words -----------------------------------------------------------
+
+
+def fatigue_explain(f: dict) -> list[dict]:
+    out = [{"q": "What is this?", "a": (
+        "The standard model assumes tiredness from training fades over about a week. Your body gives a direct reading: overnight HRV "
+        "drops and resting heart rate rises when you haven't recovered. This test checks which fade-out time best matches your own nights.")}]
+    if not f.get("valid"):
+        out.append({"q": "Why nothing yet?", "a": f"It needs {f['missing']}. Keep wearing the watch to bed."})
+        return out
+    if "tau" not in f:
+        out.append({"q": "What did it find?", "a": f"{f['why_not']}. Nothing is changed."})
+        return out
+    out.append({"q": "What did it find?", "a": (
+        f"Your strain signal is best explained by load fading over about {f['tau']} days (half of a hard day's effect gone in about {f['half_life_days']:.0f}). "
+        f"The standard is {f['default_tau']}. The data allow {f['region'][0]}–{f['region'][1]} days.")})
+    cv = f["cv"]
+    out.append({"q": "Can I trust it?", "a": (
+        f"Average miss on stretches of nights it never saw: {cv['personal']:.2f} for your number, {cv['default']:.2f} for the standard 7 days, {cv['mean']:.2f} for just guessing the average. "
+        + ("Your number wins by at least 10%, so the what-if replays use it." if f["adopted"] else "It didn't win by at least 10%, so the standard 7 days stays.")
+        )})
+    out.append({"q": "A limit", "a": "Strain is measured against your last 150 days, which hides very slow recovery, so a long true recovery time can read a little short here."})
+    return out
+
+
+def saturation_explain(s: dict) -> list[dict]:
+    out = [{"q": "What is this?", "a": (
+        "The standard model counts a 200-load day as exactly twice a 100-load day. In practice, giant days may buy less than double the fitness. "
+        "This checks whether your own weeks are predicted better when big days count for proportionally less.")}]
+    if not s.get("valid"):
+        out.append({"q": "Why nothing yet?", "a": f"It needs {s['missing']}."})
+        return out
+    if s["adopted"]:
+        out.append({"q": "What did it find?", "a": (
+            f"Yes. A day with double the load builds about {2 ** s['alpha']:.2f}× the fitness for you, not 2×, and that predicted unseen weeks {s['gain_pct']:.0f}% better. "
+            "The what-if replays use that curve.")})
+    else:
+        out.append({"q": "What did it find?", "a": (
+            f"No evidence. Counting load straight predicted unseen weeks about as well as any curve (the best curve was only {max(s['gain_pct'], 0):.0f}% better, under the 5% bar), so load stays linear.")})
+    return out
+
+
+def channels_explain(ch: dict) -> list[dict]:
+    out = [{"q": "What is this?", "a": (
+        "Garmin load rolls everything into one number, so skipping or softening a session always looks like pure loss. Here your training is split in two: "
+        "easy minutes (Zones 1–3) and hard minutes (Zones 4–5), and each is tested against how your aerobic efficiency (speed per heartbeat) actually moved. "
+        "Zone 3 counts as easy-side, which is why turning a grey run easy changes neither.")}]
+    if not ch.get("valid"):
+        out.append({"q": "Why nothing yet?", "a": f"It needs {ch['missing']}."})
+        return out
+    a, h = ch["aerobic"], ch["high"]
+    out.append({"q": "What did it find?", "a": (
+        f"Each extra hour a week of easy running went with {a['pct_per_hour']:+.1f}% efficiency (range {a['ci'][0]:+.1f} to {a['ci'][1]:+.1f}); "
+        f"each extra hour of Zone 4–5 went with {h['pct_per_hour']:+.1f}% (range {h['ci'][0]:+.1f} to {h['ci'][1]:+.1f}). "
+        "A wide range means the two moved together too much to tell apart.")})
+    out.append({"q": "Is it used?", "a": (
+        f"Yes: splitting them predicted unseen weeks {ch['gain_vs_total_pct']:.0f}% better than one total-minutes number, so what-ifs now price easy and hard minutes separately."
+        if ch["adopted"] else "No: it didn't beat a single total-minutes number by 5% on unseen weeks, so what-ifs only show which minutes move, not a price.")})
+    return out
+
+
+def freshness_explain(fr: dict) -> list[dict]:
+    h, e = fr["hard"], fr["easy"]
+    out = [{"q": "What is this?", "a": (
+        "An easier day leaves you fresher, but fresher only matters if it makes the next hard session better. This looks at your own hard runs and asks "
+        "whether you run them closer to your best (best 5-minute pace compared with your previous 90 days) when you start with more freshness, "
+        "allowing for being fitter at the time.")}]
+    if not h["enough"]:
+        out.append({"q": "What did it find?", "a": f"Not enough yet: {h['n']} of the {h['min']} hard runs it needs. Until then the what-ifs show freshness but don't price it."})
+    elif h["helpful"]:
+        sp = h.get("split")
+        out.append({"q": "What did it find?", "a": (
+            f"Yes, in your data. Each 10 points of extra form went with hard runs {h['per10_pct']:.1f}% closer to your best (range {h['ci_per10_pct'][0]:.1f} to {h['ci_per10_pct'][1]:.1f}%)"
+            + (f"; your fresher half beat your tired half by {sp['diff_pct']:.1f} points." if sp else ".") + f" Based on {h['n']} hard runs.")})
+    elif h["significant"]:
+        out.append({"q": "What did it find?", "a": f"The opposite of the usual idea: your hard runs got slightly worse when fresher (per 10 form points {h['per10_pct']:.1f}%, range {h['ci_per10_pct'][0]:.1f} to {h['ci_per10_pct'][1]:.1f}%). With {h['n']} runs, treat it as a reason not to assume freshness helps you."})
+    else:
+        out.append({"q": "What did it find?", "a": f"No clear effect across {h['n']} hard runs (per 10 form points {h['per10_pct']:+.1f}%, range {h['ci_per10_pct'][0]:+.1f} to {h['ci_per10_pct'][1]:+.1f}%). That doesn't prove freshness is useless, only that your data haven't shown it, so what-ifs won't put a price on it."})
+    if e["enough"]:
+        out.append({"q": "Easy runs?", "a": (
+            f"On easy runs, 10 extra form points went with {e['per10_pct']:+.1f}% efficiency (range {e['ci_per10_pct'][0]:+.1f} to {e['ci_per10_pct'][1]:+.1f}%): "
+            + ("a real, if small, effect." if e["helpful"] else "no clear effect."))})
+    out.append({"q": "A caution", "a": "These are your own sessions compared with each other, not an experiment. Rest days also tend to come with better weather and mood, so read it as evidence, not proof."})
+    return out
