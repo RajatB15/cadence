@@ -6,6 +6,7 @@ import { useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { ErrorBlock, LoadingBlock, PageHeader, Segmented } from "../components/Shell";
 import { api } from "../lib/api";
+import { hourLabel, toSpec, UNITS, type CustomFields, type CustomSpec } from "../lib/customSession";
 import { formatDate } from "../lib/format";
 import type { PlanOption, PlannedSessionView, Prediction, Sport } from "../lib/types";
 
@@ -85,7 +86,7 @@ function DayPlans({ day, plans, today }: { day: string; plans: PlannedSessionVie
               <p className="font-semibold text-paper">{p.title}</p>
               <p className="mt-1 text-sm text-mute">{p.detail}</p>
               <p className="mt-2 text-xs text-dim">
-                Predicted load {p.predicted.load}
+                {p.start_hour != null && <>{hourLabel(p.start_hour)} · </>}Predicted load {p.predicted.load}
                 {p.status === "done" && p.activity && (
                   <> · done: <Link className="text-lime underline-offset-2 hover:underline" to={`/activities/${p.activity.id}`}>{p.activity.name}</Link>, load {Math.round(p.activity.load ?? 0)}</>
                 )}
@@ -108,10 +109,16 @@ function AddSession({ day, today }: { day: string; today: string }) {
   const [sport, setSport] = useState<Sport>("run");
   const [text, setText] = useState("");
   const picker = useRef<HTMLInputElement>(null);
+  const [own, setOwn] = useState(false);
+  const [hour, setHour] = useState<number | null>(null);
+  const [fields, setFields] = useState<CustomFields>({ distance: "", pace: "", minutes: "", effort: "auto" });
+  const endurance = sport !== "strength";
+  const custom = endurance && own ? toSpec(sport, fields) : null;
+  const extra = { strengthText: sport === "strength" ? text : undefined, startHour: endurance ? hour : null, custom };
   const options = useQuery({
-    queryKey: ["planner-options", day, sport, sport === "strength" ? text : ""],
-    queryFn: () => api.plannerOptions(day, sport, sport === "strength" ? text : undefined),
-    enabled: sport !== "strength" || text.trim().length > 3,
+    queryKey: ["planner-options", day, sport, sport === "strength" ? text : "", extra.startHour, custom],
+    queryFn: () => api.plannerOptions(day, sport, extra),
+    enabled: sport === "strength" ? text.trim().length > 3 : !own || custom != null,
   });
   const read = useMutation({
     mutationFn: async (files: File[]) => {
@@ -146,13 +153,30 @@ function AddSession({ day, today }: { day: string; today: string }) {
             className="w-full border border-line-strong bg-ink/40 p-3 font-mono text-base text-paper outline-none focus:border-gold sm:text-sm" />
         </div>
       )}
+      {endurance && (
+        <div className="mb-6 space-y-4">
+          <div className="flex flex-wrap items-end gap-4">
+            <Segmented label="Session source" options={[{ value: "suggested", label: "Suggested" }, { value: "own", label: "My own" }]} value={own ? "own" : "suggested"} onChange={(v) => setOwn(v === "own")} />
+            <label className="block">
+              <span className="eyebrow">Start time</span>
+              <select value={hour ?? ""} onChange={(e) => setHour(e.target.value === "" ? null : Number(e.target.value))}
+                className="mt-2 block border-b-2 border-line-strong bg-coal py-2 text-base text-paper outline-none focus:border-gold">
+                <option value="">{`Usual (${hourLabel(options.data?.start_hour ?? 7)})`}</option>
+                {Array.from({ length: 17 }, (_, i) => i + 5).map((h) => <option key={h} value={h}>{hourLabel(h)}</option>)}
+              </select>
+            </label>
+          </div>
+          {sport !== "swim" && <p className="text-xs text-dim">Cadence reads the forecast at this hour, shows the expected slowdown from heat and points out a cooler hour when it pays.</p>}
+          {own && <CustomForm sport={sport} fields={fields} onChange={setFields} />}
+        </div>
+      )}
       {options.isPending && options.fetchStatus !== "idle" ? (
         <LoadingBlock height={240} />
       ) : options.isError ? (
         <ErrorBlock error={options.error} retry={() => options.refetch()} />
       ) : options.data ? (
         <div className="grid gap-4 lg:grid-cols-2">
-          {options.data.options.map((o, i) => <OptionCard key={o.key} o={o} day={day} index={i} strengthText={sport === "strength" ? text : undefined} />)}
+          {options.data.options.map((o, i) => <OptionCard key={o.key} o={o} day={day} index={i} extra={extra} />)}
         </div>
       ) : null}
       {sport !== "run" && sport !== "strength" && (
@@ -166,10 +190,35 @@ function AddSession({ day, today }: { day: string; today: string }) {
   );
 }
 
-function OptionCard({ o, day, index, strengthText }: { o: PlanOption; day: string; index: number; strengthText?: string }) {
+function CustomForm({ sport, fields, onChange }: { sport: Exclude<Sport, "strength">; fields: CustomFields; onChange: (f: CustomFields) => void }) {
+  const u = UNITS[sport];
+  const set = (patch: Partial<CustomFields>) => onChange({ ...fields, ...patch });
+  const input = "mt-2 block w-full border-b-2 border-line-strong bg-transparent py-2 text-base text-paper outline-none focus:border-gold";
+  return (
+    <div>
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+        <label className="block"><span className="eyebrow">Distance ({u.distance})</span>
+          <input inputMode="decimal" value={fields.distance} onChange={(e) => set({ distance: e.target.value })} placeholder={sport === "swim" ? "1500" : "10"} className={input} /></label>
+        <label className="block"><span className="eyebrow">{u.pace}</span>
+          <input inputMode={sport === "ride" ? "decimal" : "text"} value={fields.pace} onChange={(e) => set({ pace: e.target.value })} placeholder={u.paceHint} className={input} /></label>
+        <label className="block"><span className="eyebrow">Time (min)</span>
+          <input inputMode="decimal" value={fields.minutes} onChange={(e) => set({ minutes: e.target.value })} placeholder="60" className={input} /></label>
+        <label className="block"><span className="eyebrow">Effort</span>
+          <select value={sport !== "run" && fields.effort === "auto" ? "easy" : fields.effort} onChange={(e) => set({ effort: e.target.value as CustomFields["effort"] })}
+            className="mt-2 block w-full border-b-2 border-line-strong bg-coal py-2 text-base text-paper outline-none focus:border-gold">
+            {sport === "run" && <option value="auto">From pace</option>}
+            <option value="easy">Easy</option><option value="moderate">Moderate</option><option value="hard">Hard</option>
+          </select></label>
+      </div>
+      <p className="mt-3 text-xs text-dim">Fill any two of distance, pace and time; the third is worked out. With all three, pace follows distance and time.</p>
+    </div>
+  );
+}
+
+function OptionCard({ o, day, index, extra }: { o: PlanOption; day: string; index: number; extra: { strengthText?: string; startHour?: number | null; custom?: CustomSpec | null } }) {
   const client = useQueryClient();
   const plan = useMutation({
-    mutationFn: () => api.createPlan(day, o.sport, o.key, strengthText),
+    mutationFn: () => api.createPlan(day, o.sport, o.key, extra),
     onSuccess: () => ["planner", "overview", "planner-options"].forEach((k) => client.invalidateQueries({ queryKey: [k] })),
   });
   return (

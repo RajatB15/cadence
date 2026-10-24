@@ -19,6 +19,7 @@ from statistics import fmean
 
 from cadence_app.analytics import athlete as A
 from cadence_app.analytics import performance as P
+from cadence_app.analytics import wellbeing as WB
 
 DAY = timedelta(days=1)
 CTL_WEEK_GAIN = 1 - (1 - 1 / A.CTL_DAYS) ** 7  # share of the gap to a new daily load that CTL closes in a week
@@ -35,6 +36,7 @@ PHASES = {
     "build": ("Build", "Progressive load with threshold and VO₂max sessions."),
     "specific": ("Race-specific", "Race-pace work and long runs that look like race day."),
     "recovery": ("Recovery week", "Load drops ~35% so the last three weeks turn into fitness."),
+    "maintain": ("Maintain", "Hold fitness steady: the same load, one quality session, no ramp."),
     "absorb": ("Absorb", "Your body is signalling strain: hold load down until it settles."),
     "taper": ("Taper", "Volume down, a little intensity kept: arrive fresh."),
     "race": ("Race week", "Short, sharp and rested."),
@@ -68,13 +70,49 @@ def _goal_phase(goal: dict, ws: date) -> dict | None:
     return {"phase": name, "week_in_block": 3 - k % 4, "weeks_to_race": weeks_out}
 
 
+def active_goal(c: dict) -> dict | None:
+    """The goal that sets the phase: a standard-distance run race first, else the nearest dated goal in another sport."""
+    return c.get("goal") or c.get("sport_goal")
+
+
+def _taper_weeks(c: dict) -> int:
+    g = active_goal(c)
+    return g.get("taper_weeks") or GOALS[g["distance"]]["taper_weeks"]
+
+
+PLATEAU_WEEKS = 8
+PLATEAU_CHANGE = 0.05  # fitness within ±5% of where it was 8 weeks ago...
+PLATEAU_SPREAD = 0.15  # ...and never more than 15% apart in between
+
+
+def plateau(c: dict, ws: date) -> dict | None:
+    """Fitness has gone nowhere for PLATEAU_WEEKS: the case for holding steady instead of pushing another ramp."""
+    now = c["pmc_by_day"].get(ws - DAY)
+    past = c["pmc_by_day"].get(ws - DAY - timedelta(weeks=PLATEAU_WEEKS))
+    if not now or not past or now["fitness"] < 20 or past["fitness"] < 20:
+        return None
+    span = [c["pmc_by_day"][d]["fitness"] for d in A.daterange(ws - DAY - timedelta(weeks=PLATEAU_WEEKS), ws - DAY) if d in c["pmc_by_day"]]
+    mean = fmean(span)
+    change = now["fitness"] / past["fitness"] - 1
+    if abs(change) <= PLATEAU_CHANGE and (max(span) - min(span)) <= PLATEAU_SPREAD * mean:
+        return {"weeks": PLATEAU_WEEKS, "change_pct": round(change * 100, 1)}
+    return None
+
+
 def phase(c: dict, ws: date) -> dict:
     """The phase of the week starting `ws`, from the goal or, without one, from the run of building weeks before it."""
     cache = c.setdefault("_phase", {})
     if ws in cache:
         return cache[ws]
-    goal = c.get("goal")
+    goal = active_goal(c)
     out = _goal_phase(goal, ws) if goal else None
+    if out is None:
+        mode = c.get("training_mode", "auto")
+        flat = plateau(c, ws) if mode == "auto" else None
+        if mode == "maintain" or flat:
+            out = {"phase": "maintain", "week_in_block": None, "weeks_to_race": None,
+                   "why": "You chose to maintain." if mode == "maintain" else
+                          f"No goal is set and fitness has been flat for {flat['weeks']} weeks ({flat['change_pct']:+.1f}%)."}
     if out is None:
         by_week = {w["week"]: w for w in c["weeks"]}
         streak = 0
@@ -91,7 +129,7 @@ def phase(c: dict, ws: date) -> dict:
             out = {"phase": "recovery", "week_in_block": 4, "weeks_to_race": None}
         else:
             out = {"phase": "base" if not p or p["fitness"] < 20 else "build", "week_in_block": streak + 1, "weeks_to_race": None}
-    out = {**out, "label": PHASES[out["phase"]][0], "blurb": PHASES[out["phase"]][1]}
+    out = {**out, "label": PHASES[out["phase"]][0], "blurb": PHASES[out["phase"]][1] + (f" {out['why']}" if out.get("why") else "")}
     cache[ws] = out
     return out
 
@@ -161,6 +199,8 @@ def key_sessions(ph: dict, count: int, goal: dict | None, zones: dict | None, cs
     elif name == "specific":
         spec = make("specific", *SPECIFIC[distance][i], f"{GOALS[distance]['label']} pace") if distance else vo2
         options = [spec, threshold(THRESHOLD["build"])]
+    elif name == "maintain":
+        options = [threshold(THRESHOLD["build"]), vo2]
     elif name in ("recovery", "absorb"):
         options = [threshold(THRESHOLD["recovery"])]
     elif name == "taper":
@@ -185,7 +225,10 @@ def weekly_plan(c: dict) -> dict | None:
     spiking = bool(latest and latest["acwr"] and latest["acwr"] > 1.3)
     warnings = c.get("warnings")
     hrv = c.get("hrv_guided") or {}
-    absorb_why = ("illness/overreach signals" if warnings else "HRV below your normal range" if hrv.get("status") == "below"
+    wb = c.get("wellbeing") or {}
+    now = c.get("today", as_of)
+    felt = WB.hold(wb, now)
+    absorb_why = (felt if felt else "illness/overreach signals" if warnings else "HRV below your normal range" if hrv.get("status") == "below"
                   else "deep fatigue" if fatigued else "a load spike" if spiking else None)
     if absorb_why and ph["phase"] not in ("recovery", "taper", "race"):
         ph.update(phase="absorb", label=PHASES["absorb"][0], blurb=f"Held back for {absorb_why}. " + PHASES["absorb"][1])
@@ -201,20 +244,25 @@ def weekly_plan(c: dict) -> dict | None:
         why = f"Fitness {ctl:.0f} → about {ctl + gain:.0f} by next week, capped at 1.25 × your chronic load."
     elif name == "recovery":
         target, why = 0.65 * chronic, "About 65% of your chronic load: the recovery week of a 3:1 block."
+    elif name == "maintain":
+        target, why = chronic, f"Holding fitness at {ctl:.0f}: your chronic load, no ramp. " + (ph.get("why") or "")
     elif name == "absorb":
         target, why = 0.75 * chronic, f"Held to ~75% of your chronic load because of {absorb_why}."
     elif name == "taper":
-        steps = TAPER_LOAD[GOALS[c["goal"]["distance"]]["taper_weeks"]]
+        steps = TAPER_LOAD[_taper_weeks(c)]
         target = steps[min(ph["week_in_block"], len(steps)) - 1] * chronic
         why = f"Taper week {ph['week_in_block']}: volume down, intensity kept."
     else:
         target, why = 0.4 * chronic, "Race week: just enough to stay sharp."
+    if WB.stress_high(wb, now) and name not in ("recovery", "absorb", "taper", "race"):
+        target *= 0.9
+        why += " Trimmed 10% because you've reported heavy life stress most of this week."
     load_band = [round(target * 0.93), round(target * 1.07)]
 
     sessions = int(max(3, min(7, round(fmean(w["total_sessions"] for w in weeks)))))
     if name in ("recovery", "absorb", "taper", "race"):
         sessions = max(3, sessions - 1)
-    hard = {"base": 1, "build": 2 if sessions >= 4 else 1, "specific": 2 if sessions >= 4 else 1, "recovery": 1, "taper": 1, "race": 1,
+    hard = {"base": 1, "build": 2 if sessions >= 4 else 1, "specific": 2 if sessions >= 4 else 1, "maintain": 1, "recovery": 1, "taper": 1, "race": 1,
             "absorb": 0 if warnings or hrv.get("status") == "below" else 1}[name]
     runs_per_week = fmean(w["sessions"].get("run", 0) for w in weeks)
     goal = c.get("goal")
@@ -238,11 +286,15 @@ def weekly_plan(c: dict) -> dict | None:
         if long_min:
             items.append({"label": "Long run", "value": f"1 × {long_min} min easy" + (f" · ≤ {long_km_cap:.1f} km" if long_km_cap else ""),
                           "why": long_why})
+    sg = c.get("sport_goal")
+    long_sport = _long_sport(c, name, sg) if sg and active_goal(c) is sg and name != "race" else None
+    if long_sport:
+        items.append(long_sport["item"])
     km = [w["run_km"] for w in weeks]
     run_km = None
     if runner and fmean(km) >= 5:
         base_km = fmean(km)
-        lo, hi = {"recovery": (0.6, 0.75), "absorb": (0.7, 0.85), "taper": (0.5, 0.75), "race": (0.3, 0.5)}.get(name, (0.95, 1.10))
+        lo, hi = {"recovery": (0.6, 0.75), "absorb": (0.7, 0.85), "taper": (0.5, 0.75), "race": (0.3, 0.5), "maintain": (0.92, 1.05)}.get(name, (0.95, 1.10))
         run_km = [round(base_km * lo), round(base_km * hi)]
         items.append({"label": "Running volume", "value": f"{run_km[0]}–{run_km[1]} km",
                       "why": "Running km grow ≤ 10% a week: tendons and bones adapt slower than heart and lungs."})
@@ -266,12 +318,12 @@ def weekly_plan(c: dict) -> dict | None:
     return {
         "focus": ph["label"],
         "phase": ph,
-        "goal": _goal_view(goal),
+        "goal": _goal_view(active_goal(c)),
         "items": items,
         "sessions": key_sessions(ph, hard, goal, zones, cs, runner),
         "targets": {
             "load": load_band, "sessions": sessions, "hard": hard, "easy_cap": easy_cap, "easy_pace_s": round(easy_pace) if easy_pace else None,
-            "long_min": long_min, "long_km_cap": long_km_cap, "run_km": run_km, "strength": strength, "sleep_h": need,
+            "long_min": long_min, "long_km_cap": long_km_cap, "long_sport": long_sport["target"] if long_sport else None, "run_km": run_km, "strength": strength, "sleep_h": need,
             "lights_out_min": -30, "hard_spacing": _spacing(c),
         },
     }
@@ -305,6 +357,8 @@ def _long_run(c: dict, name: str, goal: dict | None, easy_pace: float | None) ->
         minutes, why = max(45, 0.75 * max(longest, 60)), "Shortened by a quarter for the lighter week."
     elif name == "taper":
         minutes, why = 0.6 * need, "Trimmed for the taper; keep it relaxed."
+    elif name == "maintain":
+        minutes, why = min(need, max(60, longest)), f"Holding your recent longest ({longest:.0f} min): maintenance doesn't need a longer one."
     else:
         minutes = min(need, max(60, longest + 10))
         why = (f"Up 10 min from your recent longest ({longest:.0f} min), building toward {need} min" + (f" for the {GOALS[goal['distance']]['label'].lower()}." if goal else ".")
@@ -319,9 +373,35 @@ def _long_run(c: dict, name: str, goal: dict | None, easy_pace: float | None) ->
     return int(round(minutes / 5) * 5), cap_km, why
 
 
+def _long_sport(c: dict, name: str, sg: dict) -> dict | None:
+    """This week's long session in the goal's sport: +10% on the longest of the last 30 days, building toward 85% of the goal distance."""
+    sport, target = sg["sport"], sg["distance_m"]
+    as_of = c["as_of"]
+    recent = [a.distance_m for a in c["acts"] if a.family == sport and a.distance_m and as_of - timedelta(days=30) <= a.day <= as_of]
+    if not recent:
+        return None
+    longest, ready = max(recent), 0.85 * target
+    if name in ("recovery", "absorb"):
+        metres, why = 0.75 * longest, "Shortened by a quarter for the lighter week."
+    elif name == "taper":
+        metres, why = 0.6 * longest, "Trimmed for the taper; keep it relaxed."
+    elif longest >= ready:
+        metres, why = ready, f"At 85% of the {sg['label']} goal: hold it here."
+    else:
+        metres, why = min(ready, longest * 1.10), f"+10% on your longest {sport} of the last 30 days ({_dist(longest)}), building toward {_dist(ready)} for the {sg['label']} goal."
+    metres = round(metres / 100) * 100 if sport == "swim" else round(metres / 1000, 1) * 1000
+    return {"item": {"label": f"Long {sport}", "value": f"1 × {_dist(metres)} easy", "why": why}, "target": {"sport": sport, "metres": metres}}
+
+
+def _dist(metres: float) -> str:
+    return f"{metres:.0f} m" if metres < 1000 else f"{metres / 1000:.1f} km"
+
+
 def _goal_view(goal: dict | None) -> dict | None:
     if not goal:
         return None
+    if goal.get("sport"):
+        return {"distance": None, "sport": goal["sport"], "label": goal["label"], "date": goal["date"], "target_s": goal.get("target_s"), "target_pace_s": None}
     g = GOALS[goal["distance"]]
     return {"distance": goal["distance"], "label": g["label"], "date": goal["date"], "target_s": goal.get("target_s"),
             "target_pace_s": round(goal["target_s"] / g["distance_m"] * 1000) if goal.get("target_s") else None}

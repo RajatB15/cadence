@@ -34,7 +34,7 @@ cadence-app = "cadence_app.server:main"
 include = ["cadence_app*"]
 
 [tool.setuptools.package-data]
-cadence_app = ["migrations/*.py", "migrations/script.py.mako", "migrations/versions/*.py"]
+cadence_app = ["migrations/*.py", "migrations/script.py.mako", "migrations/versions/*.py", "catalogue/*.json"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

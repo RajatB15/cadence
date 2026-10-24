@@ -231,3 +231,14 @@ def test_goals_without_training_data_do_not_crash(env):  # noqa: F811
     client.post("/api/goals", json={"kind": "race", "sport": "run", "distance_m": 5000, "date": str(clock.today() + timedelta(weeks=8))}, headers=MUTATE)
     g = client.get("/api/goals").json()
     assert not g["has_training"] and g["goals"][0]["state"] == "no_data"
+
+
+def test_a_ride_race_with_no_run_goal_drives_the_plan(env):  # noqa: F811
+    client, clock = env
+    client.post("/api/sync/demo", headers=MUTATE)
+    made = client.post("/api/goals", json={"kind": "race", "sport": "ride", "distance_m": 100000, "date": str(clock.today() + timedelta(weeks=9))}, headers=MUTATE).json()
+    plan = client.get("/api/insights").json()["plan"]
+    assert plan["goal"]["sport"] == "ride" and plan["goal"]["label"] == "100 km" and plan["phase"]["weeks_to_race"] is not None
+    assert client.get("/api/goals").json()["plan_goal_id"] == made["id"]
+    assert client.put("/api/settings/goal", json={"distance": "10k", "date": str(clock.today() + timedelta(weeks=20))}, headers=MUTATE).status_code == 200
+    assert client.get("/api/insights").json()["plan"]["goal"]["distance"] == "10k"  # a run race takes over

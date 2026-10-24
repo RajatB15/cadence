@@ -14,6 +14,7 @@ import {
   Scale,
   Sun,
   TrendingUp,
+  Utensils,
   Wind,
 } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
@@ -25,6 +26,7 @@ import { CountUp } from "../components/CountUp";
 import { RefreshChip } from "../components/RefreshButton";
 import { EmptyState } from "../components/EmptyState";
 import { WhatIfCard } from "../components/WhatIfCard";
+import { RecoveryWinsCard, WellbeingCard } from "../components/Wellbeing";
 import { Sheet } from "../components/Sheet";
 import { DemoChip, ErrorBlock, LoadingBlock } from "../components/Shell";
 import { Sparkline } from "../components/Sparkline";
@@ -127,15 +129,20 @@ function Dashboard({ data }: { data: Extract<Overview, { has_data: true }> }) {
         </motion.section>
       )}
 
+      {coach && <motion.section variants={rise}><WellbeingCard day={data.today} block={coach.wellbeing} /></motion.section>}
+
       <ReviewPrompt />
 
-      {!data.weight.weighed_today && (
-      <motion.section variants={rise}>
-        <Link to="/weight?log=1" className="chip text-mute hover:text-paper pointer-coarse:py-2">
-          <Scale size={12} className="text-gold" /> Log weight
+      <motion.section variants={rise} className="flex flex-wrap gap-3">
+        {!data.weight.weighed_today && (
+          <Link to="/weight?log=1" className="chip text-mute hover:text-paper pointer-coarse:py-2">
+            <Scale size={12} className="text-gold" /> Log weight
+          </Link>
+        )}
+        <Link to="/food" className="chip text-mute hover:text-paper pointer-coarse:py-2">
+          <Utensils size={12} className="text-gold" /> Log food
         </Link>
       </motion.section>
-      )}
 
       <PlannedToday plans={data.planned_today ?? []} />
 
@@ -158,6 +165,8 @@ function Dashboard({ data }: { data: Extract<Overview, { has_data: true }> }) {
       <VitalsStrip data={data} />
 
       {coach && coach.streaks.length > 0 && <StreakChips streaks={coach.streaks} />}
+
+      {coach && <RecoveryWinsCard wins={coach.recovery_wins} />}
 
       {coach && r && (
         <Sheet open={sheet === "readiness"} onOpenChange={(o) => setSheet(o ? "readiness" : null)} title="Readiness" eyebrow={r.live ? "Live · updates through the day" : "This morning"}>
@@ -312,6 +321,7 @@ function TodayCall({ coach }: { coach: Brief }) {
           <p className="eyebrow mb-1" style={{ color }}>Today · {status?.label ?? k.label}</p>
           <h2 className="font-display text-3xl leading-tight text-cream sm:text-4xl">{t.title}</h2>
           <p className="mt-2 text-mute">{t.kind === "done" ? t.next : t.detail}</p>
+          {coach.call?.source === "check-in" && <p className="mt-2 text-xs font-semibold tracking-widest text-gold uppercase">From your check-in</p>}
         </div>
       </div>
       {hasMore && (

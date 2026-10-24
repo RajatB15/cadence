@@ -13,7 +13,7 @@ import { DemoChip, ErrorBlock, LoadingBlock, PageHeader, Segmented } from "../co
 import { Sparkline } from "../components/Sparkline";
 import { api } from "../lib/api";
 import { formatDate } from "../lib/format";
-import type { Effect, Finding, GoalDistance, Insights, TrainingGoal } from "../lib/types";
+import type { OutcomeMarker as Outcomes_Marker, Effect, Finding, GoalDistance, Insights, TrainingGoal, TrainingMode } from "../lib/types";
 
 type Data = Extract<Insights, { has_data: true }>;
 
@@ -67,6 +67,7 @@ export function CoachPage() {
       <div className="space-y-6">
         <Readiness d={d} />
         <Plan d={d} />
+        <OutcomesCard />
         <Findings findings={d.findings} />
         <Performance d={d} />
         <Recovery d={d} />
@@ -213,8 +214,34 @@ function Readiness({ d }: { d: Data }) {
 // ---- weekly plan ----------------------------------------------------------------
 
 const PHASE_COLOR: Record<string, string> = {
+  maintain: "#5be3b0",
   base: "#6cc7ff", build: "#c8f560", specific: "#d9b26a", recovery: "#9b8cff", absorb: "#ffbe55", taper: "#5be3b0", race: "#ff6a55",
 };
+
+const MODE_HELP: Record<TrainingMode, string> = {
+  auto: "Builds, then holds steady on its own when fitness has been flat for 8 weeks with no goal.",
+  build: "Always aims to raise fitness: a ramp, with a lighter week after three.",
+  maintain: "Holds your current fitness: the same load, one quality session, no ramp.",
+};
+
+/** Without a race, should the plan keep pushing? Choose how it behaves. */
+function ModeSwitch({ mode }: { mode: TrainingMode }) {
+  const client = useQueryClient();
+  const set = useMutation({
+    mutationFn: api.setTrainingMode,
+    onSuccess: () => {
+      for (const k of ["insights", "overview", "planner"]) client.invalidateQueries({ queryKey: [k] });
+    },
+  });
+  return (
+    <div className="mt-2 w-full">
+      <p className="eyebrow mb-2">Without a race, the plan should</p>
+      <Segmented label="Training mode" value={mode} onChange={(m) => set.mutate(m)}
+        options={[{ value: "auto", label: "Decide" }, { value: "build", label: "Build" }, { value: "maintain", label: "Maintain" }]} />
+      <p className="mt-2 text-xs text-dim">{MODE_HELP[mode]}</p>
+    </div>
+  );
+}
 
 function Plan({ d }: { d: Data }) {
   const plan = d.plan;
@@ -237,6 +264,7 @@ function Plan({ d }: { d: Data }) {
         <span className="chip" style={{ color, borderColor: `${color}66` }}>{plan.phase.label}{plan.phase.week_in_block && plan.phase.phase !== "race" ? ` · week ${plan.phase.week_in_block}` : ""}</span>
         {plan.phase.weeks_to_race != null && <span className="text-sm text-mute">{plan.phase.weeks_to_race} weeks to race day</span>}
         <p className="w-full text-sm text-mute">{plan.phase.blurb}</p>
+        {!plan.goal && <ModeSwitch mode={d.training_mode} />}
       </div>
       {plan.sessions.length > 0 && (
         <div className="mb-6 grid gap-3 md:grid-cols-2">
@@ -1030,5 +1058,48 @@ function Methods() {
         <li><b className="text-paper">Sleep</b>: your need is where more sleep stops lifting overnight HRV (8 h until your data shows a plateau); regularity is the Sleep Regularity Index from onset and wake times.</li>
       </ul>
     </details>
+  );
+}
+
+
+// ---- is it working? ---------------------------------------------------------------------
+
+const STATE_STYLE = { better: { color: "#c8f560", sign: "▲" }, worse: { color: "#ff6a55", sign: "▼" }, flat: { color: "#8d8a82", sign: "●" }, missing: { color: "#5c5a55", sign: "–" } } as const;
+const fmtMarker = (m: Outcomes_Marker, v: number | null) => (v == null ? "—" : m.key === "sleep" ? v.toFixed(1) : m.key === "efficiency" ? v.toFixed(3) : m.key === "critical_speed" ? `${Math.floor(1000 / v / 60)}:${String(Math.round((1000 / v) % 60)).padStart(2, "0")}` : v.toFixed(m.key === "fitness" ? 0 : 1));
+
+function OutcomesCard() {
+  const q = useQuery({ queryKey: ["outcomes"], queryFn: api.outcomes });
+  if (q.isPending) return <LoadingBlock height={200} />;
+  if (q.isError || !q.data.has_data) return null;
+  const o = q.data;
+  const tone = o.headline.tone === "good" ? "#c8f560" : o.headline.tone === "warn" ? "#ffbe55" : "#6cc7ff";
+  return (
+    <Card id="outcomes" title="Is it working?" eyebrow="The last 12 weeks against the 12 before">
+      <p className="mb-5 max-w-3xl text-paper" style={{ borderLeft: `3px solid ${tone}`, paddingLeft: 12 }}>{o.headline.text}</p>
+      {o.enough && (
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[420px] text-sm">
+            <thead><tr className="eyebrow text-left"><th className="py-2 font-semibold">Marker</th><th className="font-semibold">Now</th><th className="font-semibold">Before</th><th className="text-right font-semibold">Change</th></tr></thead>
+            <tbody>
+              {o.markers.map((m) => {
+                const st = STATE_STYLE[m.state];
+                return (
+                  <tr key={m.key} className="border-t border-line/60">
+                    <td className="py-2 text-paper">{m.label}</td>
+                    <td className="num text-paper">{fmtMarker(m, m.now)}</td>
+                    <td className="num text-mute">{fmtMarker(m, m.before)}</td>
+                    <td className="num text-right" style={{ color: st.color }}>
+                      {m.state === "missing" ? "not enough data" : m.state === "flat" ? "no clear change" : `${st.sign} ${m.change != null && m.change > 0 ? "+" : ""}${m.change}${m.unit === "%" || m.key === "fitness" || m.key === "critical_speed" || m.key === "efficiency" ? "%" : ` ${m.unit}`.trimEnd()}`}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+      {o.lines.length > 0 && <ul className="mt-5 list-disc space-y-1 pl-5 text-sm text-mute">{o.lines.map((l) => <li key={l}>{l}</li>)}</ul>}
+      <p className="mt-4 max-w-3xl text-xs text-dim">This lines up what changed; it does not say the plan caused it. A change smaller than a marker's usual noise is shown as no clear change.</p>
+    </Card>
   );
 }

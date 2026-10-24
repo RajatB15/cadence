@@ -217,6 +217,58 @@ def swim_options() -> list[dict]:
     ]
 
 
+SPEED_RANGE = {"run": (1.0, 7.5), "ride": (2.0, 25.0), "swim": (0.3, 2.5)}  # m/s a typed-in session must fall within
+EFFORTS = {"easy": ("easy", 2), "moderate": ("tempo", 3), "hard": ("threshold", 4)}  # effort → (kind, steady zone)
+SPEED_UNITS = {"run": lambda v: f"{int(1000 / v // 60)}:{int(1000 / v % 60):02d}/km", "ride": lambda v: f"{v * 3.6:.1f} km/h",
+               "swim": lambda v: f"{int(100 / v // 60)}:{int(100 / v % 60):02d}/100 m"}
+
+
+def custom_option(c: dict, sport: str, distance_m: float | None = None, minutes: float | None = None, speed_mps: float | None = None,
+                  effort: str | None = None) -> dict:
+    """A session you describe yourself: any two of distance, time and speed (all three: speed is recomputed).
+
+    Effort picks the steady zone (easy Z2, moderate Z3, hard Z4 after a short Z1 warm-up). For runs without an
+    explicit effort it follows your pace against critical speed (below 84% easy, below 94% moderate, else hard);
+    other sports default to easy because there is no reference pace. Raises ValueError for an unusable description.
+    """
+    if sport not in SPEED_RANGE:
+        raise ValueError("Custom sessions are for run, ride and swim")
+    if sum(v is not None for v in (distance_m, minutes, speed_mps)) < 2:
+        raise ValueError("Give at least two of distance, time and speed")
+    if distance_m is not None and minutes is not None:
+        speed_mps = distance_m / (minutes * 60)
+    elif distance_m is not None:
+        minutes = distance_m / speed_mps / 60
+    else:
+        distance_m = speed_mps * minutes * 60
+    lo, hi = SPEED_RANGE[sport]
+    if not lo <= speed_mps <= hi:
+        raise ValueError("That speed isn't realistic for this sport: check the units")
+    if not 10 <= minutes <= 480:
+        raise ValueError("Sessions run between 10 minutes and 8 hours")
+    cs = (c.get("performance") or {}).get("critical_speed") or {}
+    ratio = speed_mps / cs["cs_mps"] if sport == "run" and cs.get("valid") and cs.get("cs_mps") else None
+    inferred = effort is None
+    if inferred:
+        effort = "easy" if ratio is None or ratio < 0.84 else "moderate" if ratio < 0.94 else "hard"
+    kind, zone = EFFORTS[effort]
+    if kind == "easy" and minutes >= A.LONG_MIN[sport]:
+        kind = "long"
+    minutes = round(minutes)
+    warm = round(min(10, minutes * 0.15))
+    km = distance_m / 1000
+    dist = f"{distance_m:.0f} m" if sport == "swim" else f"{km:.1f} km"
+    detail = f"{dist} at {SPEED_UNITS[sport](speed_mps)}, about {minutes} min, {effort} effort"
+    if sport == "swim":
+        detail += " (go by feel: wrist heart rate is unreliable in water)"
+    if ratio is not None:
+        detail += f". That pace is {ratio * 100:.0f}% of your critical speed" + (", so effort was set from it." if inferred else ".")
+    else:
+        detail += "."
+    return {"key": "custom", "sport": sport, "kind": kind, "title": f"Your {sport} · {dist} at {SPEED_UNITS[sport](speed_mps)}", "minutes": minutes,
+            "detail": detail, "profile": _profile((warm, 1), (minutes - warm, zone)), "custom": True}
+
+
 def strength_option(c: dict, blocks: list[dict] | None = None, summary: dict | None = None) -> dict:
     heavy = bool(summary and summary.get("heavy_lower"))
     return {"key": "strength_class", "sport": "strength", "kind": "strength", "title": "Strength class" + (" · heavy lower body" if heavy else ""),
@@ -295,8 +347,8 @@ def predict(c: dict, model: dict, day: date, option: dict, planned: list[dict]) 
     strain = (c.get("strain") or {}).get("days", {})
     everyday = median([v["everyday"] for d, v in strain.items() if as_of - timedelta(days=28) <= d < as_of]) if strain else 0.0
     so_far = strain.get(as_of, {}).get("total", 0.0) if day == as_of else everyday
-    outlook = W.outlook(c["forecast"], day, c.get("start_hour", 7), c["utc_offset"], c.get("heat")) \
-        if sport in ("run", "ride") and c.get("forecast") else None
+    hour = option["start_hour"] if option.get("start_hour") is not None else c.get("start_hour", 7)
+    outlook = W.outlook(c["forecast"], day, hour, c["utc_offset"], c.get("heat")) if sport in ("run", "ride") and c.get("forecast") else None
     return {
         "weather": outlook,
         "load": round(load),

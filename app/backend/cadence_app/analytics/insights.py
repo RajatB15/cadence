@@ -17,6 +17,7 @@ from cadence_app import goal_store
 from cadence_app import journal as journal_store
 from cadence_app import strength as strength_store
 from cadence_app import weather as weather_store
+from cadence_app import wellbeing_store
 from cadence_app.activity_types import activity_family
 from cadence_app.analytics import athlete as A
 from cadence_app.analytics import banister as B
@@ -30,7 +31,7 @@ from cadence_app.analytics import plan as training_plan
 from cadence_app.analytics import recovery as R
 from cadence_app.analytics import strain as S
 from cadence_app.garmin import fit, vault
-from cadence_app.models import Activity, ActivityAnalysis, DailyMetric, DayHeartHistogram, RawResponse, WeightReading
+from cadence_app.models import Activity, ActivityAnalysis, AppSetting, DailyMetric, DayHeartHistogram, RawResponse, WeightReading
 from cadence_app.sync import utcnow
 
 log = logging.getLogger(__name__)
@@ -38,6 +39,8 @@ ANALYSIS_VERSION = 2
 MIN_ANALYSIS_S = 10 * 60
 SEVERITY_ORDER = {"alert": 0, "warn": 1, "info": 2, "good": 3}
 SPIKE_RATIO = 1.10
+TRAINING_MODES = ("auto", "build", "maintain")
+MODE_KEY = "training_mode"
 DAY = timedelta(days=1)
 
 
@@ -98,6 +101,23 @@ def load_geo(session: Session) -> dict[int, dict]:
         if s and s.get("startLatitude") is not None:
             out[aid] = {k: s.get(k) for k in GEO_FIELDS}
     return out
+
+
+def training_mode(session: Session) -> str:
+    row = session.get(AppSetting, MODE_KEY)
+    return row.value if row and row.value in TRAINING_MODES else "auto"
+
+
+def save_training_mode(session: Session, mode: str) -> None:
+    row = session.get(AppSetting, MODE_KEY)
+    if mode == "auto":
+        if row:
+            session.delete(row)
+    elif row:
+        row.value = mode
+    else:
+        session.add(AppSetting(key=MODE_KEY, value=mode))
+    session.commit()
 
 
 def load_weights(session: Session, source_id: str) -> list[tuple[date, float]]:
@@ -296,11 +316,14 @@ def context(session: Session, source_id: str, today: date, now: datetime | None 
         analyses=load_analyses(session) if garmin else {},
         zones=hr_zones(session) if garmin else None,
         goal=goal_store.primary_run_goal(session, today),
+        sport_goal=goal_store.primary_sport_goal(session, today),
         weights=load_weights(session, source_id),
         strength=strength_labelling(session, today) if garmin else None,
         journal={"behaviours": [journal_store.behaviour_dict(b) for b in journal_store.catalogue(session)],
                  "answers": journal_store.entries(session)},
         labels=strength_store.by_activity(session, source_id),
+        wellbeing=wellbeing_store.entries(session, today - timedelta(days=120)),
+        training_mode=training_mode(session),
         hr_hists=load_hr_histograms(session, today) if garmin else None,
         weather=weather_store.by_activity(session, source_id) if weather_on else None,
         forecast=weather_store.forecast(session, now or utcnow()) if weather_on else None,
@@ -310,9 +333,9 @@ def context(session: Session, source_id: str, today: date, now: datetime | None 
 
 def assemble(
     source_id: str, series: dict[str, A.Series], acts: list[A.Act], today: date, *,
-    analyses: dict[int, dict] | None = None, zones: dict | None = None, goal: dict | None = None,
+    analyses: dict[int, dict] | None = None, zones: dict | None = None, goal: dict | None = None, sport_goal: dict | None = None,
     weights: list[tuple[date, float]] | None = None, strength: dict | None = None, journal: dict | None = None,
-    labels: dict[int, dict] | None = None, hr_hists: dict[date, tuple[dict, dict]] | None = None,
+    labels: dict[int, dict] | None = None, wellbeing: dict[date, dict] | None = None, training_mode: str = "auto", hr_hists: dict[date, tuple[dict, dict]] | None = None,
     weather: dict[int, dict] | None = None, forecast: list[dict] | None = None, geo: dict[int, dict] | None = None,
 ) -> dict | None:
     """Pure assembly of the shared context from loaded data (tests build contexts with this directly)."""
@@ -372,6 +395,7 @@ def assemble(
         "strength_labelled": strength,
         "zones": zones,
         "goal": goal if goal and goal["date"] >= as_of - timedelta(days=1) else None,
+        "sport_goal": sport_goal if sport_goal and sport_goal["date"] >= as_of - timedelta(days=1) else None,
         "performance": performance,
         "recovery": R.recovery_profile(hrv, acts, as_of),
         "hrv_guided": R.hrv_guided(hrv, as_of),
@@ -389,6 +413,9 @@ def assemble(
     c["start_hour"] = W.usual_start_hour([a.start_local for a in acts if a.family == "run" and a.start_local and a.day > as_of - timedelta(days=90)])
     c["strain"] = strain_days(c, hr_hists or {})
     c["journal"] = journal or {"behaviours": [], "answers": {}}
+    c["wellbeing"] = wellbeing or {}
+    c["today"] = today
+    c["training_mode"] = training_mode if training_mode in TRAINING_MODES else "auto"
     c["labels"] = labels or {}
     c["strength_content"] = strength_overview(c)
     c["habits"] = habit_insights(c)
@@ -534,6 +561,12 @@ def readiness_now(c: dict, now: datetime | None = None) -> dict | None:
     )
 
 
+def _wellbeing_call(ctx: dict, readiness: dict | None) -> dict | None:
+    from cadence_app.analytics import notes  # wording lives in notes, which imports this module
+
+    return notes.wellbeing_call(ctx, readiness)
+
+
 def build(session: Session, source_id: str, today: date) -> dict:
     ctx = context(session, source_id, today)
     if ctx is None:
@@ -550,10 +583,11 @@ def build(session: Session, source_id: str, today: date) -> dict:
 
     return {
         "has_data": True,
+        "training_mode": ctx["training_mode"],
         "source_id": source_id,
         "as_of": as_of,
         "readiness": today_ready,
-        "recommendation": recommend(today_ready, pmc_by_day.get(as_of), load.get(as_of - DAY, 0), ctx.get("warnings"), ctx.get("hrv_guided")),
+        "recommendation": _wellbeing_call(ctx, today_ready) or recommend(today_ready, pmc_by_day.get(as_of), load.get(as_of - DAY, 0), ctx.get("warnings"), ctx.get("hrv_guided")),
         "readiness_history": [{"day": r["day"], "score": r["score"]} for r in ready_days],
         "readiness_validation": R.readiness_validation(ctx, readiness_on),
         "findings": findings,
