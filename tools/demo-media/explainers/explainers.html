@@ -1,0 +1,316 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Cadence algorithm explainers</title>
+<!-- Deterministic scenes: window.draw(scene, t) with t in [0,1] paints one frame. render-explainers.mjs steps t and screenshots.
+     All data below is synthetic (seeded); nothing here reads the vault. -->
+<style>
+  @font-face { font-family: Manrope; src: url(fonts/manrope.woff2); font-weight: 200 800; }
+  @font-face { font-family: Serif; src: url(fonts/serif.woff2); }
+  @font-face { font-family: Mono; src: url(fonts/mono.woff2); font-weight: 100 800; }
+  html, body { margin: 0; background: #0b0b0c; }
+  svg { display: block; font-family: Manrope, system-ui, sans-serif; }
+</style>
+<div id="root"></div>
+<script>
+const W = 1280, H = 720;
+const C = { ink: "#0b0b0c", coal: "#121213", slate: "#19191b", line: "#262629", line2: "#34343a", cream: "#f2e8cf",
+  paper: "#ecebe6", mute: "#8d8a82", dim: "#5c5a55", gold: "#d9b26a", lime: "#c8f560", violet: "#9b8cff",
+  coral: "#ff6a55", sky: "#6cc7ff", amber: "#ffbe55", mint: "#5be3b0" };
+
+const clamp = (x, a = 0, b = 1) => Math.max(a, Math.min(b, x));
+const seg = (t, a, b) => clamp((t - a) / (b - a));
+const ease = (x) => (x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2);
+const lerp = (a, b, x) => a + (b - a) * x;
+const f1 = (x) => x.toFixed(1), f0 = (x) => Math.round(x).toString();
+function rng(seed) { let s = seed >>> 0; return () => ((s = (s * 1664525 + 1013904223) >>> 0) / 4294967296); }
+const gauss = (r) => Math.sqrt(-2 * Math.log(r() + 1e-9)) * Math.cos(2 * Math.PI * r());
+const mean = (a) => a.reduce((s, x) => s + x, 0) / a.length;
+const sd = (a) => { const m = mean(a); return Math.sqrt(a.reduce((s, x) => s + (x - m) ** 2, 0) / (a.length - 1)); };
+const hms = (s) => `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, "0")}`;
+
+const path = (pts) => pts.map((p, i) => `${i ? "L" : "M"}${p[0].toFixed(1)} ${p[1].toFixed(1)}`).join(" ");
+const text = (x, y, s, o = {}) =>
+  `<text x="${x}" y="${y}" fill="${o.c || C.paper}" font-size="${o.s || 18}" font-weight="${o.w || 500}" text-anchor="${o.a || "start"}"
+    opacity="${o.o ?? 1}" ${o.f ? `font-family="${o.f}"` : ""} ${o.ls ? `letter-spacing="${o.ls}"` : ""}>${s}</text>`;
+
+function frame(title, kicker, caption, cite, body, progress) {
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">
+  <defs><radialGradient id="g" cx="85%" cy="-10%" r="80%"><stop offset="0" stop-color="#c8f560" stop-opacity=".10"/><stop offset="1" stop-color="#c8f560" stop-opacity="0"/></radialGradient></defs>
+  <rect width="${W}" height="${H}" fill="${C.ink}"/><rect width="${W}" height="${H}" fill="url(#g)"/>
+  ${text(64, 60, kicker.toUpperCase(), { c: C.lime, s: 13, w: 700, ls: 2.4 })}
+  ${text(64, 108, title, { f: "Serif", s: 48, w: 400, c: C.cream })}
+  ${body}
+  <rect x="64" y="618" width="${W - 128}" height="1" fill="${C.line}"/>
+  ${text(64, 656, caption, { s: 22, w: 600 })}
+  ${text(64, 688, cite, { s: 14, c: C.mute })}
+  ${text(W - 64, 688, "Cadence", { a: "end", f: "Serif", s: 22, c: C.cream })}
+  <rect x="64" y="${H - 6}" width="${(W - 128) * progress}" height="2" fill="${C.lime}" opacity=".5"/>
+  </svg>`;
+}
+const chip = (x, y, label, col, o = 1) => {
+  const w = label.length * 8.6 + 28;
+  return `<g opacity="${o}"><rect x="${x}" y="${y}" width="${w}" height="30" rx="15" fill="${col}" fill-opacity=".14" stroke="${col}" stroke-opacity=".6"/>
+    ${text(x + 14, y + 20, label, { c: col, s: 14, w: 700 })}</g>`;
+};
+const axisLabel = (x, y, s, o = {}) => text(x, y, s, { c: C.mute, s: 13, f: "Mono", ...o });
+
+/* ------------------------------------------------------------ 1. Fitness, fatigue, form (Banister) */
+const S1 = (() => {
+  const r = rng(7), N = 84, load = [];
+  for (let d = 0; d < N; d++) {
+    const wk = Math.floor(d / 7), dow = d % 7;
+    const base = [70, 0, 55, 90, 0, 120, 45][dow] * (0.75 + 0.07 * Math.min(wk, 8)) * (wk % 4 === 3 ? 0.62 : 1);
+    load.push(d >= 74 ? base * 0.35 : Math.max(0, base + gauss(r) * 6));
+  }
+  let ctl = 40, atl = 40; const F = [], T = [];
+  load.forEach((l) => { ctl += (l - ctl) / 42; atl += (l - atl) / 7; F.push(ctl); T.push(atl); });
+  return { load, F, T, N };
+})();
+function scene1(t) {
+  const { load, F, T, N } = S1, x0 = 90, x1 = 1190, X = (d) => lerp(x0, x1, d / (N - 1));
+  const yL = (v) => 340 - ((v - 20) / 90) * 175, yB = (v) => 575 - (v / 150) * 110;
+  const p = ease(seg(t, 0.06, 0.78)) * (N - 1), n = Math.floor(p);
+  let b = `<rect x="${x0 - 20}" y="136" width="${x1 - x0 + 40}" height="218" rx="14" fill="${C.coal}" stroke="${C.line}"/>
+           <rect x="${x0 - 20}" y="368" width="${x1 - x0 + 40}" height="232" rx="14" fill="${C.coal}" stroke="${C.line}"/>`;
+  b += axisLabel(x0, 160, "fitness & fatigue (load units)") + axisLabel(x0, 392, "daily training load");
+  for (let d = 0; d <= n; d++) {
+    const h = load[d] / 150 * 110, w = (x1 - x0) / N * 0.62;
+    b += `<rect x="${X(d) - w / 2}" y="${575 - h}" width="${w}" height="${h}" rx="1.5" fill="${C.sky}" opacity=".85"/>`;
+  }
+  const upto = (arr) => arr.slice(0, n + 1).map((v, d) => [X(d), yL(v)]);
+  if (t > 0.22) {
+    const fa = ease(seg(t, 0.22, 0.34));
+    b += `<path d="${path(upto(F))}" fill="none" stroke="${C.lime}" stroke-width="3.5" opacity="${fa}"/>`;
+  }
+  if (t > 0.4) {
+    const ta = ease(seg(t, 0.4, 0.5));
+    b += `<path d="${path(upto(T))}" fill="none" stroke="${C.coral}" stroke-width="2.5" opacity="${ta}"/>`;
+  }
+  if (t > 0.58) { // form = fitness - fatigue, shaded between the curves
+    const a = ease(seg(t, 0.58, 0.7));
+    let g = "";
+    for (let d = 1; d <= n; d++) {
+      const up = F[d] >= T[d];
+      g += `<path d="M${X(d - 1)} ${yL(F[d - 1])} L${X(d)} ${yL(F[d])} L${X(d)} ${yL(T[d])} L${X(d - 1)} ${yL(T[d - 1])}Z" fill="${up ? C.mint : C.coral}" opacity="${0.22 * a}"/>`;
+    }
+    b += g;
+  }
+  const cx = X(n);
+  b += `<line x1="${cx}" x2="${cx}" y1="150" y2="578" stroke="${C.line2}" stroke-dasharray="3 5"/>`;
+  b += chip(90, 176, `fitness ${f0(F[n])}`, C.lime, t > 0.22 ? 1 : 0) + chip(240, 176, `fatigue ${f0(T[n])}`, C.coral, t > 0.4 ? 1 : 0);
+  if (t > 0.58) { const fm = F[n] - T[n]; b += chip(400, 176, `form ${fm >= 0 ? "+" : ""}${f0(fm)}`, fm >= 0 ? C.mint : C.amber, 1); }
+  const cap = t < 0.22 ? "Every session adds training load." :
+    t < 0.4 ? "Fitness is a slow average of load: a 42-day exponential memory." :
+    t < 0.58 ? "Fatigue is a fast one: 7 days. It rises quickly and drains quickly." :
+    t < 0.84 ? "Form = fitness − fatigue. Hard blocks push it down; rest brings it back." :
+    "Ease off and fatigue falls faster than fitness: form rises, which is what a taper is for.";
+  return frame("Fitness, fatigue and form", "How the load model works", cap,
+    "Banister impulse–response with 42/7-day exponential weighting, as in PMC charts. Demo data.", b, t);
+}
+
+/* ------------------------------------------------------------ 2. HRV-guided readiness */
+const S2 = (() => {
+  const r = rng(21), N = 100, v = [];
+  for (let d = 0; d < N; d++) {
+    const slow = 0.05 * Math.sin(d / 9);
+    let x = 4.05 + slow + gauss(r) * 0.07;
+    if (d >= 90) x -= 0.05 * (d - 89);           // a run of suppressed nights
+    v.push(x);
+  }
+  const m7 = v.map((_, d) => mean(v.slice(Math.max(0, d - 6), d + 1)));
+  const band = v.map((_, d) => {
+    if (d < 40) return null;
+    const w = v.slice(Math.max(0, d - 60), d);   // previous 60 days
+    const m = mean(w), s = sd(w);
+    return [m - 0.5 * s, m + 0.5 * s];
+  });
+  return { v, m7, band, N };
+})();
+function scene2(t) {
+  const { v, m7, band, N } = S2, d0 = 40, x0 = 90, x1 = 1190, X = (d) => lerp(x0, x1, (d - 10) / (N - 11));
+  const ymin = 3.6, ymax = 4.3, Y = (val) => 560 - ((val - ymin) / (ymax - ymin)) * 360;
+  const p = ease(seg(t, 0.06, 0.9)) * (N - 1 - d0) + d0, n = Math.floor(p);
+  let b = `<rect x="${x0 - 20}" y="136" width="${x1 - x0 + 40}" height="462" rx="14" fill="${C.coal}" stroke="${C.line}"/>`;
+  b += axisLabel(x0, 162, "ln RMSSD (overnight HRV)");
+  const bandPts = [], bandLo = [];
+  for (let d = d0; d <= n; d++) { bandPts.push([X(d), Y(band[d][1])]); bandLo.push([X(d), Y(band[d][0])]); }
+  if (n > d0) b += `<path d="${path(bandPts)} ${path(bandLo.slice().reverse()).replace("M", "L")}Z" fill="${C.sky}" opacity=".16"/>`;
+  b += text(x0, 580, "", {});
+  for (let d = 10; d <= n; d++) {
+    const out = band[d] && m7[d] < band[d][0];
+    b += `<circle cx="${X(d)}" cy="${Y(v[d])}" r="3.2" fill="${C.mute}" opacity=".7"/>`;
+  }
+  const pts = []; for (let d = 12; d <= n; d++) pts.push([X(d), Y(m7[d])]);
+  b += `<path d="${path(pts)}" fill="none" stroke="${C.lime}" stroke-width="3.5"/>`;
+  const below = band[n] && m7[n] < band[n][0];
+  b += `<line x1="${X(n)}" x2="${X(n)}" y1="150" y2="580" stroke="${C.line2}" stroke-dasharray="3 5"/>`;
+  b += `<circle cx="${X(n)}" cy="${Y(m7[n])}" r="7" fill="${below ? C.coral : C.lime}"/>`;
+  const lab = below ? "7-day mean below range: keep it easy" : "Inside range: hard training supported";
+  b += chip(x1 + 20 - (lab.length * 8.6 + 28), 150, lab, below ? C.coral : C.mint);
+  // legend
+  b += `<rect x="${x0}" y="574" width="26" height="10" fill="${C.sky}" opacity=".3"/>` + text(x0 + 36, 584, "normal range: previous 60 days, ± 0.5 SD", { s: 13, c: C.mute });
+  b += `<circle cx="${x0 + 360}" cy="579" r="3.5" fill="${C.mute}"/>` + text(x0 + 372, 584, "one night", { s: 13, c: C.mute });
+  b += `<rect x="${x0 + 460}" y="577" width="26" height="4" fill="${C.lime}"/>` + text(x0 + 496, 584, "7-day rolling mean", { s: 13, c: C.mute });
+  const cap = t < 0.3 ? "One night of HRV is noisy, so Cadence reads the 7-day mean." :
+    t < 0.6 ? "Your own range, not a population one: the last 60 days, ± 0.5 SD (the smallest worthwhile change)." :
+    below ? "The mean drops below your range: Cadence says keep it easy, and shows the numbers behind that." :
+    "Inside or above the range, hard training is supported.";
+  return frame("Readiness from your own HRV", "How the recovery signal works", cap,
+    "Plews et al. 2013; Kiviniemi et al. 2007. Demo data.", b, t);
+}
+
+/* ------------------------------------------------------------ 3. Critical speed */
+function scene3(t) {
+  const CS = 4.1, Dp = 180, tm = [3, 5, 8, 12, 20], jit = [4, -6, 5, -3, 4];
+  const pts = tm.map((m, i) => [m, Dp + CS * m * 60 + jit[i]]);
+  // least-squares line through the points
+  const mx = mean(pts.map((p) => p[0] * 60)), my = mean(pts.map((p) => p[1]));
+  const slope = pts.reduce((s, p) => s + (p[0] * 60 - mx) * (p[1] - my), 0) / pts.reduce((s, p) => s + (p[0] * 60 - mx) ** 2, 0);
+  const icpt = my - slope * mx;
+  const x0 = 110, x1 = 790, y0 = 575, y1 = 175, X = (m) => lerp(x0, x1, m / 22), Y = (d) => lerp(y0, y1, d / 5800);
+  let b = `<rect x="70" y="136" width="760" height="462" rx="14" fill="${C.coal}" stroke="${C.line}"/>`;
+  [0, 5, 10, 15, 20].forEach((m) => { b += axisLabel(X(m), 596, `${m}`, { a: "middle" }) + `<line x1="${X(m)}" x2="${X(m)}" y1="${y1}" y2="${y0}" stroke="${C.line}"/>`; });
+  [0, 2000, 4000].forEach((d) => { b += axisLabel(98, Y(d) + 4, `${d / 1000} km`, { a: "end" }) + `<line x1="${x0}" x2="${x1}" y1="${Y(d)}" y2="${Y(d)}" stroke="${C.line}"/>`; });
+  b += axisLabel(x1, 616, "duration of the effort (min)", { a: "end" });
+  pts.forEach((p, i) => {
+    const a = ease(seg(t, 0.06 + i * 0.08, 0.14 + i * 0.08));
+    b += `<circle cx="${X(p[0])}" cy="${Y(p[1])}" r="${9 * a}" fill="${C.sky}"/>` + text(X(p[0]) + 12, Y(p[1]) + 26, `best ${p[0]} min`, { s: 12, c: C.sky, o: a });
+  });
+  const la = ease(seg(t, 0.5, 0.64));
+  if (la > 0) {
+    const xe = lerp(0, 22, la);
+    b += `<path d="M${X(0)} ${Y(icpt)} L${X(xe)} ${Y(icpt + slope * xe * 60)}" stroke="${C.lime}" stroke-width="3.5" fill="none"/>`;
+  }
+  if (t > 0.66) {
+    const a = ease(seg(t, 0.66, 0.76));
+    b += `<line x1="${X(0)}" x2="${X(0)}" y1="${Y(0)}" y2="${Y(icpt)}" stroke="${C.violet}" stroke-width="5" opacity="${a}"/>` +
+      text(X(0) + 12, Y(icpt / 2) + 4, `D′ ≈ ${f0(icpt)} m`, { c: C.violet, s: 16, w: 700, o: a }) +
+      text(X(12.5), Y(icpt + slope * 12.5 * 60) + 56, `slope = critical speed ${(slope).toFixed(2)} m/s`, { c: C.lime, s: 16, w: 700, o: a, });
+  }
+  // right side: what the fit gives
+  const rx = 880;
+  b += text(rx, 190, "WHAT THE LINE GIVES YOU", { c: C.mute, s: 12, w: 700, ls: 2 });
+  const row = (i, label, val, col, a) => text(rx, 238 + i * 62, label, { s: 15, c: C.mute, o: a }) + text(rx, 268 + i * 62, val, { f: "Serif", s: 34, c: col, o: a });
+  const aCS = ease(seg(t, 0.68, 0.78));
+  b += row(0, "Critical speed", `${hms(1000 / slope)} /km`, C.lime, aCS);
+  const t5 = (5000 - icpt) / slope, t10 = t5 * Math.pow(2, 1.06);
+  const a5 = ease(seg(t, 0.8, 0.88)), a10 = ease(seg(t, 0.88, 0.96));
+  b += row(1, "5 km (critical-speed model)", hms(t5), C.cream, a5);
+  b += row(2, "10 km (Riegel, exponent 1.06)", hms(t10), C.cream, a10);
+  b += text(rx, 470, "The CS model is used up to ~30 min;", { s: 14, c: C.mute, o: a10 }) + text(rx, 492, "beyond that Cadence extrapolates and says so.", { s: 14, c: C.mute, o: a10 });
+  const cap = t < 0.5 ? "Your best 3 to 20 minute efforts, found in your own FIT files." :
+    t < 0.66 ? "Distance against time is a straight line when the efforts are maximal." :
+    t < 0.8 ? "Slope is critical speed; the intercept is D′, the work you can do above it." :
+    "From that line: race-time predictions. Not trusted unless the fit is near-linear and D′ is physiological.";
+  return frame("Critical speed from your best efforts", "How performance is estimated", cap,
+    "Hill 1993 distance–time model; Riegel 1981 beyond ~30 min. Demo data.", b, t);
+}
+
+/* ------------------------------------------------------------ 4. Periodised plan */
+const S4 = (() => {
+  const weeks = 20, phase = (w) => (w < 3 ? "Base" : w < 11 ? "Build" : w < 17 ? "Race-specific" : "Taper");
+  const load = [], long = [], rec = []; let chronic = 40, longest = 50;
+  for (let w = 0; w < weeks; w++) {
+    const ph = phase(w), isRec = (ph === "Build" || ph === "Race-specific" || ph === "Base") && w % 4 === 3;
+    let l;
+    if (ph === "Taper") l = chronic * (w === 17 ? 0.8 : w === 18 ? 0.62 : 0.5);
+    else if (isRec) l = chronic * 0.65;
+    else { chronic = Math.min(chronic * 1.06 + 1, chronic * 1.25); l = chronic; }
+    let lr;
+    if (ph === "Taper") lr = longest * (w === 17 ? 0.75 : w === 18 ? 0.55 : 0.4);
+    else if (isRec) lr = longest * 0.8;
+    else { lr = Math.min(longest * 1.1, longest + 10, 150); longest = Math.max(longest, lr); }
+    load.push(l); long.push(lr); rec.push(isRec);
+  }
+  return { weeks, load, long, rec, phase };
+})();
+function scene4(t) {
+  const { weeks, load, long, rec, phase } = S4, x0 = 100, x1 = 1180, bw = (x1 - x0) / weeks;
+  const PC = { Base: C.sky, Build: C.lime, "Race-specific": C.amber, Taper: C.violet };
+  const p = ease(seg(t, 0.06, 0.82)) * weeks;
+  const lmax = Math.max(...load), Y = (v) => 360 - (v / lmax) * 170;
+  let b = `<rect x="64" y="132" width="${W - 128}" height="220" rx="14" fill="${C.coal}" stroke="${C.line}"/>
+           <rect x="64" y="366" width="${W - 128}" height="232" rx="14" fill="${C.coal}" stroke="${C.line}"/>`;
+  b += axisLabel(86, 156, "weekly training load") + axisLabel(86, 392, "long run (minutes)");
+  for (let w = 0; w < weeks; w++) {
+    const a = clamp(p - w), col = PC[phase(w)];
+    const h = (360 - Y(load[w])) * a, x = x0 + w * bw + 4;
+    b += `<rect x="${x}" y="${360 - h}" width="${bw - 8}" height="${h}" rx="3" fill="${col}" opacity="${rec[w] ? 0.45 : 0.95}"/>`;
+    const hl = (long[w] / 150) * 150 * a;
+    b += `<rect x="${x}" y="${582 - hl}" width="${bw - 8}" height="${hl}" rx="3" fill="${col}" opacity="${rec[w] ? 0.45 : 0.85}"/>`;
+    if (a > 0.9 && rec[w]) b += text(x + (bw - 8) / 2, 350 - (360 - Y(load[w])) - 8 + 2, "↓", { a: "middle", c: C.mute, s: 14 });
+  }
+  // phase labels
+  let start = 0;
+  ["Base", "Build", "Race-specific", "Taper"].forEach((ph) => {
+    const ws = [...Array(weeks).keys()].filter((w) => phase(w) === ph), a = clamp((p - ws[0]) / 1.2);
+    b += `<text x="${x0 + ws[0] * bw + 4}" y="178" fill="${PC[ph]}" font-size="14" font-weight="700" opacity="${a}" letter-spacing="1.2">${ph.toUpperCase()}</text>`;
+  });
+  const fa = ease(seg(t, 0.84, 0.94));
+  b += `<g opacity="${fa}"><line x1="${x1 + 4}" x2="${x1 + 4}" y1="160" y2="360" stroke="${C.cream}" stroke-width="2"/>` +
+    `<path d="M${x1 + 4} 162 l-30 10 l30 10Z" fill="${C.cream}"/>` + text(x1 - 6, 152, "race", { a: "end", c: C.cream, s: 14, w: 700 }) + `</g>`;
+  const ca = clamp(seg(t, 0.2, 0.3)) * (1 - seg(t, 0.55, 0.6));
+  const cap = t < 0.2 ? "Phases count back from your goal race: taper, race-specific, build, base." :
+    t < 0.5 ? "Load ramps about 6% a week, never above 1.25 × your chronic load." :
+    t < 0.84 ? "Every fourth week drops to ~65% (3:1 blocks). The long run grows at most 10% over your longest in 30 days." :
+    "The taper steps load down 20 to 50% so you arrive fresh. Change the race date and all of it moves.";
+  return frame("A plan that counts back from race day", "How the training plan is built", cap,
+    "Goal-aware periodisation, 3:1 blocks; long-run cap per Frandsen et al., BJSM 2025. Demo data.", b, t);
+}
+
+/* ------------------------------------------------------------ 5. Trust: score the predictions */
+const S5 = (() => {
+  const r = rng(33), N = 24, ratio = [];
+  for (let i = 0; i < N; i++) ratio.push(Math.exp(Math.log(1.13) + gauss(r) * 0.16)); // predictions run ~13% low
+  const T975 = [0, 12.71, 4.30, 3.18, 2.78, 2.57, 2.45, 2.36, 2.31, 2.26, 2.23, 2.20, 2.18, 2.16, 2.14, 2.13, 2.12, 2.11, 2.10, 2.09, 2.09, 2.08, 2.07, 2.07, 2.06, 2.06, 2.06, 2.05, 2.05, 2.05, 2.04];
+  const stats = ratio.map((_, i) => {
+    const n = i + 1, l = ratio.slice(0, n).map(Math.log), m = mean(l);
+    if (n < 3) return { n, m: Math.exp(m), lo: null, hi: null };
+    const se = sd(l) / Math.sqrt(n), tq = T975[n - 1];
+    return { n, m: Math.exp(m), lo: Math.exp(m - tq * se), hi: Math.exp(m + tq * se) };
+  });
+  return { ratio, stats, N };
+})();
+function scene5(t) {
+  const { ratio, stats, N } = S5, x0 = 100, x1 = 800, X = (i) => lerp(x0, x1, i / (N - 1));
+  const Y = (v) => clamp(560 - ((Math.log(v) - Math.log(0.6)) / (Math.log(1.7) - Math.log(0.6))) * 380, 150, 580);
+  const p = ease(seg(t, 0.06, 0.84)) * (N - 1), n = Math.floor(p), s = stats[n];
+  let b = `<rect x="64" y="132" width="780" height="466" rx="14" fill="${C.coal}" stroke="${C.line}"/>`;
+  b += axisLabel(86, 156, "actual ÷ predicted load, one dot per session (log scale)");
+  [0.7, 1, 1.4].forEach((v) => { b += `<line x1="${x0}" x2="${x1}" y1="${Y(v)}" y2="${Y(v)}" stroke="${v === 1 ? C.line2 : C.line}" ${v === 1 ? "" : 'stroke-dasharray="3 5"'}/>` + axisLabel(x0 - 12, Y(v) + 4, `${v}×`, { a: "end" }); });
+  b += text(x1, Y(1) - 8, "perfect", { a: "end", c: C.mute, s: 12 });
+  const bandTop = [], bandBot = [];
+  for (let i = 2; i <= n; i++) if (stats[i].lo) { bandTop.push([X(i), Y(stats[i].hi)]); bandBot.push([X(i), Y(stats[i].lo)]); }
+  if (bandTop.length > 1) b += `<path d="${path(bandTop)} ${path(bandBot.slice().reverse()).replace("M", "L")}Z" fill="${C.sky}" opacity=".2"/>`;
+  const mp = []; for (let i = 2; i <= n; i++) mp.push([X(i), Y(stats[i].m)]);
+  if (mp.length > 1) b += `<path d="${path(mp)}" fill="none" stroke="${C.lime}" stroke-width="3"/>`;
+  for (let i = 0; i <= n; i++) b += `<circle cx="${X(i)}" cy="${Y(ratio[i])}" r="4.5" fill="${C.sky}" opacity=".9"/>`;
+  b += axisLabel(x1, 586, "sessions so far", { a: "end" });
+  // the verdict panel
+  const rx = 880, MIN = 10, SH = 10;
+  b += text(rx, 170, "THE RULES BEFORE IT CORRECTS ITSELF", { c: C.mute, s: 12, w: 700, ls: 1.6 });
+  const excl = s.lo && (s.lo > 1 || s.hi < 1), enough = s.n >= MIN, call = excl && enough;
+  const rule = (y, ok, label) => `<circle cx="${rx + 9}" cy="${y - 5}" r="9" fill="${ok ? C.mint : C.line2}" ${ok ? "" : ""}/>` + (ok ? text(rx + 9, y, "✓", { a: "middle", c: C.ink, s: 13, w: 800 }) : "") + text(rx + 28, y, label, { s: 15, c: ok ? C.paper : C.mute });
+  b += rule(210, enough, `at least ${MIN} sessions (have ${s.n})`);
+  b += rule(244, !!excl, "95% interval excludes 1×");
+  b += text(rx, 292, "Typical error", { c: C.mute, s: 14 });
+  b += text(rx, 332, `${s.m >= 1 ? "+" : "−"}${f0(Math.abs(s.m - 1) * 100)}%`, { f: "Serif", s: 48, c: call ? C.amber : C.cream });
+  if (s.lo) b += text(rx, 358, `95% range ${s.lo.toFixed(2)}× to ${s.hi.toFixed(2)}×`, { s: 14, c: C.mute });
+  const k = s.n / (s.n + SH), fac = Math.min(1.4, Math.max(0.7, Math.exp(Math.log(s.m) * k)));
+  if (call) {
+    b += chip(rx, 400, `Bias called: corrected × ${fac.toFixed(2)}`, C.amber) + text(rx, 452, "Shrunk toward 1 by n ÷ (n + 10),", { s: 14, c: C.mute }) + text(rx, 474, "capped to 0.7 to 1.4×, and labelled.", { s: 14, c: C.mute });
+  } else {
+    b += chip(rx, 400, s.n < MIN ? "Too early: no claim, no correction" : "No bias claimed", C.mute);
+  }
+  const cap = t < 0.3 ? "Each session you plan and then do is scored against the load it was predicted to have." :
+    t < 0.6 ? "Errors are ratios, analysed on the log scale, so 2× too high and 2× too low count equally." :
+    call ? "Only now, with enough sessions and an interval clear of 1×, does it call a bias and correct for it, visibly." :
+    "A bias is only called when the evidence is there.";
+  return frame("It scores its own predictions", "How Cadence earns your trust", cap,
+    "Walk-forward backtest; log-ratio t-interval (Altman & Bland 1983). Demo data.", b, t);
+}
+
+const SCENES = { banister: scene1, hrv: scene2, cs: scene3, plan: scene4, trust: scene5 };
+window.draw = (name, t) => { document.getElementById("root").innerHTML = SCENES[name](clamp(t)); };
+window.sceneNames = Object.keys(SCENES);
+</script>

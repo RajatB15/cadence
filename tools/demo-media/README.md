@@ -17,11 +17,31 @@ never read or changed, records a desktop tour and a phone tour in headless Chrom
 
 Set `MEDIA_DIR` or `SOCIAL_DIR` to write somewhere else, and `DEMO_PORT` / `DEMO_SHARE_PORT` if 8790 or 8791 are busy.
 
+## Algorithm explainers
+
+```sh
+tools/demo-media/build-explainers.sh
+```
+
+Five animated explainers (fitness/fatigue/form, HRV readiness, critical speed, the periodised plan, prediction
+accuracy). They are deterministic SVG scenes in `explainers/explainers.html` (synthetic data, no server, nothing from
+the vault) stepped frame by frame by `render-explainers.mjs`, so every run is identical. Output:
+
+| Output | Where | Used for |
+|---|---|---|
+| `algo-<name>.webp` | `docs/media/` | the README's "How the algorithms work" section (commit these) |
+| `algo-<name>.mp4`, `cadence-algorithms-reel.mp4` | `marketing/` (git-ignored) | posts; the reel is all five in one video |
+
+To change a scene, edit its function in `explainers.html`. `node render-explainers.mjs <dir> 12 10 still:0.7` renders one
+still per scene at 70% progress for a quick look. Keep the maths in a scene identical to the module it illustrates and
+keep the citation in its footer. It takes about three minutes and needs `npm install` in `app/web` (it reuses the app's
+fonts; they are copied at render time and git-ignored).
+
 ## Needs
 
 macOS, Google Chrome, Node 20+, ImageMagick (`brew install imagemagick`), the WebP tools (`brew install webp`), the Xcode
 command line tools (`xcode-select --install`, for `swiftc`), and the backend venv from the main README. It takes about
-six minutes.
+six minutes. The tour sets a half-marathon goal so the Goals page has something to show.
 
 ## Changing the tour
 
