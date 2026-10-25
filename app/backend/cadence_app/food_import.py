@@ -17,10 +17,13 @@ Cleaning rules
 - Rows that can't be right are dropped and counted: energy above 900 kcal per 100 g, more than 100 g of nutrients in
   100 g, or macros that disagree with calories by more than 40% (+15 kcal).
 - Non-Latin names are kept as aliases only, never as the dish name.
+- A dish's `ref_code` is a hash of its nutrient table, so it never changes as the crawl adds pages; `page_codes` lists the
+  the source site pages behind it, which lets the app recognise a dish it stored under an earlier code.
 """
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 import sys
@@ -31,7 +34,6 @@ MAX_MACRO_MASS_100G = 101.0
 MACRO_TOLERANCE = 0.40
 MACRO_SLACK_KCAL = 15.0
 MAX_PORTIONS = 8
-MAX_ALIASES = 12
 SPREAD_UNVERIFIED, SPREAD_VERIFIED = 25, 15
 # Portion names that are not household measures of the food itself.
 SKIP_PORTION_UNITS = {"oz", "g", "gram", "grams", "ml", "serve"}
@@ -48,6 +50,11 @@ def _clean_name(s: str) -> str:
 def _code(record_id: str) -> str:
     """The page's trailing 10-hex hash: short, unique, and stable across crawls."""
     return record_id.rsplit("-", 1)[-1][:24]
+
+
+def _dish_code(fingerprint: str) -> str:
+    """A dish's identity is its nutrient table, so the code survives later pages joining the group or taking over its name."""
+    return hashlib.sha1(fingerprint.encode()).hexdigest()[:10]
 
 
 def _fingerprint(r: dict) -> str:
@@ -110,18 +117,20 @@ def dish_from(group: list[dict]) -> dict:
     else:
         unit_g, label = 100.0, "100 g"
     per100 = {k: round(per.get(k) or 0.0, 2) for k in ("kcal", "protein_g", "carbs_g", "fat_g")}
-    aliases = []
+    aliases, seen = [], set()
     for r in group[1:] + group[:1]:
         n = _clean_name(r.get("name") or "")
-        if n and n.lower() != _clean_name(best["name"]).lower() and n not in aliases:
+        if n and n.lower() != _clean_name(best["name"]).lower() and n.lower() not in seen:
+            seen.add(n.lower())
             aliases.append(n)
     return {
         "name": _clean_name(best["name"]), "unit": label, "grams": unit_g, "per_100g": per100, "portions": portions,
         "kcal": round(per100["kcal"] * unit_g / 100, 1), "protein_g": round(per100["protein_g"] * unit_g / 100, 1),
         "carbs_g": round(per100["carbs_g"] * unit_g / 100, 1), "fat_g": round(per100["fat_g"] * unit_g / 100, 1),
         "spread_pct": SPREAD_VERIFIED if best.get("verified") else SPREAD_UNVERIFIED,
-        "basis": "library", "source": "library", "ref_code": _code(best["id"]), "note": _source_note(best),
-        "aliases": aliases[:MAX_ALIASES],
+        "basis": "library", "source": "library", "ref_code": _dish_code(_fingerprint(best)),
+        "page_codes": sorted(_code(r["id"]) for r in group), "note": _source_note(best),
+        "aliases": aliases,
     }
 
 

@@ -2,8 +2,8 @@
 """One pass of the food deploy loop. launchd runs this every 15 minutes (scripts/food-sync.sh install).
 
 Each pass:
-1. Keeps the the source site crawl alive: restarts any missing worker while pages are left to fetch (pages that failed are
-   retried at most every 6 hours, so dead pages don't cause a restart loop).
+1. Keeps the the source site crawl alive: restarts any missing worker while pages are left to fetch, and runs one pass over
+   the pages that failed at most every 6 hours (so dead pages don't cause a restart loop).
 2. Rebuilds the catalogue from everything crawled so far (`cadence_app.food_import`), written atomically.
 3. Makes it live: the running service reloads the catalogue when the file changes; one request here confirms it.
 4. Backs the data up: commits and pushes the private `food-data` repo at most once an hour (or when the crawl is done),
@@ -28,9 +28,9 @@ FOOD = ROOT / "food-data"
 HM = FOOD / "library"
 PY = ROOT / "app" / "backend" / ".venv" / "bin" / "python"
 SERVICE = "http://127.0.0.1:8765"
-SHARDS = 2  # more workers don't help: the site stalls requests under heavier load
+SHARDS = 4  # being measured: earlier, 5 workers were no faster than 2 because the site stalls requests under heavier load
 COMMIT_EVERY_S = 3600
-RETRY_FAILED_EVERY_S = 6 * 3600
+RETRY_FAILED_EVERY_S = 3600
 
 
 def log(msg: str) -> None:
@@ -60,28 +60,34 @@ def pending() -> dict:
             "retry": sum(1 for s in slugs if s in failed and s not in done)}
 
 
-def crawler_running(shard: int) -> bool:
-    return subprocess.run(["/usr/bin/pgrep", "-f", f"crawl_library.py --shard {shard}/{SHARDS}"], capture_output=True).returncode == 0
+def crawler_running(*flags: str) -> bool:
+    return subprocess.run(["/usr/bin/pgrep", "-f", "crawl_library.py " + " ".join(flags)], capture_output=True).returncode == 0
+
+
+def start_crawler(*args: str) -> None:
+    log_file = (HM / "crawl.log").open("a")
+    subprocess.Popen(["/usr/bin/caffeinate", "-i", str(PY), "-I", str(FOOD / "tools" / "crawl_library.py"), *args],
+                     stdout=log_file, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL, start_new_session=True, cwd=FOOD)
 
 
 def ensure_crawlers(p: dict) -> None:
     state_file = HM / "supervisor.json"
     state = json.loads(state_file.read_text()) if state_file.exists() else {}
     now = time.time()
-    retry_due = p["retry"] > 0 and now - state.get("last_retry_pass", 0) > RETRY_FAILED_EVERY_S
+    retry_due = p["retry"] > 0 and now - state.get("last_retry_pass", 0) > RETRY_FAILED_EVERY_S and not crawler_running("--retry")
     if p["untried"] == 0 and not retry_due:
         log(f"crawl: nothing to fetch ({p['done']}/{p['total']} done, {p['retry']} failed pages waiting for the next retry window)")
         return
-    missing = [i for i in range(SHARDS) if not crawler_running(i)]
+    missing = [i for i in range(SHARDS) if p["untried"] > 0 and not crawler_running("--shard", f"{i}/{SHARDS}")]
     for i in missing:
-        log_file = (HM / "crawl.log").open("a")
-        subprocess.Popen(["/usr/bin/caffeinate", "-i", str(PY), "-I", str(FOOD / "tools" / "crawl_library.py"), "--shard", f"{i}/{SHARDS}"],
-                         stdout=log_file, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL, start_new_session=True, cwd=FOOD)
-    if missing and p["untried"] == 0:
+        start_crawler("--shard", f"{i}/{SHARDS}")
+    if retry_due:  # one pass over the failed pages, run beside the main workers
+        start_crawler("--retry")
         state["last_retry_pass"] = now
         state_file.write_text(json.dumps(state))
     log(f"crawl: {p['done']}/{p['total']} done, {p['untried']} untried, {p['retry']} to retry; "
-        + (f"restarted workers {missing}" if missing else f"{SHARDS} workers running"))
+        + (f"restarted workers {missing}" if missing else f"{SHARDS} workers running")
+        + ("; started a retry pass" if retry_due else ""))
 
 
 def build_catalogue() -> int | None:

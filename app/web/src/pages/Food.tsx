@@ -1,12 +1,13 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ChevronLeft, ChevronRight, Copy, Minus, Plus, Trash2, Utensils } from "lucide-react";
 import { useMemo, useState, type FormEvent } from "react";
+import { Link } from "react-router-dom";
 import { NoteCard } from "../components/CoachNotes";
 import { EnergyCard, PlanNeeds, ProteinCard, WeekCard } from "../components/FoodPlan";
 import { Sheet } from "../components/Sheet";
 import { ErrorBlock, LoadingBlock, PageHeader } from "../components/Shell";
 import { api } from "../lib/api";
-import { BASIS_NOTE, browseList, MEALS, portionPreview, searchList, servingsLabel, shiftDay, SOURCE_NOTE, type PortionMode } from "../lib/food";
+import { BASIS_NOTE, browseList, matchedAlias, MEALS, portionPreview, searchList, servingsLabel, shiftDay, SOURCE_NOTE, type PortionMode } from "../lib/food";
 import { formatDate } from "../lib/format";
 import type { FoodDish, FoodView, Meal } from "../lib/types";
 
@@ -161,6 +162,7 @@ function Aside({ data }: { data: FoodView }) {
         Check the portion and its weight before you pick: a bowl, a katori and 100 g are different amounts, and how you cook moves every number. Targets are a planning range from published
         guidance for people who train, not medical advice.
       </p>
+      <Link to="/food/library" className="text-xs text-mute underline decoration-line-strong underline-offset-4 hover:text-paper">See how the food library is being built</Link>
     </aside>
   );
 }
@@ -361,7 +363,10 @@ function Library({ meal, day, recentIds, search, setSearch, onSaved, onDone, onA
                     {!search && recentIds.includes(d.id) && <span className="mr-2 text-[10px] tracking-widest text-gold uppercase">Recent</span>}
                     {d.name}
                   </span>
-                  <span className="block text-xs text-dim">{d.unit}</span>
+                  <span className="block text-xs text-dim">
+                    {search.trim() && matchedAlias(d, search) && <>also called {matchedAlias(d, search)} · </>}
+                    {d.unit}
+                  </span>
                 </span>
                 <span className="num shrink-0 text-xs text-mute">{d.kcal} kcal · {d.protein_g} g P</span>
               </button>

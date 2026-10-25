@@ -145,6 +145,24 @@ def test_catalogue_refresh_updates_untouched_dishes_and_keeps_your_edits(fenv):
     assert again["Upma"]["kcal"] == 130 and again["Upma"]["unit_g"] == 150  # edited: yours is kept
 
 
+def test_dishes_stored_under_an_earlier_code_are_folded_not_duplicated(fenv):
+    client, fd = fenv
+    before = dishes_of(client)
+    paneer = before["Paneer"]
+    client.post("/api/food/entries", json={"day": "2026-10-22", "meal": "lunch", "dish_id": paneer["id"], "servings": 1}, headers=MUTATE)
+    # the crawl grew: Paneer is now named by a different page, so its code changed
+    moved = [synthetic_dish(i) for i in range(110)]
+    p = synthetic_dish(200, "Paneer", grams=50, kcal100=265, aliases=["Cottage cheese"])
+    p["ref_code"], p["page_codes"] = "newcode", ["code00200", "newcode"]
+    moved += [p, synthetic_dish(201, "Upma", grams=130, kcal100=85)]
+    write_catalogue(fd, moved)
+    after = dishes_of(client)
+    assert len(after) == len(before) and after["Paneer"]["id"] == paneer["id"] and after["Paneer"]["ref_code"] == "newcode"
+    assert client.get("/api/food?day=2026-10-22").json()["entries"][0]["dish_id"] == paneer["id"]
+    write_catalogue(fd, moved[:-1])  # Upma left the catalogue: not kept as a ghost
+    assert "Upma" not in dishes_of(client) and len(dishes_of(client)) == len(before) - 1
+
+
 def test_old_builtin_dishes_are_retired_but_history_and_edits_survive(tmp_path):
     import sqlite3
     fd = tmp_path / "food-data"

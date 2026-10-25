@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { bandPositions, browseList, stateFor, portionPreview, kcalRange, MAX_SEARCH_RESULTS, proteinPosition, searchList, servingsLabel, shiftDay } from "./food";
+import { bandPositions, browseList, matchedAlias, stateFor, portionPreview, kcalRange, MAX_SEARCH_RESULTS, proteinPosition, searchList, servingsLabel, shiftDay } from "./food";
 
 describe("food helpers", () => {
   it("shifts days across month and year edges", () => {
@@ -26,6 +26,8 @@ describe("food helpers", () => {
     expect(searchList(all, "dal").map((x) => x.id)).toEqual([1, 2, 3, 4]); // names starting with the text first
     expect(searchList(all, "mango").map((x) => x.id)).toEqual([5]);
     expect(searchList(all, "  ")).toEqual([]);
+    expect(matchedAlias(all[4], "mang")).toBe("Mango");
+    expect(matchedAlias(all[4], "aam")).toBeNull(); // the dish's own name matched
     const many = Array.from({ length: 200 }, (_, i) => d(i, `Rice ${i}`, "library"));
     expect(searchList(many, "rice")).toHaveLength(MAX_SEARCH_RESULTS);
     expect(browseList(many, [])).toHaveLength(40);

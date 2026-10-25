@@ -76,14 +76,24 @@ export function searchList<T extends Searchable>(all: T[], query: string): T[] {
   if (!q) return [];
   const starts: T[] = [];
   const contains: T[] = [];
+  const aliasStarts: T[] = [];
   const viaAlias: T[] = [];
   for (const d of all) {
     const n = d.name.toLowerCase();
     if (n.startsWith(q)) starts.push(d);
     else if (n.includes(q)) contains.push(d);
+    else if (d.aliases?.some((a) => a.toLowerCase().startsWith(q))) aliasStarts.push(d);
     else if (d.aliases?.some((a) => a.toLowerCase().includes(q))) viaAlias.push(d);
   }
-  return [...starts, ...contains, ...viaAlias].slice(0, MAX_SEARCH_RESULTS);
+  return [...starts, ...contains, ...aliasStarts, ...viaAlias].slice(0, MAX_SEARCH_RESULTS);
+}
+
+/** The other name a search matched, when the dish's own name did not match: shown so "Rotli" visibly leads to "Roti". */
+export function matchedAlias(d: Searchable, query: string): string | null {
+  const q = query.trim().toLowerCase();
+  if (!q || d.name.toLowerCase().includes(q)) return null;
+  const hits = (d.aliases ?? []).filter((a) => a.toLowerCase().includes(q));
+  return hits.find((a) => a.toLowerCase().startsWith(q)) ?? hits[0] ?? null;
 }
 
 export type PortionMode = "servings" | "grams";
