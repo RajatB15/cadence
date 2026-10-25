@@ -107,7 +107,8 @@ def test_library_round_trip_and_history_is_frozen(fenv):
 def test_quick_entry_custom_dish_and_validation(fenv):
     client, _ = fenv
     q = client.post("/api/food/entries", json={"day": "2026-10-22", "meal": "snack", "name": "Office thali", "kcal": 700}, headers=MUTATE)
-    assert q.status_code == 200 and q.json()["protein_g"] is None and q.json()["dish_id"] is None
+    assert q.status_code == 200 and q.json()["protein_g"] is None and q.json()["saved_dish"] is True  # also remembered as a dish
+    assert q.json()["dish_id"] == dishes_of(client)["Office thali"]["id"]
 
     made = client.post("/api/food/dishes", json={"name": "Mum's dal", "unit": "1 katori", "kcal": 140, "protein_g": 8}, headers=MUTATE)
     assert made.status_code == 200 and made.json()["builtin"] is False and made.json()["source"] == "mine"

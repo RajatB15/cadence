@@ -11,6 +11,7 @@ import type {
   FoodDish,
   FoodDishInput,
   FoodEntryInput,
+  FoodLabelRead,
   FoodSavedMeal,
   FoodView,
   Meal,
@@ -216,6 +217,20 @@ export const api = {
   deleteFoodEntry: (id: number) => request<{ deleted: number }>(`/api/food/entries/${id}`, { method: "DELETE" }),
   setFoodEntryAmount: (id: number, servings: number) =>
     request<unknown>(`/api/food/entries/${id}`, { method: "PATCH", body: JSON.stringify({ servings }) }),
+  readFoodLabel: async (photo: Blob): Promise<FoodLabelRead> => {
+    // Raw image body, read with Tesseract on the Cadence server; nothing is saved until you confirm.
+    const res = await fetch("/api/food/label", {
+      method: "POST",
+      body: photo,
+      headers: { "X-Cadence-Request": "1", "Content-Type": photo.type || "image/jpeg" },
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => null);
+      throw new ApiError(res.status, typeof body?.detail === "string" ? body.detail : res.statusText);
+    }
+    return res.json() as Promise<FoodLabelRead>;
+  },
+  readFoodLabelText: (text: string) => request<FoodLabelRead>("/api/food/label/text", { method: "POST", body: JSON.stringify({ text }) }),
   foodMeals: () => request<{ meals: FoodSavedMeal[] }>("/api/food/meals"),
   saveFoodMeal: (name: string, entry_ids: number[]) =>
     request<FoodSavedMeal>("/api/food/meals", { method: "POST", body: JSON.stringify({ name, entry_ids }) }),

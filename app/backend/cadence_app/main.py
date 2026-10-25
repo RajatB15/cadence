@@ -16,7 +16,7 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from cadence_app import garmin_connect, garmin_workout, backup, days, events, food_crawl, foodlog, goal_store, journal, ocr, phases, planner_store, profile as profile_store, push, strength, weather, weightlog, wellbeing_store
+from cadence_app import food_label, garmin_connect, garmin_workout, backup, days, events, food_crawl, foodlog, goal_store, journal, ocr, phases, planner_store, profile as profile_store, push, strength, weather, weightlog, wellbeing_store
 from cadence_app.analytics import accuracy as accuracy_analytics
 from cadence_app.analytics import banister as banister_analytics
 from cadence_app.analytics import channels as channels_analytics
@@ -215,11 +215,14 @@ class FoodDishRequest(BaseModel):
     name: str = Field(min_length=1, max_length=80)
     unit: str = Field(min_length=1, max_length=40)
     kcal: float = Field(ge=0, le=foodlog.MAX_KCAL)
-    protein_g: float = Field(default=0, ge=0, le=500)
-    carbs_g: float = Field(default=0, ge=0, le=1000)
-    fat_g: float = Field(default=0, ge=0, le=500)
+    protein_g: float | None = Field(default=0, ge=0, le=500)  # None = unknown
+    carbs_g: float | None = Field(default=0, ge=0, le=1000)
+    fat_g: float | None = Field(default=0, ge=0, le=500)
     spread_pct: int = Field(default=foodlog.HOME_SPREAD, ge=0, le=60)
     grams: float | None = Field(default=None, gt=0, le=foodlog.MAX_UNIT_GRAMS)  # weight of one serving
+    micros_per_100g: dict[str, float] | None = None  # tracked micronutrients per 100 g (needs grams)
+    basis: Literal["estimate", "label"] = "estimate"
+    note: str | None = Field(default=None, max_length=240)
 
 
 class FoodDishPatch(BaseModel):
@@ -245,6 +248,13 @@ class FoodEntryRequest(BaseModel):
     name: str | None = Field(default=None, max_length=80)
     kcal: float | None = Field(default=None, gt=0, le=foodlog.MAX_KCAL)
     protein_g: float | None = Field(default=None, ge=0, le=500)
+    carbs_g: float | None = Field(default=None, ge=0, le=1000)
+    fat_g: float | None = Field(default=None, ge=0, le=500)
+    save_dish: bool = True  # a quick entry is also remembered as one of your dishes
+
+
+class LabelText(BaseModel):
+    text: str = Field(min_length=1, max_length=20000)
 
 
 class FoodAmountRequest(BaseModel):
@@ -1423,7 +1433,7 @@ def create_app(
     def food_dish_add(body: FoodDishRequest, session: Session = Depends(get_session)) -> dict:
         try:
             return foodlog.add_dish(session, body.name, body.unit, body.kcal, body.protein_g, body.carbs_g, body.fat_g,
-                                    clock.now(), body.spread_pct, body.grams)
+                                    clock.now(), body.spread_pct, body.grams, body.micros_per_100g, body.basis, body.note)
         except foodlog.FoodError as exc:
             raise HTTPException(400, str(exc)) from None
 
@@ -1445,7 +1455,7 @@ def create_app(
                                         clock.today(), clock.now(), body.grams)
             if body.name and body.kcal:
                 return foodlog.log_quick(session, body.day, body.meal, body.name, body.kcal, body.protein_g,
-                                         clock.today(), clock.now())
+                                         clock.today(), clock.now(), body.carbs_g, body.fat_g, body.save_dish)
             raise foodlog.FoodError("Pick a dish, or give a name and calories")
         except foodlog.FoodError as exc:
             raise HTTPException(400, str(exc)) from None
@@ -1455,6 +1465,27 @@ def create_app(
         if not foodlog.remove(session, entry_id):
             raise HTTPException(404, "No such entry")
         return {"deleted": entry_id}
+
+    @app.post("/api/food/label")
+    async def food_label_read(request: Request) -> dict:
+        """Reads a photo of a nutrition table with Tesseract on this machine; returns the text and what was found, for review. Saves nothing."""
+        if not request.headers.get("content-type", "").startswith("image/"):
+            raise HTTPException(415, "Send the label as an image")
+        data = await request.body()
+        if not data or len(data) > ocr.MAX_IMAGE_BYTES:
+            raise HTTPException(413, "Image is empty or larger than 15 MB")
+        if not ocr.available():
+            raise HTTPException(501, "Text recognition isn't available here. Type the numbers in instead.")
+        try:
+            text = await run_in_threadpool(ocr.image_text, data)
+        except ValueError as exc:
+            raise HTTPException(400, str(exc)) from None
+        return {"text": text, **food_label.parse(text)}
+
+    @app.post("/api/food/label/text")
+    def food_label_text(body: LabelText) -> dict:
+        """The same reader on text you typed or pasted (for when a photo won't read)."""
+        return {"text": body.text, **food_label.parse(body.text)}
 
     @app.patch("/api/food/entries/{entry_id}")
     def food_entry_amount(entry_id: int, body: FoodAmountRequest, session: Session = Depends(get_session)) -> dict:
