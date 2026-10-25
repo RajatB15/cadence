@@ -5,6 +5,7 @@
 # .deploy-host in the repo root (git-ignored). Details: docs/deploy-digitalocean.md
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+source "$ROOT/deploy/ssh-share.sh"
 
 FAST=0
 if [[ "${1:-}" == "--fast" ]]; then FAST=1; shift; fi
@@ -30,4 +31,5 @@ deploy/push.sh "$HOST"
 
 echo "== Server status"
 ssh "$HOST" 'free -m | sed -n 2p | awk "{print \"memory: \"\$3\" of \"\$2\" MB used\"}"; df -h /var/lib/cadence | tail -1 | awk "{print \"disk: \"\$3\" used, \"\$4\" free\"}"; systemctl list-timers cadence-backup.timer --no-pager | sed -n 2p | cut -c1-60'
+ssh -O exit "$HOST" 2>/dev/null || true
 echo "Deployed. Open the phone address (docs/deploy-digitalocean.md) or tunnel: ssh -L 8765:127.0.0.1:8765 $HOST"

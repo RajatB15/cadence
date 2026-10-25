@@ -1,4 +1,4 @@
-# Running Cadence on a DigitalOcean droplet
+#e  Running Cadence on a DigitalOcean droplet
 
 One small always-on Linux server runs Cadence. Your phone reaches it through Tailscale, only SSH is open to the
 internet, and nightly encrypted backups go to your Google Drive.
