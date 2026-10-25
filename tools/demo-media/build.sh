@@ -51,6 +51,7 @@ post() { curl -sf -X "$1" -H "X-Cadence-Request: 1" -H "Content-Type: applicatio
 post POST /api/sync/demo
 post PUT /api/settings/profile '{"height_cm":178,"birth_date":"1990-01-01","sex":"male"}'
 post PUT /api/settings/weight-goal '{"goal_kg":76}'
+post PUT /api/settings/goal "{\"distance\":\"half\",\"date\":\"$(date -v+15w +%Y-%m-%d)\",\"target_s\":6300}"
 
 echo "== Recording"
 export CADENCE_URL="$BASE"

@@ -68,6 +68,7 @@ if (!phone) {
   await scrollTo(0, 900); await wait(300);
   await go("/coach"); await wait(2200); await scrollTo(480, 1600); await wait(900);
   await go("/plan"); await wait(2600); await scrollTo(380, 1300); await wait(700);
+  await go("/goals"); await wait(2400);
   await go("/weight"); await wait(2600);
   await scrollTo(760, 1700); await wait(2200);
   await scrollTo(0, 900); await wait(400);
