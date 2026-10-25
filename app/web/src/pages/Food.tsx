@@ -1,15 +1,17 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ChevronLeft, ChevronRight, Copy, Minus, Plus, Trash2, Utensils } from "lucide-react";
+import { BookmarkPlus, Check, ChevronLeft, ChevronRight, Copy, Minus, Plus, Trash2, Utensils } from "lucide-react";
 import { useMemo, useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
 import { NoteCard } from "../components/CoachNotes";
 import { EnergyCard, PlanNeeds, ProteinCard, WeekCard } from "../components/FoodPlan";
+import { SavedMeals, SaveMealSheet, useSavedMeals } from "../components/FoodMeals";
+import { NutrientsCard } from "../components/FoodNutrients";
 import { Sheet } from "../components/Sheet";
 import { ErrorBlock, LoadingBlock, PageHeader } from "../components/Shell";
 import { api } from "../lib/api";
-import { BASIS_NOTE, browseList, matchedAlias, MEALS, portionPreview, searchList, servingsLabel, shiftDay, SOURCE_NOTE, type PortionMode } from "../lib/food";
+import { BASIS_NOTE, browseList, matchedAlias, mealSubtotal, MEALS, portionPreview, searchList, servingsLabel, shiftDay, SOURCE_NOTE, stepServings, type PortionMode } from "../lib/food";
 import { formatDate } from "../lib/format";
-import type { FoodDish, FoodView, Meal } from "../lib/types";
+import type { FoodDish, FoodEntry, FoodView, Meal } from "../lib/types";
 
 const localToday = () => {
   const d = new Date();
@@ -19,10 +21,12 @@ const localToday = () => {
 export function FoodPage() {
   const [day, setDay] = useState(localToday);
   const [adding, setAdding] = useState<Meal | null>(null);
+  const [saving, setSaving] = useState<Meal | null>(null);
   const client = useQueryClient();
   const query = useQuery({ queryKey: ["food", day], queryFn: () => api.food(day) });
   const refresh = () => client.invalidateQueries({ queryKey: ["food"] });
   const remove = useMutation({ mutationFn: api.deleteFoodEntry, onSuccess: refresh });
+  const amount = useMutation({ mutationFn: (v: { id: number; servings: number }) => api.setFoodEntryAmount(v.id, v.servings), onSuccess: refresh });
   const copy = useMutation({ mutationFn: () => api.copyFoodDay(shiftDay(day, -1), day), onSuccess: refresh });
   const today = query.data?.today ?? localToday();
 
@@ -68,45 +72,39 @@ export function FoodPage() {
               </div>
             )}
             {MEALS.map((m) => {
-              const items = query.data.entries.filter((e) => e.meal === m.value);
+              const sub = mealSubtotal(query.data.entries, m.value);
               return (
                 <section key={m.value} className="surface p-5 sm:p-6">
-                  <div className="flex items-center justify-between">
-                    <h2 className="font-display text-2xl text-cream">{m.label}</h2>
-                    <button type="button" className="chip pointer-coarse:py-2" onClick={() => setAdding(m.value)}>
-                      <Plus size={12} className="text-gold" /> Add
-                    </button>
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <h2 className="font-display text-2xl text-cream">{m.label}</h2>
+                      {sub.items.length > 0 && (
+                        <p className="num text-xs text-mute">{sub.kcal} kcal{sub.protein_g != null && ` · ${sub.protein_g} g protein`}</p>
+                      )}
+                    </div>
+                    <div className="flex shrink-0 items-center gap-2">
+                      {sub.items.length > 0 && (
+                        <button type="button" className="chip pointer-coarse:py-2" aria-label={`Save ${m.label.toLowerCase()} as a meal`} onClick={() => setSaving(m.value)}>
+                          <BookmarkPlus size={12} className="text-gold" /> Save as meal
+                        </button>
+                      )}
+                      <button type="button" className="chip pointer-coarse:py-2" onClick={() => setAdding(m.value)}>
+                        <Plus size={12} className="text-gold" /> Add
+                      </button>
+                    </div>
                   </div>
-                  {items.length > 0 && (
+                  {sub.items.length === 0 && <UsualMeals meal={m.value} day={day} onLogged={refresh} />}
+                  {sub.items.length > 0 && (
                     <ul className="mt-3 divide-y divide-line">
-                      {items.map((e) => (
-                        <li key={e.id} className="flex items-center justify-between gap-3 py-2.5">
-                          <div className="min-w-0">
-                            <p className="truncate text-sm text-paper">
-                              {e.dish_id != null && e.servings !== 1 && <span className="num text-gold">{servingsLabel(e.servings)} × </span>}
-                              {e.name}
-                            </p>
-                            <p className="num text-xs text-dim">
-                              {e.grams != null && `${e.grams} g · `}{e.kcal} kcal{e.protein_g != null && ` · ${e.protein_g} g protein`}
-                              {e.spread_pct >= 30 && " · eaten out, rough"}
-                            </p>
-                          </div>
-                          <button
-                            type="button"
-                            aria-label={`Remove ${e.name}`}
-                            className="p-1 text-dim hover:text-coral pointer-coarse:p-2"
-                            disabled={remove.isPending}
-                            onClick={() => remove.mutate(e.id)}
-                          >
-                            <Trash2 size={15} />
-                          </button>
-                        </li>
+                      {sub.items.map((e) => (
+                        <EntryRow key={e.id} e={e} busy={amount.isPending || remove.isPending} onAmount={(servings) => amount.mutate({ id: e.id, servings })} onRemove={() => remove.mutate(e.id)} />
                       ))}
                     </ul>
                   )}
                 </section>
               );
             })}
+            {amount.isError && <p className="text-xs text-coral">{(amount.error as Error).message}</p>}
             {remove.isError && <p className="text-xs text-coral">{(remove.error as Error).message}</p>}
           </div>
           <Aside data={query.data} />
@@ -114,39 +112,76 @@ export function FoodPage() {
         </div>
       )}
       <AddFoodSheet meal={adding} day={day} recentIds={query.data?.recent_dish_ids ?? []} onClose={() => setAdding(null)} onSaved={refresh} />
+      <SaveMealSheet
+        open={saving != null}
+        label={MEALS.find((m) => m.value === saving)?.label ?? ""}
+        entries={saving ? (query.data?.entries ?? []).filter((e) => e.meal === saving) : []}
+        onClose={() => setSaving(null)}
+      />
     </>
   );
 }
 
+/** One logged food: name, amount and nutrition, with a stepper for the amount (foods from your library) and remove. */
+function EntryRow({ e, busy, onAmount, onRemove }: { e: FoodEntry; busy: boolean; onAmount: (servings: number) => void; onRemove: () => void }) {
+  const adjustable = e.dish_id != null;
+  return (
+    <li className="flex items-center justify-between gap-3 py-2.5">
+      <div className="min-w-0">
+        <p className="truncate text-sm text-paper">{e.name}</p>
+        <p className="num text-xs text-dim">
+          {e.grams != null && `${e.grams} g · `}{e.kcal} kcal{e.protein_g != null && ` · ${e.protein_g} g protein`}
+          {e.spread_pct >= 30 && " · eaten out, rough"}
+        </p>
+      </div>
+      <div className="flex shrink-0 items-center gap-1">
+        {adjustable && (
+          <div className="flex items-center" role="group" aria-label={`Amount of ${e.name}`}>
+            <button type="button" className="p-1.5 text-dim hover:text-paper disabled:opacity-30 pointer-coarse:p-2.5" aria-label="Less" disabled={busy || e.servings <= 0.5} onClick={() => onAmount(stepServings(e.servings, -1))}>
+              <Minus size={13} />
+            </button>
+            <span className="num min-w-8 text-center text-sm text-gold">{servingsLabel(e.servings)}×</span>
+            <button type="button" className="p-1.5 text-dim hover:text-paper disabled:opacity-30 pointer-coarse:p-2.5" aria-label="More" disabled={busy || e.servings >= 20} onClick={() => onAmount(stepServings(e.servings, 1))}>
+              <Plus size={13} />
+            </button>
+          </div>
+        )}
+        <button type="button" aria-label={`Remove ${e.name}`} className="p-1 text-dim hover:text-coral pointer-coarse:p-2" disabled={busy} onClick={onRemove}>
+          <Trash2 size={15} />
+        </button>
+      </div>
+    </li>
+  );
+}
+
+/** For an empty meal: the saved meals you used most recently, one tap each. */
+function UsualMeals({ meal, day, onLogged }: { meal: Meal; day: string; onLogged: () => void }) {
+  const meals = useSavedMeals();
+  const log = useMutation({ mutationFn: (id: number) => api.logFoodMeal(id, { day, meal, scale: 1 }), onSuccess: onLogged });
+  const top = meals.data?.meals.slice(0, 3) ?? [];
+  if (top.length === 0) return null;
+  return (
+    <div className="mt-3 flex flex-wrap items-center gap-2">
+      <span className="eyebrow">Your meals</span>
+      {top.map((m) => (
+        <button key={m.id} type="button" className="chip pointer-coarse:py-2" disabled={log.isPending} onClick={() => log.mutate(m.id)} title={m.items.map((i) => i.name).join(", ")}>
+          <Plus size={12} className="text-gold" /> {m.name} · {m.kcal} kcal
+        </button>
+      ))}
+      {log.isError && <span className="text-xs text-coral">{(log.error as Error).message}</span>}
+    </div>
+  );
+}
+
 function Aside({ data }: { data: FoodView }) {
-  const s = data.summary;
   const t = data.plan.targets;
   const avg = data.average;
   return (
     <aside className="space-y-6 lg:sticky lg:top-8 lg:self-start">
       <WeekCard data={data} />
 
-      <section className="surface p-6">
-        <div className="eyebrow">Carbs and fat</div>
-        {s.logged ? (
-          <dl className="mt-3 grid grid-cols-2 gap-3 text-center">
-            <div>
-              <dt className="eyebrow">Carbs</dt>
-              <dd className="num mt-1 text-xl text-paper">{s.carbs_g == null ? "—" : `${Math.round(s.carbs_g)} g`}</dd>
-              <dd className="text-xs text-dim">fills the rest</dd>
-            </div>
-            <div>
-              <dt className="eyebrow">Fat</dt>
-              <dd className="num mt-1 text-xl text-paper">{s.fat_g == null ? "—" : `${Math.round(s.fat_g)} g`}</dd>
-              {t && <dd className="text-xs text-dim">guide {t.fat_g[0]}–{t.fat_g[1]} g</dd>}
-            </div>
-          </dl>
-        ) : (
-          <p className="mt-2 text-sm text-mute">Not logged.</p>
-        )}
-        {s.partial_macros && <p className="mt-3 text-xs text-dim">Some entries have calories only, so these totals may be low.</p>}
-        {t && <p className="mt-3 text-[11px] text-dim">Fat 0.5–1.5 g/kg a day, the rest of the calories from carbohydrate (Iraki 2019).</p>}
-      </section>
+      <NutrientsCard data={data} />
+      {t && <p className="text-[11px] text-dim">Fat guide {t.fat_g[0]}–{t.fat_g[1]} g a day (0.5–1.5 g/kg), the rest of the calories from carbohydrate (Iraki 2019).</p>}
 
       {data.notes.length > 0 && (
         <div className="space-y-3">
@@ -167,17 +202,27 @@ function Aside({ data }: { data: FoodView }) {
   );
 }
 
-type Tab = "library" | "quick" | "new";
+type Tab = "meals" | "library" | "quick" | "new";
 
 function AddFoodSheet({ meal, day, recentIds, onClose, onSaved }: { meal: Meal | null; day: string; recentIds: number[]; onClose: () => void; onSaved: () => void }) {
-  const [tab, setTab] = useState<Tab>("library");
+  const [chosenTab, setTab] = useState<Tab>("library");
   const [search, setSearch] = useState("");
+  const [added, setAdded] = useState<string[]>([]);
+  const saved = useSavedMeals();
+  const hasMeals = (saved.data?.meals.length ?? 0) > 0;
+  const tab: Tab = chosenTab === "meals" && !hasMeals ? "library" : chosenTab;
+  const close = () => {
+    setAdded([]);
+    setSearch("");
+    onClose();
+  };
+  const note = (name: string) => setAdded((a) => [...a, name]);
   const label = MEALS.find((m) => m.value === meal)?.label ?? "";
   return (
-    <Sheet open={meal != null} onOpenChange={(o) => !o && onClose()} eyebrow={formatDate(day)} title={`Add to ${label.toLowerCase()}`}>
+    <Sheet open={meal != null} onOpenChange={(o) => !o && close()} eyebrow={formatDate(day)} title={`Add to ${label.toLowerCase()}`}>
       <div className="px-6 pb-8">
         <div role="tablist" className="mb-5 flex border border-line-strong p-1">
-          {([["library", "My dishes"], ["quick", "Quick entry"], ["new", "New dish"]] as const).map(([v, l]) => (
+          {([...(hasMeals ? ([["meals", "Meals"]] as const) : []), ["library", "Dishes"], ["quick", "Quick entry"], ["new", "New dish"]] as const).map(([v, l]) => (
             <button
               key={v}
               type="button"
@@ -190,8 +235,15 @@ function AddFoodSheet({ meal, day, recentIds, onClose, onSaved }: { meal: Meal |
             </button>
           ))}
         </div>
-        {meal && tab === "library" && <Library meal={meal} day={day} recentIds={recentIds} search={search} setSearch={setSearch} onSaved={onSaved} onDone={onClose} onAddNew={() => setTab("new")} />}
-        {meal && tab === "quick" && <QuickEntry meal={meal} day={day} onSaved={onSaved} onDone={onClose} />}
+        {added.length > 0 && (
+          <div className="mb-4 flex items-center justify-between gap-3 border border-line-strong bg-ink/40 px-3 py-2" role="status">
+            <p className="min-w-0 truncate text-xs text-mute"><Check size={12} className="mr-1.5 inline text-lime" />Added: {added.join(", ")}</p>
+            <button type="button" className="chip shrink-0 !text-gold pointer-coarse:py-2" onClick={close}>Done</button>
+          </div>
+        )}
+        {meal && tab === "meals" && <SavedMeals meal={meal} day={day} onLogged={(name) => { note(name); onSaved(); }} />}
+        {meal && tab === "library" && <Library meal={meal} day={day} recentIds={recentIds} search={search} setSearch={setSearch} onSaved={onSaved} onAdded={note} onAddNew={() => setTab("new")} />}
+        {meal && tab === "quick" && <QuickEntry meal={meal} day={day} onSaved={onSaved} onDone={close} />}
         {meal && tab === "new" && <NewDish initialName={search.trim()} onCreated={(name) => { setSearch(name); setTab("library"); }} />}
       </div>
     </Sheet>
@@ -203,7 +255,7 @@ const STEPS = [0.5, 1, 1.5, 2, 3, 4];
 /** The household portions a dish can be measured in; a dish with only a weight gets its own unit as the one portion. */
 const portionOptions = (d: FoodDish) => (d.portions.length ? d.portions : d.unit_g ? [{ unit: d.unit, grams: d.unit_g }] : []);
 
-function Library({ meal, day, recentIds, search, setSearch, onSaved, onDone, onAddNew }: { meal: Meal; day: string; recentIds: number[]; search: string; setSearch: (s: string) => void; onSaved: () => void; onDone: () => void; onAddNew: () => void }) {
+function Library({ meal, day, recentIds, search, setSearch, onSaved, onAdded, onAddNew }: { meal: Meal; day: string; recentIds: number[]; search: string; setSearch: (s: string) => void; onSaved: () => void; onAdded: (name: string) => void; onAddNew: () => void }) {
   const dishes = useQuery({ queryKey: ["food-dishes"], queryFn: api.foodDishes });
   const [picked, setPicked] = useState<FoodDish | null>(null);
   const [servings, setServings] = useState(1);
@@ -221,13 +273,21 @@ function Library({ meal, day, recentIds, search, setSearch, onSaved, onDone, onA
     },
     onSuccess: () => {
       onSaved();
-      onDone();
+      onAdded(picked!.name);
       setPicked(null);
       setServings(1);
       setMode("servings");
       setPortionIdx(0);
       setGramsText("");
       setOut(false);
+    },
+  });
+  // One tap on the + of a result logs one usual serving; the amount can be changed afterwards with the ± on the entry.
+  const quick = useMutation({
+    mutationFn: (d: FoodDish) => api.addFoodEntry({ day, meal, dish_id: d.id, servings: 1 }).then(() => d),
+    onSuccess: (d) => {
+      onSaved();
+      onAdded(d.name);
     },
   });
   const pick = (d: FoodDish) => {
@@ -340,6 +400,8 @@ function Library({ meal, day, recentIds, search, setSearch, onSaved, onDone, onA
     <div>
       <input
         value={search}
+        autoFocus
+        enterKeyHint="search"
         onChange={(e) => setSearch(e.target.value)}
         placeholder="Search all dishes: dal, roti, poha"
         aria-label="Search dishes"
@@ -348,16 +410,17 @@ function Library({ meal, day, recentIds, search, setSearch, onSaved, onDone, onA
       {shown.length === 0 && (
         <p className="mt-6 text-sm text-mute">No dish called “{search.trim()}” in your library.</p>
       )}
-      {search.trim() !== "" && !shown.some((d) => d.name.toLowerCase() === search.trim().toLowerCase()) && (
+      {search.trim() !== "" && !shown.some((d) => [d.name, ...(d.aliases ?? [])].some((n) => n.toLowerCase() === search.trim().toLowerCase())) && (
         <button type="button" className="chip mt-4 pointer-coarse:py-2.5" onClick={onAddNew}>
           <Plus size={12} className="text-gold" /> Add “{search.trim()}” as a new dish
         </button>
       )}
+      {quick.isError && <p className="mt-3 text-xs text-coral">{(quick.error as Error).message}</p>}
       {shown.length > 0 && (
         <ul className="mt-3 divide-y divide-line">
           {shown.map((d) => (
-            <li key={d.id}>
-              <button type="button" className="flex w-full items-baseline justify-between gap-3 py-3 text-left hover:text-cream pointer-coarse:py-3.5" onClick={() => pick(d)}>
+            <li key={d.id} className="flex items-center gap-2">
+              <button type="button" className="flex min-w-0 flex-1 items-baseline justify-between gap-3 py-3 text-left hover:text-cream pointer-coarse:py-3.5" onClick={() => pick(d)}>
                 <span className="min-w-0">
                   <span className="block truncate text-sm text-paper">
                     {!search && recentIds.includes(d.id) && <span className="mr-2 text-[10px] tracking-widest text-gold uppercase">Recent</span>}
@@ -368,7 +431,16 @@ function Library({ meal, day, recentIds, search, setSearch, onSaved, onDone, onA
                     {d.unit}
                   </span>
                 </span>
-                <span className="num shrink-0 text-xs text-mute">{d.kcal} kcal · {d.protein_g} g P</span>
+                <span className="num shrink-0 text-right text-xs text-mute">{Math.round(d.kcal)} kcal<span className="block">{Math.round(d.protein_g)} g protein</span></span>
+              </button>
+              <button
+                type="button"
+                className="grid h-9 w-9 shrink-0 place-items-center border border-line text-gold hover:border-gold disabled:opacity-40 pointer-coarse:h-11 pointer-coarse:w-11"
+                aria-label={`Add one ${d.unit} of ${d.name}`}
+                disabled={quick.isPending}
+                onClick={() => quick.mutate(d)}
+              >
+                <Plus size={16} />
               </button>
             </li>
           ))}

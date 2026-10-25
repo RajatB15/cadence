@@ -2,6 +2,7 @@ import * as Dialog from "@radix-ui/react-dialog";
 import { X } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import type { ReactNode } from "react";
+import { useKeyboardInset } from "../lib/keyboard";
 
 const wide = () => typeof window !== "undefined" && window.matchMedia("(min-width: 768px)").matches;
 
@@ -19,6 +20,9 @@ export function Sheet({
   eyebrow?: ReactNode;
   children: ReactNode;
 }) {
+  const { inset, visibleHeight } = useKeyboardInset(open && !wide());
+  // With the phone keyboard open, lift the sheet above it and keep it within the visible area so nothing hides behind the keys.
+  const lifted = inset > 0 && visibleHeight != null ? { bottom: inset, maxHeight: visibleHeight - 8 } : undefined;
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
       <AnimatePresence>
@@ -34,6 +38,7 @@ export function Sheet({
             </Dialog.Overlay>
             <Dialog.Content asChild forceMount aria-describedby={undefined}>
               <motion.div
+                style={lifted}
                 className="fixed inset-x-0 bottom-0 z-50 max-h-[88dvh] overflow-y-auto border-t border-line-strong bg-coal pb-[env(safe-area-inset-bottom)] md:inset-y-0 md:right-0 md:left-auto md:max-h-none md:w-[min(560px,92vw)] md:border-t-0 md:border-l"
                 initial={wide() ? { x: "100%" } : { y: "100%" }}
                 animate={{ y: 0, x: 0 }}

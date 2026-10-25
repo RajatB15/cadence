@@ -29,6 +29,8 @@ import re
 import sys
 from pathlib import Path
 
+from cadence_app.nutrients import pick as pick_micros
+
 MAX_KCAL_100G = 900.0
 MAX_MACRO_MASS_100G = 101.0
 MACRO_TOLERANCE = 0.40
@@ -131,6 +133,7 @@ def dish_from(group: list[dict]) -> dict:
         "basis": "library", "source": "library", "ref_code": _dish_code(_fingerprint(best)),
         "page_codes": sorted(_code(r["id"]) for r in group), "note": _source_note(best),
         "aliases": aliases,
+        "micros_per_100g": pick_micros(best.get("nutrients_per_100g")),
     }
 
 

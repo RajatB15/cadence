@@ -1342,6 +1342,8 @@ export interface FoodDish {
   portions: { unit: string; grams: number }[];
   /** Can be logged by grams (it has a weight). */
   grams_ok: boolean;
+  /** Tracked micronutrients per 100 g; a missing key means the source did not report it. */
+  micros_per_100g?: Record<string, number> | null;
 }
 
 export interface FoodEntry {
@@ -1357,6 +1359,44 @@ export interface FoodEntry {
   carbs_g: number | null;
   fat_g: number | null;
   spread_pct: number;
+  /** Micronutrients in what was eaten; null when unknown (quick entries, dishes without a nutrient table). */
+  micros?: Record<string, number> | null;
+}
+
+export interface FoodMicro {
+  key: string;
+  label: string;
+  unit: string;
+  /** Null when no food of the day reported it: unknown, not zero. */
+  amount: number | null;
+  foods_with: number;
+  foods: number;
+  reference: number | null;
+  kind: "target" | "limit" | null;
+  source: string;
+  pct: number | null;
+}
+
+export interface FoodMealItem {
+  id: number;
+  dish_id: number | null;
+  name: string;
+  servings: number;
+  grams: number | null;
+  kcal: number;
+  protein_g: number | null;
+}
+
+export interface FoodSavedMeal {
+  id: number;
+  name: string;
+  items: FoodMealItem[];
+  kcal: number;
+  protein_g: number;
+  carbs_g: number;
+  fat_g: number;
+  partial_macros: boolean;
+  last_used: string | null;
 }
 
 export interface FoodDaySummary {
@@ -1408,6 +1448,7 @@ export interface FoodView {
   weight_kg: number | null;
   protein_reference_g_per_kg: [number, number];
   recent_dish_ids: number[];
+  micros: FoodMicro[];
   plan: FoodPlan;
   notes: Finding[];
 }

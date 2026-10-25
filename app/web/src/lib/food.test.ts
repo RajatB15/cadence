@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { bandPositions, browseList, matchedAlias, stateFor, portionPreview, kcalRange, MAX_SEARCH_RESULTS, proteinPosition, searchList, servingsLabel, shiftDay } from "./food";
+import { formatMicro, macroSplit, mealSubtotal, microCoverage, microState, stepServings, bandPositions, browseList, matchedAlias, stateFor, portionPreview, kcalRange, MAX_SEARCH_RESULTS, proteinPosition, searchList, servingsLabel, shiftDay } from "./food";
 
 describe("food helpers", () => {
   it("shifts days across month and year edges", () => {
@@ -54,5 +54,32 @@ describe("food helpers", () => {
     expect(stateFor({ logged: true, kcal_low: 960, kcal_high: 1440 }, t)).toBe("under");
     expect(stateFor({ logged: true, kcal_low: 2800, kcal_high: 4000 }, t)).toBe("over");
     expect(stateFor({ logged: true, kcal_low: 1000, kcal_high: 2000 }, null)).toBe("no_target");
+  });
+  it("splits calories into macros only when all three are known", () => {
+    expect(macroSplit({ protein_g: 100, carbs_g: 200, fat_g: 50, partial_macros: false })).toEqual({ protein: 24, carbs: 48, fat: 28 });
+    expect(macroSplit({ protein_g: 100, carbs_g: null, fat_g: 50, partial_macros: false })).toBeNull();
+    expect(macroSplit({ protein_g: 100, carbs_g: 200, fat_g: 50, partial_macros: true })).toBeNull(); // a quick entry made the totals low
+  });
+  it("reads a nutrient against its reference without turning missing into zero", () => {
+    const m = (o: object) => ({ key: "k", label: "L", unit: "mg", amount: 10, foods_with: 3, foods: 3, reference: 100, kind: "target" as const, source: "WHO", pct: 10, ...o });
+    expect(microState(m({ amount: null, pct: null, foods_with: 0 }))).toBe("unknown");
+    expect(microState(m({ pct: 120 }))).toBe("reached");
+    expect(microState(m({ pct: 60 }))).toBe("building");
+    expect(microState(m({ pct: 20, foods_with: 2 }))).toBe("partial");
+    expect(microState(m({ kind: "limit", pct: 130 }))).toBe("over");
+    expect(microState(m({ kind: "limit", pct: 40 }))).toBe("under");
+    expect(microState(m({ reference: null, kind: null, pct: null }))).toBe("no_reference");
+    expect(microCoverage({ foods_with: 2, foods: 5 })).toBe("2 of 5 foods reported it");
+    expect(microCoverage({ foods_with: 0, foods: 5 })).toBe("no food reported it");
+    expect(microCoverage({ foods_with: 5, foods: 5 })).toBeNull();
+    expect(formatMicro({ amount: 1234.6, unit: "mg" })).toBe("1,235 mg");
+    expect(formatMicro({ amount: 3.14, unit: "g" })).toBe("3.1 g");
+    expect(formatMicro({ amount: null, unit: "g" })).toBe("—");
+  });
+  it("subtotals a meal and steps servings by halves then wholes", () => {
+    const e = (id: number, meal: "lunch" | "dinner", kcal: number, protein: number | null) => ({ id, meal, kcal, protein_g: protein }) as never;
+    expect(mealSubtotal([e(1, "lunch", 300, 10), e(2, "lunch", 100, null), e(3, "dinner", 500, 30)], "lunch")).toMatchObject({ kcal: 400, protein_g: 10 });
+    expect(mealSubtotal([], "lunch")).toMatchObject({ kcal: 0, protein_g: null });
+    expect([stepServings(1, 1), stepServings(2, 1), stepServings(3, -1), stepServings(0.5, -1), stepServings(20, 1)]).toEqual([1.5, 3, 2, 0.5, 20]);
   });
 });

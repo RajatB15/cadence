@@ -1,4 +1,4 @@
-import type { FoodDaySummary } from "./types";
+import type { FoodDaySummary, FoodEntry, FoodMicro, Meal } from "./types";
 
 export const MEALS = [
   { value: "breakfast", label: "Breakfast" },
@@ -148,4 +148,54 @@ export function stateFor(day: { logged: boolean; kcal_low: number | null; kcal_h
   if (!day.logged || day.kcal_low == null || day.kcal_high == null) return "not_logged";
   if (!target) return "no_target";
   return day.kcal_high < target[0] ? "under" : day.kcal_low > target[1] ? "over" : "within";
+}
+
+/** Share of the day's calories from protein, carbohydrate and fat (4/4/9 kcal per gram), or null unless all three are known. */
+export function macroSplit(s: Pick<FoodDaySummary, "protein_g" | "carbs_g" | "fat_g" | "partial_macros">): { protein: number; carbs: number; fat: number } | null {
+  if (s.protein_g == null || s.carbs_g == null || s.fat_g == null || s.partial_macros) return null;
+  const p = s.protein_g * 4, c = s.carbs_g * 4, f = s.fat_g * 9;
+  const total = p + c + f;
+  if (total <= 0) return null;
+  const pct = (v: number) => Math.round((v / total) * 100);
+  const protein = pct(p), carbs = pct(c);
+  return { protein, carbs, fat: Math.max(0, 100 - protein - carbs) };
+}
+
+export type MicroState = "unknown" | "partial" | "reached" | "building" | "under" | "over" | "no_reference";
+
+/** How a nutrient reads against its reference: limits go "over", targets "reached"; foods missing the value make it partial, never zero. */
+export function microState(m: FoodMicro): MicroState {
+  if (m.amount == null) return "unknown";
+  if (m.reference == null || m.pct == null) return m.foods_with < m.foods ? "partial" : "no_reference";
+  if (m.kind === "limit") return m.pct > 100 ? "over" : m.foods_with < m.foods ? "partial" : "under";
+  if (m.pct >= 100) return "reached";
+  return m.foods_with < m.foods ? "partial" : m.pct >= 50 ? "building" : "under";
+}
+
+/** "5 of 6 foods reported it": coverage in words, so a low total is read as possibly incomplete. */
+export function microCoverage(m: Pick<FoodMicro, "foods_with" | "foods">): string | null {
+  return m.foods_with >= m.foods ? null : m.foods_with === 0 ? "no food reported it" : `${m.foods_with} of ${m.foods} foods reported it`;
+}
+
+export function formatMicro(m: Pick<FoodMicro, "amount" | "unit">): string {
+  if (m.amount == null) return "—";
+  const v = m.amount >= 100 ? Math.round(m.amount) : Math.round(m.amount * 10) / 10;
+  return `${v.toLocaleString("en-US")} ${m.unit}`;
+}
+
+/** Entries of one meal with their calorie and protein subtotal (protein counts only entries that have it). */
+export function mealSubtotal(entries: FoodEntry[], meal: Meal): { items: FoodEntry[]; kcal: number; protein_g: number | null } {
+  const items = entries.filter((e) => e.meal === meal);
+  const withProtein = items.filter((e) => e.protein_g != null);
+  return {
+    items,
+    kcal: items.reduce((a, e) => a + e.kcal, 0),
+    protein_g: withProtein.length ? Math.round(withProtein.reduce((a, e) => a + (e.protein_g ?? 0), 0)) : null,
+  };
+}
+
+/** Next servings value for the stepper: halves under 2, whole numbers above; never below the smallest portion. */
+export function stepServings(current: number, direction: 1 | -1): number {
+  const step = direction === 1 ? (current < 2 ? 0.5 : 1) : current <= 2 ? 0.5 : 1;
+  return Math.max(0.5, Math.min(20, Math.round((current + direction * step) * 100) / 100));
 }

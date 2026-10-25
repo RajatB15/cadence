@@ -290,6 +290,7 @@ class FoodDish(Base):
     flagged: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
     aliases: Mapped[str | None] = mapped_column(Text)  # other names, JSON list, searched alongside the name
     portions: Mapped[str | None] = mapped_column(Text)  # household portions, JSON list of {unit, grams}
+    micros_100g: Mapped[str | None] = mapped_column(Text)  # tracked micronutrients per 100 g, JSON {key: amount}; absent key = unknown
     edited: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")  # you changed it; the catalogue won't overwrite
     created_at: Mapped[datetime] = mapped_column(DateTime)
 
@@ -311,7 +312,39 @@ class FoodEntry(Base):
     fat_g: Mapped[float | None] = mapped_column(Float)
     spread_pct: Mapped[int] = mapped_column(Integer, default=25, server_default="25")
     grams: Mapped[float | None] = mapped_column(Float)  # amount eaten in grams, when the dish has a weight
+    micros: Mapped[str | None] = mapped_column(Text)  # micronutrients in what was eaten, JSON {key: amount}; None = unknown
     logged_at: Mapped[datetime] = mapped_column(DateTime)
+
+
+class FoodMeal(Base):
+    """A saved group of foods you eat together ("usual breakfast"), logged in one tap."""
+
+    __tablename__ = "food_meals"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(80), unique=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime)
+    last_used: Mapped[datetime | None] = mapped_column(DateTime)
+
+
+class FoodMealItem(Base):
+    """One food in a saved meal. The dish and amount are what gets logged; the nutrition copy is the fallback if the dish is gone."""
+
+    __tablename__ = "food_meal_items"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    meal_id: Mapped[int] = mapped_column(ForeignKey("food_meals.id", ondelete="CASCADE"), index=True)
+    position: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    dish_id: Mapped[int | None] = mapped_column(ForeignKey("food_dishes.id", ondelete="SET NULL"))
+    name: Mapped[str] = mapped_column(String(80))
+    servings: Mapped[float] = mapped_column(Float)
+    grams: Mapped[float | None] = mapped_column(Float)
+    kcal: Mapped[float] = mapped_column(Float)
+    protein_g: Mapped[float | None] = mapped_column(Float)
+    carbs_g: Mapped[float | None] = mapped_column(Float)
+    fat_g: Mapped[float | None] = mapped_column(Float)
+    spread_pct: Mapped[int] = mapped_column(Integer, default=25, server_default="25")
+    micros: Mapped[str | None] = mapped_column(Text)
 
 
 class StrengthTemplate(Base):

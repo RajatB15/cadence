@@ -63,3 +63,10 @@ def test_a_dish_keeps_its_code_when_more_pages_join_it():
     (a,), _ = FI.build_catalogue(first)
     (b,), _ = FI.build_catalogue(later)
     assert a["ref_code"] == b["ref_code"] and b["page_codes"] == ["0000000000", "1111111111"]
+
+
+def test_dishes_carry_the_tracked_micronutrients_and_every_alias():
+    table = {"Calcium": [19.0, "mg"], "Iron": [0.8, "mg"], "Fibre": [3.2, "g"], "Choline": [5.0, "mg"]}
+    dishes, _ = FI.build_catalogue([rec(f"n{i}-{i:010d}", f"Name {chr(97 + i)}", table=table) for i in range(20)])
+    assert len(dishes) == 1 and dishes[0]["micros_per_100g"] == {"fibre_g": 3.2, "calcium_mg": 19.0, "iron_mg": 0.8}  # untracked Choline left out
+    assert len(dishes[0]["aliases"]) == 19  # no cap on search names
