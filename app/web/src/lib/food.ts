@@ -43,6 +43,7 @@ export const SOURCE_NOTE: Record<string, string> = {
 };
 
 export const BASIS_NOTE: Record<string, string> = {
+  label: "From a product label, read and checked by you",
   library: "Calculated from a recipe, not lab-measured",
   estimate: "Your own estimate",
 };
@@ -100,17 +101,22 @@ export type PortionMode = "servings" | "grams";
 
 interface PortionDish {
   kcal: number;
-  protein_g: number;
+  protein_g: number | null;
   unit_g: number | null;
-  per_100g: { kcal: number; protein_g: number } | null;
+  per_100g: { kcal: number; protein_g: number | null } | null;
 }
 
 /** What a portion adds up to. Grams use the per-100 g values, servings the per-serving ones; both agree by construction. */
-export function portionPreview(dish: PortionDish, mode: PortionMode, amount: number): { kcal: number; protein_g: number; grams: number | null } {
+export function portionPreview(dish: PortionDish, mode: PortionMode, amount: number): { kcal: number; protein_g: number | null; grams: number | null } {
   if (mode === "grams" && dish.per_100g) {
-    return { kcal: (dish.per_100g.kcal * amount) / 100, protein_g: (dish.per_100g.protein_g * amount) / 100, grams: amount };
+    return { kcal: (dish.per_100g.kcal * amount) / 100, protein_g: dish.per_100g.protein_g == null ? null : (dish.per_100g.protein_g * amount) / 100, grams: amount };
   }
-  return { kcal: dish.kcal * amount, protein_g: dish.protein_g * amount, grams: dish.unit_g ? dish.unit_g * amount : null };
+  return { kcal: dish.kcal * amount, protein_g: dish.protein_g == null ? null : dish.protein_g * amount, grams: dish.unit_g ? dish.unit_g * amount : null };
+}
+
+/** "10 g" or "unknown": a macro a dish doesn't give is unknown, not zero. */
+export function grams1(v: number | null | undefined): string {
+  return v == null ? "unknown" : `${Math.round(v * 10) / 10} g`;
 }
 
 export const PHASE_LABEL: Record<string, string> = { cut: "Cutting", gain: "Gaining", maintain: "Maintaining" };

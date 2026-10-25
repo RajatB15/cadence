@@ -1322,9 +1322,10 @@ export interface FoodDish {
   name: string;
   unit: string;
   kcal: number;
-  protein_g: number;
-  carbs_g: number;
-  fat_g: number;
+  /** Null when unknown (a quick entry or label that didn't give it). */
+  protein_g: number | null;
+  carbs_g: number | null;
+  fat_g: number | null;
   spread_pct: number;
   builtin: boolean;
   active: boolean;
@@ -1332,8 +1333,8 @@ export interface FoodDish {
   ref_code: string | null;
   /** Weight of one serving as eaten, in grams. */
   unit_g: number | null;
-  per_100g: { kcal: number; protein_g: number; carbs_g: number; fat_g: number } | null;
-  basis: "library" | "estimate";
+  per_100g: { kcal: number; protein_g: number | null; carbs_g: number | null; fat_g: number | null } | null;
+  basis: "library" | "estimate" | "label";
   /** Where the numbers come from, e.g. the recipe site the numbers were calculated from. */
   note: string | null;
   /** Other names for the same food, searched alongside the name. */
@@ -1463,17 +1464,37 @@ export interface FoodEntryInput {
   name?: string;
   kcal?: number;
   protein_g?: number | null;
+  carbs_g?: number | null;
+  fat_g?: number | null;
+  /** A quick entry is also remembered as one of your dishes (default). */
+  save_dish?: boolean;
 }
 
 export interface FoodDishInput {
   name: string;
   unit: string;
   kcal: number;
-  protein_g: number;
-  carbs_g: number;
-  fat_g: number;
+  protein_g: number | null;
+  carbs_g: number | null;
+  fat_g: number | null;
   /** Weight of one serving in grams, so the dish can also be logged by weight. */
   grams?: number;
+  /** Tracked micronutrients per 100 g; needs grams. */
+  micros_per_100g?: Record<string, number>;
+  basis?: "estimate" | "label";
+  note?: string;
+}
+
+/** What the label reader found, for review: nothing is saved by reading. */
+export interface FoodLabelRead {
+  text: string;
+  columns: Partial<Record<"per_100g" | "per_serving", Record<string, number>>>;
+  order: ("per_100g" | "per_serving")[];
+  serving_g: number | null;
+  serving_unit: string | null;
+  column_assumed: boolean;
+  warnings: string[];
+  issues: Record<string, string[]>;
 }
 
 // ---- check-in, recovery and outcomes ------------------------------------------------------

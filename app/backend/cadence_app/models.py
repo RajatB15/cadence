@@ -270,9 +270,9 @@ class FoodDish(Base):
     name: Mapped[str] = mapped_column(String(80), unique=True)
     unit: Mapped[str] = mapped_column(String(40))
     kcal: Mapped[float] = mapped_column(Float)
-    protein_g: Mapped[float] = mapped_column(Float)
-    carbs_g: Mapped[float] = mapped_column(Float)
-    fat_g: Mapped[float] = mapped_column(Float)
+    protein_g: Mapped[float | None] = mapped_column(Float)  # None = unknown (a quick entry or label that didn't give it), never zero
+    carbs_g: Mapped[float | None] = mapped_column(Float)
+    fat_g: Mapped[float | None] = mapped_column(Float)
     spread_pct: Mapped[int] = mapped_column(Integer, default=20, server_default="20")
     builtin: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
     active: Mapped[bool] = mapped_column(Boolean, default=True, server_default="1")
@@ -285,7 +285,7 @@ class FoodDish(Base):
     protein_100g: Mapped[float | None] = mapped_column(Float)
     carbs_100g: Mapped[float | None] = mapped_column(Float)
     fat_100g: Mapped[float | None] = mapped_column(Float)
-    basis: Mapped[str] = mapped_column(String(16), default="estimate", server_default="estimate")  # library | estimate (your own)
+    basis: Mapped[str] = mapped_column(String(16), default="estimate", server_default="estimate")  # library | estimate (your own) | label (read from a product label)
     note: Mapped[str | None] = mapped_column(String(240))
     flagged: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
     aliases: Mapped[str | None] = mapped_column(Text)  # other names, JSON list, searched alongside the name

@@ -4,12 +4,13 @@ import { useMemo, useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
 import { NoteCard } from "../components/CoachNotes";
 import { EnergyCard, PlanNeeds, ProteinCard, WeekCard } from "../components/FoodPlan";
+import { ScanLabel } from "../components/FoodLabel";
 import { SavedMeals, SaveMealSheet, useSavedMeals } from "../components/FoodMeals";
 import { NutrientsCard } from "../components/FoodNutrients";
 import { Sheet } from "../components/Sheet";
 import { ErrorBlock, LoadingBlock, PageHeader } from "../components/Shell";
 import { api } from "../lib/api";
-import { BASIS_NOTE, browseList, matchedAlias, mealSubtotal, MEALS, portionPreview, searchList, servingsLabel, shiftDay, SOURCE_NOTE, stepServings, type PortionMode } from "../lib/food";
+import { BASIS_NOTE, browseList, grams1, matchedAlias, mealSubtotal, MEALS, portionPreview, searchList, servingsLabel, shiftDay, SOURCE_NOTE, stepServings, type PortionMode } from "../lib/food";
 import { formatDate } from "../lib/format";
 import type { FoodDish, FoodEntry, FoodView, Meal } from "../lib/types";
 
@@ -202,7 +203,7 @@ function Aside({ data }: { data: FoodView }) {
   );
 }
 
-type Tab = "meals" | "library" | "quick" | "new";
+type Tab = "meals" | "library" | "scan" | "quick" | "new";
 
 function AddFoodSheet({ meal, day, recentIds, onClose, onSaved }: { meal: Meal | null; day: string; recentIds: number[]; onClose: () => void; onSaved: () => void }) {
   const [chosenTab, setTab] = useState<Tab>("library");
@@ -222,7 +223,7 @@ function AddFoodSheet({ meal, day, recentIds, onClose, onSaved }: { meal: Meal |
     <Sheet open={meal != null} onOpenChange={(o) => !o && close()} eyebrow={formatDate(day)} title={`Add to ${label.toLowerCase()}`}>
       <div className="px-6 pb-8">
         <div role="tablist" className="mb-5 flex border border-line-strong p-1">
-          {([...(hasMeals ? ([["meals", "Meals"]] as const) : []), ["library", "Dishes"], ["quick", "Quick entry"], ["new", "New dish"]] as const).map(([v, l]) => (
+          {([...(hasMeals ? ([["meals", "Meals"]] as const) : []), ["library", "Dishes"], ["scan", "Scan label"], ["quick", "Quick add"], ["new", "New dish"]] as const).map(([v, l]) => (
             <button
               key={v}
               type="button"
@@ -243,7 +244,8 @@ function AddFoodSheet({ meal, day, recentIds, onClose, onSaved }: { meal: Meal |
         )}
         {meal && tab === "meals" && <SavedMeals meal={meal} day={day} onLogged={(name) => { note(name); onSaved(); }} />}
         {meal && tab === "library" && <Library meal={meal} day={day} recentIds={recentIds} search={search} setSearch={setSearch} onSaved={onSaved} onAdded={note} onAddNew={() => setTab("new")} />}
-        {meal && tab === "quick" && <QuickEntry meal={meal} day={day} onSaved={onSaved} onDone={close} />}
+        {meal && tab === "scan" && <ScanLabel meal={meal} day={day} onAdded={note} onSaved={onSaved} />}
+        {meal && tab === "quick" && <QuickEntry meal={meal} day={day} onSaved={onSaved} onAdded={note} />}
         {meal && tab === "new" && <NewDish initialName={search.trim()} onCreated={(name) => { setSearch(name); setTab("library"); }} />}
       </div>
     </Sheet>
@@ -319,11 +321,11 @@ function Library({ meal, day, recentIds, search, setSearch, onSaved, onAdded, on
         <p className="mt-3 font-display text-3xl text-cream">{picked.name}</p>
         <p className="text-xs text-dim">{SOURCE_NOTE[picked.source]} · {BASIS_NOTE[picked.basis]}</p>
         <p className="num mt-2 text-sm text-mute">
-          per {picked.unit}: {Math.round(picked.kcal)} kcal · {picked.protein_g.toFixed(1)} g protein · {picked.carbs_g.toFixed(1)} g carbs · {picked.fat_g.toFixed(1)} g fat
+          per {picked.unit}: {Math.round(picked.kcal)} kcal · protein {grams1(picked.protein_g)} · carbs {grams1(picked.carbs_g)} · fat {grams1(picked.fat_g)}
         </p>
         {picked.per_100g && (
           <p className="num text-xs text-dim">
-            per 100 g: {picked.per_100g.kcal} kcal · {picked.per_100g.protein_g} g protein · {picked.per_100g.carbs_g} g carbs · {picked.per_100g.fat_g} g fat
+            per 100 g: {picked.per_100g.kcal} kcal · protein {grams1(picked.per_100g.protein_g)} · carbs {grams1(picked.per_100g.carbs_g)} · fat {grams1(picked.per_100g.fat_g)}
           </p>
         )}
         {picked.note && <p className="mt-2 text-xs text-dim">{picked.note}</p>}
@@ -386,7 +388,7 @@ function Library({ meal, day, recentIds, search, setSearch, onSaved, onAdded, on
           <input type="checkbox" checked={out} onChange={(e) => setOut(e.target.checked)} /> Eaten out or not home-cooked (wider range)
         </label>
         <p className="num mt-5 text-sm text-paper">
-          ≈ {Math.round(preview.kcal)} kcal · {Math.round(preview.protein_g)} g protein{preview.grams != null && ` · ${Math.round(preview.grams)} g`}
+          ≈ {Math.round(preview.kcal)} kcal · {preview.protein_g == null ? "protein unknown" : `${Math.round(preview.protein_g)} g protein`}{preview.grams != null && ` · ${Math.round(preview.grams)} g`}
         </p>
         {save.isError && <p className="mt-3 text-xs text-coral">{(save.error as Error).message}</p>}
         <button type="button" className="pop pop-lime mt-6 disabled:opacity-40" disabled={save.isPending || (mode === "grams" && picked.grams_ok && !gramsValid)} onClick={() => save.mutate()}>
@@ -431,7 +433,7 @@ function Library({ meal, day, recentIds, search, setSearch, onSaved, onAdded, on
                     {d.unit}
                   </span>
                 </span>
-                <span className="num shrink-0 text-right text-xs text-mute">{Math.round(d.kcal)} kcal<span className="block">{Math.round(d.protein_g)} g protein</span></span>
+                <span className="num shrink-0 text-right text-xs text-mute">{Math.round(d.kcal)} kcal<span className="block">{d.protein_g == null ? "protein unknown" : `${Math.round(d.protein_g)} g protein`}</span></span>
               </button>
               <button
                 type="button"
@@ -452,21 +454,25 @@ function Library({ meal, day, recentIds, search, setSearch, onSaved, onAdded, on
 
 const field = "num mt-2 w-full border-b-2 border-line-strong bg-transparent py-2 text-xl text-paper outline-none focus:border-gold";
 
-function QuickEntry({ meal, day, onSaved, onDone }: { meal: Meal; day: string; onSaved: () => void; onDone: () => void }) {
+function QuickEntry({ meal, day, onSaved, onAdded }: { meal: Meal; day: string; onSaved: () => void; onAdded: (name: string) => void }) {
+  const client = useQueryClient();
   const [name, setName] = useState("");
   const [kcal, setKcal] = useState("");
-  const [protein, setProtein] = useState("");
+  const [macros, setMacros] = useState({ protein: "", carbs: "", fat: "" });
+  const [remember, setRemember] = useState(true);
   const k = Number(kcal);
-  const p = protein.trim() === "" ? null : Number(protein);
-  const valid = name.trim() !== "" && Number.isFinite(k) && k > 0 && k <= 5000 && (p == null || (Number.isFinite(p) && p >= 0 && p <= 500));
+  const m = (t: string) => (t.trim() === "" ? null : Number(t.replace(",", ".")));
+  const okMacro = (t: string, cap: number) => m(t) == null || (Number.isFinite(m(t)!) && m(t)! >= 0 && m(t)! <= cap);
+  const valid = name.trim() !== "" && Number.isFinite(k) && k > 0 && k <= 5000 && okMacro(macros.protein, 500) && okMacro(macros.carbs, 1000) && okMacro(macros.fat, 500);
   const save = useMutation({
-    mutationFn: () => api.addFoodEntry({ day, meal, name: name.trim(), kcal: k, protein_g: p }),
+    mutationFn: () => api.addFoodEntry({ day, meal, name: name.trim(), kcal: k, protein_g: m(macros.protein), carbs_g: m(macros.carbs), fat_g: m(macros.fat), save_dish: remember }),
     onSuccess: () => {
       onSaved();
-      onDone();
+      if (remember) client.invalidateQueries({ queryKey: ["food-dishes"] });
+      onAdded(name.trim());
       setName("");
       setKcal("");
-      setProtein("");
+      setMacros({ protein: "", carbs: "", fat: "" });
     },
   });
   const submit = (e: FormEvent) => {
@@ -480,8 +486,18 @@ function QuickEntry({ meal, day, onSaved, onDone }: { meal: Meal; day: string; o
       <input id="q-name" value={name} onChange={(e) => setName(e.target.value)} className={field} placeholder="Office thali" maxLength={80} />
       <label className="eyebrow mt-5 block" htmlFor="q-kcal">Calories (kcal)</label>
       <input id="q-kcal" inputMode="numeric" value={kcal} onChange={(e) => setKcal(e.target.value)} className={field} placeholder="700" />
-      <label className="eyebrow mt-5 block" htmlFor="q-protein">Protein (g), if you know</label>
-      <input id="q-protein" inputMode="decimal" value={protein} onChange={(e) => setProtein(e.target.value)} className={field} placeholder="Leave blank if unsure" />
+      <div className="mt-5 grid grid-cols-3 gap-4">
+        {([["protein", "Protein (g)"], ["carbs", "Carbs (g)"], ["fat", "Fat (g)"]] as const).map(([key, label]) => (
+          <div key={key}>
+            <label className="eyebrow" htmlFor={`q-${key}`}>{label}</label>
+            <input id={`q-${key}`} inputMode="decimal" value={macros[key]} onChange={(e) => setMacros({ ...macros, [key]: e.target.value })} className={field} placeholder="unknown" />
+          </div>
+        ))}
+      </div>
+      <p className="mt-2 text-xs text-dim">Leave blank if unsure: blank means unknown, not zero.</p>
+      <label className="mt-5 flex items-center gap-2 text-sm text-mute">
+        <input type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)} /> Remember it in my dishes, so I can pick it again
+      </label>
       {save.isError && <p className="mt-3 text-xs text-coral">{(save.error as Error).message}</p>}
       <button type="submit" className="pop pop-lime mt-6 disabled:opacity-40" disabled={!valid || save.isPending}>
         <Plus size={16} /> Add
@@ -494,13 +510,13 @@ function NewDish({ initialName, onCreated }: { initialName: string; onCreated: (
   const client = useQueryClient();
   const [v, setV] = useState({ name: initialName, unit: "", grams: "", kcal: "", protein: "", carbs: "", fat: "" });
   const set = (key: keyof typeof v) => (e: { target: { value: string } }) => setV({ ...v, [key]: e.target.value });
-  const num = (s: string) => (s.trim() === "" ? 0 : Number(s));
+  const num = (s: string) => (s.trim() === "" ? null : Number(s));
   const kcal = Number(v.kcal);
   const gramsVal = v.grams.trim() === "" ? null : Number(v.grams.replace(",", "."));
   const valid =
     v.name.trim() !== "" && v.unit.trim() !== "" && Number.isFinite(kcal) && kcal >= 0 && kcal <= 5000 && v.kcal.trim() !== "" &&
     (gramsVal == null || (Number.isFinite(gramsVal) && gramsVal > 0 && gramsVal <= 3000)) &&
-    [v.protein, v.carbs, v.fat].every((s) => Number.isFinite(num(s)) && num(s) >= 0);
+    [v.protein, v.carbs, v.fat].every((s) => num(s) == null || (Number.isFinite(num(s)!) && num(s)! >= 0));
   const save = useMutation({
     mutationFn: () => api.addFoodDish({ name: v.name.trim(), unit: v.unit.trim(), kcal, protein_g: num(v.protein), carbs_g: num(v.carbs), fat_g: num(v.fat), ...(gramsVal ? { grams: gramsVal } : {}) }),
     onSuccess: () => {

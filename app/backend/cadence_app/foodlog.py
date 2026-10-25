@@ -177,26 +177,36 @@ def dishes(session: Session, include_inactive: bool = False) -> list[dict]:
     return [dish_dict(d) for d in session.scalars(q)]
 
 
-def _clean(name: str, unit: str, kcal: float, protein_g: float, carbs_g: float, fat_g: float) -> tuple[str, str]:
+def _clean(name: str, unit: str, kcal: float, protein_g: float | None, carbs_g: float | None, fat_g: float | None) -> tuple[str, str]:
     name, unit = name.strip(), unit.strip()
     if not name or not unit:
         raise FoodError("A dish needs a name and a serving unit")
     if not 0 <= kcal <= MAX_KCAL:
         raise FoodError(f"Calories per serving must be between 0 and {MAX_KCAL:g}")
-    if min(protein_g, carbs_g, fat_g) < 0:
+    if min((v for v in (protein_g, carbs_g, fat_g) if v is not None), default=0) < 0:
         raise FoodError("Macros can't be negative")
     return name[:80], unit[:40]
 
 
-def add_dish(session: Session, name: str, unit: str, kcal: float, protein_g: float, carbs_g: float, fat_g: float,
-             now: datetime, spread_pct: int = HOME_SPREAD, grams: float | None = None) -> dict:
-    """Your own dish. Give the weight of one serving (grams) and it can also be logged by weight."""
+def _clean_micros(micros: dict | None) -> dict[str, float] | None:
+    """Only tracked nutrients with sensible non-negative amounts per 100 g; anything else is dropped, not guessed."""
+    out = {k: round(float(v), 2) for k, v in (micros or {}).items() if k in nutrients.KEYS and isinstance(v, (int, float)) and 0 <= v <= 100000}
+    return out or None
+
+
+def add_dish(session: Session, name: str, unit: str, kcal: float, protein_g: float | None, carbs_g: float | None, fat_g: float | None,
+             now: datetime, spread_pct: int = HOME_SPREAD, grams: float | None = None, micros_per_100g: dict | None = None,
+             basis: str = "estimate", note: str | None = None) -> dict:
+    """Your own dish (typed in, read from a label, or remembered from a quick entry). Give the weight of one serving
+    (grams) and it can also be logged by weight. Macros you don't know stay unknown."""
     name, unit = _clean(name, unit, kcal, protein_g, carbs_g, fat_g)
     if session.scalar(select(FoodDish.id).where(FoodDish.name == name)) is not None:
         raise FoodError("You already have a dish with that name")
     d = FoodDish(name=name, unit=unit, kcal=kcal, protein_g=protein_g, carbs_g=carbs_g, fat_g=fat_g,
-                 spread_pct=spread_pct, builtin=False, active=True, source="mine", basis="estimate", created_at=now)
+                 spread_pct=spread_pct, builtin=False, active=True, source="mine", basis=basis, note=note, created_at=now)
     _set_weight(d, grams)
+    micros = _clean_micros(micros_per_100g)
+    d.micros_100g = json.dumps(micros) if micros and d.unit_g else None  # per 100 g needs a weight to scale from
     session.add(d)
     session.commit()
     return dish_dict(d)
@@ -210,8 +220,9 @@ def _set_weight(d: FoodDish, grams: float | None) -> None:
     if not 0 < grams <= MAX_UNIT_GRAMS:
         raise FoodError(f"A serving weighs between 0 and {MAX_UNIT_GRAMS:g} g")
     d.unit_g = grams
-    d.kcal_100g, d.protein_100g = round(d.kcal / grams * 100, 1), round(d.protein_g / grams * 100, 1)
-    d.carbs_100g, d.fat_100g = round(d.carbs_g / grams * 100, 1), round(d.fat_g / grams * 100, 1)
+    per100 = lambda v: None if v is None else round(v / grams * 100, 1)  # noqa: E731
+    d.kcal_100g, d.protein_100g = per100(d.kcal), per100(d.protein_g)
+    d.carbs_100g, d.fat_100g = per100(d.carbs_g), per100(d.fat_g)
 
 
 def update_dish(session: Session, dish_id: int, values: dict) -> dict | None:
@@ -249,6 +260,10 @@ def _check_meal(meal: str) -> None:
         raise FoodError("Unknown meal")
 
 
+def _times(value: float | None, factor: float) -> float | None:
+    return None if value is None else value * factor
+
+
 def _portion(d: FoodDish, servings: float, grams: float | None) -> dict:
     """What eating `servings` (or `grams`) of a dish adds up to: the amounts, plus the micronutrients when its weight is known."""
     has_weight = dish_dict(d)["grams_ok"]
@@ -258,11 +273,11 @@ def _portion(d: FoodDish, servings: float, grams: float | None) -> dict:
         if not 0 < grams <= MAX_LOG_GRAMS:
             raise FoodError(f"Grams must be between 0 and {MAX_LOG_GRAMS:g}")
         servings = grams / d.unit_g
-        kcal, protein, carbs, fat = (v * grams / 100 for v in (d.kcal_100g, d.protein_100g, d.carbs_100g, d.fat_100g))
+        kcal, protein, carbs, fat = (_times(v, grams / 100) for v in (d.kcal_100g, d.protein_100g, d.carbs_100g, d.fat_100g))
     else:
         if not 0 < servings <= MAX_SERVINGS:
             raise FoodError(f"Servings must be between 0 and {MAX_SERVINGS:g}")
-        kcal, protein, carbs, fat = (v * servings for v in (d.kcal, d.protein_g, d.carbs_g, d.fat_g))
+        kcal, protein, carbs, fat = (_times(v, servings) for v in (d.kcal, d.protein_g, d.carbs_g, d.fat_g))
         grams = round(servings * d.unit_g, 1) if has_weight else None
     micros = nutrients.scale(json.loads(d.micros_100g) if d.micros_100g else None, grams)
     return {"servings": servings, "grams": grams, "kcal": kcal, "protein_g": protein, "carbs_g": carbs, "fat_g": fat, "micros": micros}
@@ -291,21 +306,32 @@ def log_dish(session: Session, day: date, meal: str, dish_id: int, servings: flo
 
 
 def log_quick(session: Session, day: date, meal: str, name: str, kcal: float, protein_g: float | None,
-              today: date, now: datetime) -> dict:
-    """A one-off entry (eating out, something not in the library). Calories required; protein optional."""
+              today: date, now: datetime, carbs_g: float | None = None, fat_g: float | None = None, save_dish: bool = True) -> dict:
+    """A one-off entry (eating out, something not in the library). Calories required; macros optional and left unknown if
+    not given. By default it is also remembered as one of your dishes (one serving) so it can be picked again next time;
+    if a dish with that name already exists it is only logged."""
     _check_day(day, today)
     _check_meal(meal)
     if not name.strip():
         raise FoodError("Say what it was")
     if not 0 < kcal <= MAX_KCAL:
         raise FoodError(f"Calories must be between 0 and {MAX_KCAL:g}")
-    if protein_g is not None and not 0 <= protein_g <= 500:
-        raise FoodError("Protein must be between 0 and 500 g")
-    entry = FoodEntry(day=day, meal=meal, dish_id=None, name=name.strip()[:80], servings=1, kcal=kcal,
-                      protein_g=protein_g, carbs_g=None, fat_g=None, spread_pct=OUT_SPREAD, logged_at=now)
+    for label, v, cap in (("Protein", protein_g, 500), ("Carbs", carbs_g, 1000), ("Fat", fat_g, 500)):
+        if v is not None and not 0 <= v <= cap:
+            raise FoodError(f"{label} must be between 0 and {cap} g")
+    name = name.strip()[:80]
+    dish_id, saved = None, False
+    if save_dish and session.scalar(select(FoodDish.id).where(FoodDish.name.ilike(name))) is None:
+        dish = FoodDish(name=name, unit="1 serving", kcal=kcal, protein_g=protein_g, carbs_g=carbs_g, fat_g=fat_g, spread_pct=OUT_SPREAD,
+                        builtin=False, active=True, source="mine", basis="estimate", note="Remembered from a quick entry.", created_at=now)
+        session.add(dish)
+        session.flush()
+        dish_id, saved = dish.id, True
+    entry = FoodEntry(day=day, meal=meal, dish_id=dish_id, name=name, servings=1, kcal=kcal,
+                      protein_g=protein_g, carbs_g=carbs_g, fat_g=fat_g, spread_pct=OUT_SPREAD, logged_at=now)
     session.add(entry)
     session.commit()
-    return entry_dict(entry)
+    return {**entry_dict(entry), "saved_dish": saved}
 
 
 def remove(session: Session, entry_id: int) -> bool:

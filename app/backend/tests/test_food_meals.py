@@ -82,3 +82,34 @@ def test_meal_uses_the_dish_as_it_is_today_and_survives_a_removed_dish(fenv):  #
     assert client.delete(f"/api/food/meals/{meal['id']}", headers=MUTATE).status_code == 200
     assert client.get("/api/food/meals").json()["meals"] == []
     assert client.delete(f"/api/food/meals/{meal['id']}", headers=MUTATE).status_code == 404
+
+
+def test_quick_entry_is_remembered_as_a_dish_and_unknown_macros_stay_unknown(fenv):  # noqa: F811
+    client, _ = fenv
+    q = client.post("/api/food/entries", json={"day": DAY, "meal": "dinner", "name": "Office thali", "kcal": 700, "protein_g": 22}, headers=MUTATE).json()
+    dish = dishes_of(client)["Office thali"]
+    assert q["saved_dish"] and q["dish_id"] == dish["id"] and dish["kcal"] == 700 and dish["protein_g"] == 22
+    assert dish["carbs_g"] is None and dish["fat_g"] is None and dish["unit"] == "1 serving"  # not given, so unknown, not zero
+    again = client.post("/api/food/entries", json={"day": DAY, "meal": "lunch", "dish_id": dish["id"], "servings": 2}, headers=MUTATE).json()
+    assert again["kcal"] == 1400 and again["protein_g"] == 44 and again["carbs_g"] is None and again["fat_g"] is None
+    dup = client.post("/api/food/entries", json={"day": DAY, "meal": "lunch", "name": "office THALI", "kcal": 650}, headers=MUTATE).json()
+    assert dup["saved_dish"] is False and dup["dish_id"] is None  # a dish with that name exists: only logged
+    skip = client.post("/api/food/entries", json={"day": DAY, "meal": "lunch", "name": "One-off", "kcal": 300, "save_dish": False}, headers=MUTATE).json()
+    assert skip["saved_dish"] is False and "One-off" not in dishes_of(client)
+    full = client.post("/api/food/entries", json={"day": DAY, "meal": "snack", "name": "Protein bar", "kcal": 200, "protein_g": 20, "carbs_g": 18, "fat_g": 7}, headers=MUTATE).json()
+    assert full["carbs_g"] == 18 and full["fat_g"] == 7 and dishes_of(client)["Protein bar"]["fat_g"] == 7
+
+
+def test_a_label_dish_carries_micros_and_logs_by_grams(fenv):  # noqa: F811
+    client, _ = fenv
+    made = client.post("/api/food/dishes", json={"name": "Granola", "unit": "1 serving (≈40 g)", "kcal": 180, "protein_g": 4, "carbs_g": 26, "fat_g": 6,
+                                                  "grams": 40, "basis": "label", "note": "From a product label.",
+                                                  "micros_per_100g": {"fibre_g": 7.5, "sodium_mg": 120, "bogus": 5}}, headers=MUTATE)
+    assert made.status_code == 200
+    dish = made.json()
+    assert dish["basis"] == "label" and dish["micros_per_100g"] == {"fibre_g": 7.5, "sodium_mg": 120.0} and dish["per_100g"]["kcal"] == 450
+    e = client.post("/api/food/entries", json={"day": DAY, "meal": "breakfast", "dish_id": dish["id"], "grams": 60}, headers=MUTATE).json()
+    assert e["kcal"] == 270 and e["micros"] == {"fibre_g": 4.5, "sodium_mg": 72.0}
+    nogram = client.post("/api/food/dishes", json={"name": "Mystery bar", "unit": "1 bar", "kcal": 150, "protein_g": None, "carbs_g": None, "fat_g": None,
+                                                    "micros_per_100g": {"fibre_g": 3}}, headers=MUTATE).json()
+    assert nogram["protein_g"] is None and nogram["micros_per_100g"] is None  # per-100 g amounts need a serving weight to mean anything
