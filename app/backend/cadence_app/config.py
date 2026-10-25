@@ -28,7 +28,7 @@ class Settings:
     sync_every_h: float = 3.0
     push_contact: str = "mailto:cadence@example.com"
     weather: bool = False  # Open-Meteo requests; on for the real service, off in tests unless asked for
-    food_data_dir: Path | None = None  # the private food-data submodule (the source site crawl); never in this repo
+    food_data_dir: Path | None = None  # the private food-data submodule (the food library crawl); never in this repo
 
     @property
     def archive_dir(self) -> Path:

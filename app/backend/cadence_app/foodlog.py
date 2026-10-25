@@ -3,7 +3,7 @@
 You log "2 roti + 1 katori dal" instead of searching a barcode database. Each dish stores nutrition per 100 g and the
 weight of its household portions; a logged entry copies the numbers, so editing a dish later never rewrites history.
 
-Nothing here is measured. The built-in dishes come from a personal-use crawl of the food library kept in the
+Nothing here is measured. The built-in dishes come from a personal-use crawl of a public nutrition database kept in the
 private `food-data` submodule (see `food_import`): per-100 g values calculated from recipes found on the web, marked
 unverified, so each dish shows its source. How you cook (oil, ghee, portion size) moves them a lot, so edit a dish once
 to match your kitchen. Every entry carries a spread (built-in 25%, eating out 30%) and daily totals are shown as

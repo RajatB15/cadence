@@ -193,7 +193,7 @@ function Aside({ data }: { data: FoodView }) {
 
       {avg && <p className="num text-xs text-dim">Week average {avg.kcal.toLocaleString("en-US")} kcal over {avg.days_logged} logged days (of {avg.days_covered}).</p>}
       <p className="text-xs leading-relaxed text-dim">
-        These are estimates, not measurements. Dishes come from the source's food database and are calculated from recipes found online, not lab-measured, so each dish shows its source.
+        These are estimates, not measurements. Dishes come from a public food database and are calculated from recipes found online, not lab-measured, so each dish shows its source.
         Check the portion and its weight before you pick: a bowl, a katori and 100 g are different amounts, and how you cook moves every number. Targets are a planning range from published
         guidance for people who train, not medical advice.
       </p>

@@ -1,11 +1,11 @@
-"""Builds the food catalogue from the private `food-data` submodule (a personal-use crawl of the food library).
+"""Builds the food catalogue from the private `food-data` submodule (a personal-use crawl of a public nutrition database).
 
     python -m cadence_app.food_import [path/to/food-data]
 
 reads `library/nutrifacts.jsonl` and writes `library/catalogue.json` plus `library/catalogue_report.json`
 beside it. The app loads the catalogue on start. No food data lives in this repository.
 
-What the source is: the source site publishes nutrition per 100 g with named portions (katori, piece, cup, with grams).
+What the source is: the database publishes nutrition per 100 g with named portions (katori, piece, cup, with grams).
 Its numbers are calculated from recipes taken from the web (each page names its source, such as a recipe site) and are
 marked unverified, so every dish keeps that source and the app shows it. Estimates, not measurements.
 
@@ -18,7 +18,7 @@ Cleaning rules
   100 g, or macros that disagree with calories by more than 40% (+15 kcal).
 - Non-Latin names are kept as aliases only, never as the dish name.
 - A dish's `ref_code` is a hash of its nutrient table, so it never changes as the crawl adds pages; `page_codes` lists the
-  the source site pages behind it, which lets the app recognise a dish it stored under an earlier code.
+  source pages behind it, which lets the app recognise a dish it stored under an earlier code.
 """
 
 from __future__ import annotations
@@ -100,8 +100,8 @@ def portions_of(r: dict) -> list[dict]:
 def _source_note(r: dict) -> str:
     domains = (r.get("provenance") or {}).get("labels") or []
     where = f"a recipe from {domains[0]}" if domains else "a recipe in its database"
-    state = "verified by the source site" if r.get("verified") else "not verified"
-    return f"the source site: calculated from {where}; {state}."[:240]
+    state = "verified by the source" if r.get("verified") else "not verified"
+    return f"Calculated from {where}; {state}."[:240]
 
 
 def _rank(r: dict) -> tuple:
