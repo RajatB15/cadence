@@ -198,7 +198,7 @@ copy `/etc/cadence/garmin.env` back (step 4).
 - **Notifications have the wrong time:** check `ssh root@<ip> timedatectl`; it should show Asia/Kolkata (or your zone).
 - **Memory:** the service uses about 460 MB of the 1 GB plus a 1 GB swap file. `ssh root@<ip> free -m` to check.
 
-## Not available on the server
+## Reading screenshots and photos
 
-The strength-class screenshot reader uses Apple's on-device text recognition, which only exists on a Mac. On the server,
-paste the class text instead.
+The strength-class screenshot reader (and any later label reader) runs Tesseract on the server, installed by `deploy/setup-server.sh`.
+Check it with `ssh root@<ip> tesseract --version`. Pasting the class text still works as a fallback.

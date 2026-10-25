@@ -114,7 +114,7 @@ each method is unit-tested on its own.
 | **Performance** | Critical speed & D′, race predictions, pace zones, grade-adjusted Pa:HR drift and late-run durability, a heart-rate-zone staleness check. |
 | **Recovery** | HRV-guided go/easy status, your personal recovery time by session type, an illness/overreach early warning, an under-fuelling pattern check. |
 | **Sleep** | A personal sleep need (not a flat 8 hours), a nightly bedtime target that adapts to training load and sleep debt, Sleep Regularity Index. |
-| **Strength** | Upload a class screenshot — the Mac reads it on-device (Apple Vision) and maps exercises to movement patterns; a heart-rate trace is split into warm-up/block/cool-down. |
+| **Strength** | Upload a class screenshot — it is read on the server with Tesseract and maps exercises to movement patterns; a heart-rate trace is split into warm-up/block/cool-down. |
 | **Send to Garmin** | Optional: push a planned run or ride to your watch as a structured workout (warm-up, repeats, heart-rate zone targets). It uses the unofficial `garminconnect` library, not Garmin's documented API, so treat it as experimental. |
 | **Journal** | A 10-second daily check-in (alcohol, caffeine, sleep habits, stress…) tested against your recovery with the same statistical rigor as everything else. |
 | **Weather** | Hot/cold/windy session notes, a personal heat cost on efficiency, forecasts with a cooler-hour suggestion for planned sessions. |
@@ -141,9 +141,8 @@ cd app/web && npm install && npm run dev
 
 Open the app, go to **Vault**, and click **Load demo year** (or run `curl -X POST -H 'X-Cadence-Request: 1' http://127.0.0.1:8765/api/sync/demo`).
 
-Requires Python 3.12+ and Node 20+. Platform notes: the login service and on-device screenshot reading (strength
-classes) are macOS-only; everything else — backend, frontend, weather, the training plan and analytics — runs on
-Linux too, and CI tests all of it there.
+Requires Python 3.12+ and Node 20+. Platform notes: screenshot reading needs the `tesseract` command (`apt install tesseract-ocr`, or `brew install tesseract` on a Mac);
+the login service script is macOS-only; everything else runs on Linux too, and CI tests it there.
 
 ## Connecting your real Garmin account
 
