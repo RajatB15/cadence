@@ -25,6 +25,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+garmin-push = ["garminconnect>=0.3.20"]  # optional, unofficial: send planned workouts to Garmin Connect
 test = ["pytest>=8", "httpx>=0.27"]
 
 [project.scripts]

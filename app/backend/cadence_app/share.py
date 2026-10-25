@@ -33,7 +33,7 @@ BLOCKED_API = ("/api/share",)
 # The only writes a paired phone may make: its own notifications and an on-demand Garmin refresh.
 PHONE_WRITES = {"/api/push/subscribe", "/api/push/unsubscribe", "/api/push/test", "/api/push/prefs", "/api/garmin/sync"}
 # The journal and wellbeing check-ins and weight logging happen on the phone, and the weather toggle and body profile are plain preferences, so those routes accept writes from paired devices too.
-PHONE_WRITE_PREFIXES = ("/api/journal/", "/api/wellbeing", "/api/strength/", "/api/planner", "/api/weight/entries", "/api/food/", "/api/settings/weather", "/api/settings/profile")
+PHONE_WRITE_PREFIXES = ("/api/journal/", "/api/wellbeing", "/api/strength/", "/api/planner", "/api/phases", "/api/weight/entries", "/api/food/", "/api/settings/weather", "/api/settings/profile")
 READ_ONLY_META = '<meta name="cadence-mode" content="read-only" />'
 TAILSCALE_APP_CLI = "/Applications/Tailscale.app/Contents/MacOS/Tailscale"
 SECURITY_HEADERS = [

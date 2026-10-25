@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { clsx } from "clsx";
-import { Bike, CheckCircle2, CircleDashed, Dumbbell, Footprints, ImageUp, Trash2, Waves, XCircle } from "lucide-react";
+import { Bike, CheckCircle2, CircleDashed, Dumbbell, Footprints, ImageUp, Trash2, Watch, Waves, XCircle } from "lucide-react";
 import { motion } from "motion/react";
 import { useRef, useState } from "react";
 import { Link } from "react-router-dom";
@@ -73,6 +73,11 @@ function DayPlans({ day, plans, today }: { day: string; plans: PlannedSessionVie
     mutationFn: api.deletePlan,
     onSuccess: () => ["planner", "overview"].forEach((k) => client.invalidateQueries({ queryKey: [k] })),
   });
+  const garmin = useQuery({ queryKey: ["garmin-connect"], queryFn: api.garminConnect, retry: false });
+  const send = useMutation({
+    mutationFn: (p: PlannedSessionView) => (p.garmin ? api.removePlanFromGarmin(p.id) : api.sendPlanToGarmin(p.id)),
+    onSuccess: () => client.invalidateQueries({ queryKey: ["planner"] }),
+  });
   if (!plans.length) return null;
   return (
     <section className="mb-8 space-y-3">
@@ -91,6 +96,19 @@ function DayPlans({ day, plans, today }: { day: string; plans: PlannedSessionVie
                   <> · done: <Link className="text-lime underline-offset-2 hover:underline" to={`/activities/${p.activity.id}`}>{p.activity.name}</Link>, load {Math.round(p.activity.load ?? 0)}</>
                 )}
               </p>
+              {(p.sport === "run" || p.sport === "ride") && p.status !== "done" && garmin.data?.available && (
+                <div className="mt-3 flex flex-wrap items-center gap-3">
+                  {garmin.data.connected ? (
+                    <button type="button" disabled={send.isPending} onClick={() => send.mutate(p)}
+                      className={clsx("pop !px-3 !py-1.5 text-xs", p.garmin ? "pop-lime" : "pop-ghost")}>
+                      <Watch size={13} /> {p.garmin ? "On your Garmin calendar · remove" : "Send to Garmin"}
+                    </button>
+                  ) : (
+                    <Link to="/settings" className="pop pop-ghost !px-3 !py-1.5 text-xs"><Watch size={13} /> Send to Garmin · connect first</Link>
+                  )}
+                  {send.isError && send.variables?.id === p.id && <span className="text-xs text-coral">{(send.error as Error).message}</span>}
+                </div>
+              )}
             </div>
             {p.status !== "done" && (
               <button type="button" aria-label="Remove" disabled={remove.isPending} onClick={() => remove.mutate(p.id)}

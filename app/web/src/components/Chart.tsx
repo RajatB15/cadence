@@ -111,7 +111,7 @@ export function Chart({
   useEffect(() => {
     if (!visible) return;
     const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    chart.current?.setOption({ ...option, animation: !reduce, animationDuration: 1100, animationEasing: "cubicOut" }, { notMerge: true });
+    chart.current?.setOption({ ...option, animation: option.animation === false ? false : !reduce, animationDuration: 1100, animationEasing: "cubicOut" }, { notMerge: true });
   }, [option, visible]);
 
   return <div ref={ref} role="img" aria-label={label} style={{ height, width: "100%" }} />;

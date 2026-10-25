@@ -16,7 +16,7 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from cadence_app import backup, days, events, foodlog, goal_store, journal, ocr, planner_store, profile as profile_store, push, strength, weather, weightlog, wellbeing_store
+from cadence_app import garmin_connect, garmin_workout, backup, days, events, food_crawl, foodlog, goal_store, journal, ocr, phases, planner_store, profile as profile_store, push, strength, weather, weightlog, wellbeing_store
 from cadence_app.analytics import accuracy as accuracy_analytics
 from cadence_app.analytics import banister as banister_analytics
 from cadence_app.analytics import channels as channels_analytics
@@ -190,6 +190,18 @@ class PlanRequest(BaseModel):
     custom: CustomSession | None = None
 
 
+class GarminLogin(BaseModel):
+    email: str = Field(min_length=3, max_length=254)
+    password: str = Field(min_length=1, max_length=256)
+
+    def __repr__(self) -> str:  # never let the password reach a log line or traceback
+        return "GarminLogin(...)"
+
+
+class GarminCode(BaseModel):
+    code: str = Field(min_length=4, max_length=12)
+
+
 class WeatherSetting(BaseModel):
     enabled: bool
 
@@ -255,6 +267,16 @@ class EventRename(BaseModel):
     name: str = Field(min_length=1, max_length=120)
 
 
+class PhaseBody(BaseModel):
+    name: str = Field(max_length=200)
+    tagline: str = Field(default="", max_length=400)
+    emoji: str = Field(default="", max_length=16)
+    color: str = Field(default="#6cc7ff", max_length=16)
+    start: date
+    end: date
+    pillars: list[dict] = Field(default_factory=list, max_length=20)
+
+
 class EventLink(BaseModel):
     activity_ids: list[int] = Field(min_length=1, max_length=200)
 
@@ -315,6 +337,8 @@ def create_app(
     def active_source() -> str:
         with factory() as session:
             return _active_source(session)
+
+    garmin_link = garmin_connect.GarminConnectLink(settings.secrets_file.parent / "garmin-connect")
 
     sender = push.PushSender(factory, settings.data_dir / "push-vapid.pem", settings.push_contact, clock.now)
     notifier = push.Notifier(factory, sender, active_source, current_credential)
@@ -919,9 +943,79 @@ def create_app(
 
     @app.delete("/api/planner/{plan_id}")
     def planner_delete(plan_id: int, session: Session = Depends(get_session)) -> dict:
-        if not planner_store.delete(session, plan_id):
+        plan = next(iter(p for p in planner_store.listing(session, date(2000, 1, 1), date(2100, 1, 1)) if p["id"] == plan_id), None)
+        if plan is None:
             raise HTTPException(404, "Not found")
-        return {"deleted": True}
+        on_garmin = plan.get("garmin")
+        removed = None
+        if on_garmin:  # take our copy off the watch's calendar too; a failure never blocks deleting the plan
+            try:
+                garmin_link.remove(on_garmin["workout_id"], on_garmin["schedule_id"])
+                removed = True
+            except garmin_connect.ConnectError:
+                removed = False
+        planner_store.delete(session, plan_id)
+        return {"deleted": True} | ({"garmin_removed": removed} if on_garmin else {})
+
+    def _garmin_plan(session: Session, plan_id: int) -> dict:
+        plan = next(iter(p for p in planner_store.listing(session, date(2000, 1, 1), date(2100, 1, 1)) if p["id"] == plan_id), None)
+        if plan is None:
+            raise HTTPException(404, "Not found")
+        return plan
+
+    @app.get("/api/garmin-connect")
+    def garmin_connect_status() -> dict:
+        return garmin_link.status()
+
+    @app.post("/api/garmin-connect/login")
+    def garmin_connect_login(body: GarminLogin) -> dict:
+        try:
+            return garmin_link.connect(body.email, body.password)
+        except garmin_connect.ConnectError as exc:
+            raise HTTPException(400, str(exc)) from None
+
+    @app.post("/api/garmin-connect/code")
+    def garmin_connect_code(body: GarminCode) -> dict:
+        try:
+            return garmin_link.submit_code(body.code)
+        except garmin_connect.ConnectError as exc:
+            raise HTTPException(400, str(exc)) from None
+
+    @app.delete("/api/garmin-connect")
+    def garmin_connect_disconnect() -> dict:
+        garmin_link.disconnect()
+        return garmin_link.status()
+
+    @app.post("/api/planner/{plan_id}/garmin")
+    def planner_send_to_garmin(plan_id: int, session: Session = Depends(get_session)) -> dict:
+        plan = _garmin_plan(session, plan_id)
+        if plan["day"] < clock.today():
+            raise HTTPException(400, "That day has passed")
+        try:
+            garmin_workout.build(plan)
+        except garmin_workout.Unsupported as exc:
+            raise HTTPException(400, str(exc)) from None
+        try:
+            if plan.get("garmin"):  # re-sending replaces our earlier copy instead of duplicating it
+                garmin_link.remove(plan["garmin"]["workout_id"], plan["garmin"]["schedule_id"])
+            sent = garmin_link.send(plan, plan["day"])
+        except garmin_connect.NotConnected as exc:
+            raise HTTPException(409, str(exc)) from None
+        except garmin_connect.ConnectError as exc:
+            raise HTTPException(502, str(exc)) from None
+        return planner_store.set_garmin(session, plan_id, sent["workout_id"], sent["schedule_id"])
+
+    @app.delete("/api/planner/{plan_id}/garmin")
+    def planner_remove_from_garmin(plan_id: int, session: Session = Depends(get_session)) -> dict:
+        plan = _garmin_plan(session, plan_id)
+        if plan.get("garmin"):
+            try:
+                garmin_link.remove(plan["garmin"]["workout_id"], plan["garmin"]["schedule_id"])
+            except garmin_connect.NotConnected as exc:
+                raise HTTPException(409, str(exc)) from None
+            except garmin_connect.ConnectError as exc:
+                raise HTTPException(502, str(exc)) from None
+        return planner_store.set_garmin(session, plan_id, None, None)
 
     @app.post("/api/strength/ocr")
     async def strength_ocr(request: Request) -> dict:
@@ -1006,6 +1100,56 @@ def create_app(
     @app.delete("/api/events/{event_id}")
     def events_delete(event_id: int, session: Session = Depends(get_session)) -> dict:
         events.delete_event(session, event_id)
+        return {"deleted": True}
+
+    def _phase_args(session: Session) -> tuple[str, tuple[str, ...]]:
+        return _active_source(session), (_active_source(session), weightlog.SOURCE_ID)
+
+    def _phase_fields(session: Session, body: PhaseBody) -> dict:
+        journal.ensure_catalogue(session, clock.now())
+        habits = {b.key for b in journal.catalogue(session)}
+        try:
+            return phases.clean(body.model_dump(), habits)
+        except phases.PhaseError as exc:
+            raise HTTPException(400, str(exc)) from None
+
+    @app.get("/api/phases")
+    def phases_list(session: Session = Depends(get_session)) -> dict:
+        phases.ensure_default(session, clock.today(), clock.now())
+        journal.ensure_catalogue(session, clock.now())
+        return {"items": phases.listing(session, clock.today(), *_phase_args(session)),
+                "habits": [journal.behaviour_dict(b) for b in journal.catalogue(session, include_inactive=False)]}
+
+    @app.get("/api/phases/active")
+    def phases_active(session: Session = Depends(get_session)) -> dict:
+        """What Home's banner needs: phases running now, or starting within a week."""
+        phases.ensure_default(session, clock.today(), clock.now())
+        items = phases.listing(session, clock.today(), *_phase_args(session))
+        journal.ensure_catalogue(session, clock.now())
+        return {"items": [p for p in items if p["state"] == "active" or (p["state"] == "upcoming" and p["starts_in"] <= 7)],
+                "habits": [journal.behaviour_dict(b) for b in journal.catalogue(session)]}
+
+    @app.get("/api/phases/{phase_id}")
+    def phases_get(phase_id: int, session: Session = Depends(get_session)) -> dict:
+        out = phases.get(session, phase_id, clock.today(), *_phase_args(session))
+        if out is None:
+            raise HTTPException(404, "Phase not found")
+        return out
+
+    @app.post("/api/phases")
+    def phases_create(body: PhaseBody, session: Session = Depends(get_session)) -> dict:
+        phase_id = phases.create(session, _phase_fields(session, body), clock.now())
+        return phases.get(session, phase_id, clock.today(), *_phase_args(session))
+
+    @app.put("/api/phases/{phase_id}")
+    def phases_update(phase_id: int, body: PhaseBody, session: Session = Depends(get_session)) -> dict:
+        if not phases.update(session, phase_id, _phase_fields(session, body)):
+            raise HTTPException(404, "Phase not found")
+        return phases.get(session, phase_id, clock.today(), *_phase_args(session))
+
+    @app.delete("/api/phases/{phase_id}")
+    def phases_delete(phase_id: int, session: Session = Depends(get_session)) -> dict:
+        phases.delete(session, phase_id)
         return {"deleted": True}
 
     @app.post("/api/activities/{activity_id}/fetch")
@@ -1243,6 +1387,12 @@ def create_app(
         for t in view["trail"]:
             t["burn"] = burn.get(t["day"])
         return {**view, "plan": plan, "notes": coach_notes.nutrition(plan)}
+
+    @app.get("/api/food/crawl")
+    def food_crawl_progress() -> dict:
+        """How far the food library build has got: parsed / failed / not tried pages, pace, and what the pages became."""
+        now = datetime.now().astimezone()
+        return {"progress": food_crawl.progress(settings.food_data_dir, now, food_crawl.workers())}
 
     @app.get("/api/food/dishes")
     def food_dishes(all: bool = False, session: Session = Depends(get_session)) -> dict:

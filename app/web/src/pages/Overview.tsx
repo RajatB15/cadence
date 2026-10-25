@@ -20,6 +20,7 @@ import {
 import { AnimatePresence, motion } from "motion/react";
 import { useCallback, useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
+import { PhaseBanner } from "../components/PhaseBanner";
 import { CheckInCard } from "../components/Journal";
 import { Ring, SEVERITY, VerdictChip, readyColor } from "../components/CoachNotes";
 import { CountUp } from "../components/CountUp";
@@ -96,6 +97,8 @@ function Dashboard({ data }: { data: Extract<Overview, { has_data: true }> }) {
         {!r && <p className={clsx("mt-4 font-display text-2xl italic", fallback.tone)}>{fallback.text}</p>}
       </motion.section>
 
+      <motion.div variants={rise}><PhaseBanner /></motion.div>
+
       {(r || data.score) && (
         <motion.section variants={rise} aria-label="Scores" className="grid grid-cols-2 gap-3 sm:gap-4">
           {r && coach?.call && (
@@ -141,6 +144,9 @@ function Dashboard({ data }: { data: Extract<Overview, { has_data: true }> }) {
         )}
         <Link to="/food" className="chip text-mute hover:text-paper pointer-coarse:py-2">
           <Utensils size={12} className="text-gold" /> Log food
+        </Link>
+        <Link to="/phases" className="chip text-mute hover:text-paper pointer-coarse:py-2">
+          <Flame size={12} className="text-gold" /> Phases
         </Link>
       </motion.section>
 

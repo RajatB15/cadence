@@ -7,11 +7,13 @@ import type {
   Review,
   BodyProfile,
   WeightEntries,
+  FoodCrawlProgress,
   FoodDish,
   FoodDishInput,
   FoodEntryInput,
   FoodView,
   BackupStatus,
+  GarminConnectStatus,
   PlannedSessionView,
   PlannerWeek,
   Sport,
@@ -19,6 +21,10 @@ import type {
   ActivityItem,
   ActivityLog,
   EventDetail,
+  HabitOption,
+  PhaseBody,
+  PhaseDetail,
+  PhaseSummary,
   EventSummary,
   CredentialStatus,
   DayDetail,
@@ -61,7 +67,7 @@ export class ApiError extends Error {
 export const READ_ONLY =
   typeof document !== "undefined" &&
   document.querySelector('meta[name="cadence-mode"]')?.getAttribute("content") === "read-only";
-const PHONE_WRITES = ["/api/push/", "/api/garmin/sync", "/api/journal/", "/api/wellbeing", "/api/strength/", "/api/planner", "/api/weight/entries", "/api/food/", "/api/settings/weather", "/api/settings/profile"];
+const PHONE_WRITES = ["/api/push/", "/api/garmin/sync", "/api/journal/", "/api/wellbeing", "/api/strength/", "/api/planner", "/api/phases", "/api/weight/entries", "/api/food/", "/api/settings/weather", "/api/settings/profile"];
 
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const method = init.method ?? "GET";
@@ -130,6 +136,12 @@ export const api = {
     request<Behaviour>("/api/journal/behaviours", { method: "POST", body: JSON.stringify(b) }),
   updateBehaviour: (key: string, patch: { active?: boolean }) =>
     request<Behaviour>(`/api/journal/behaviours/${encodeURIComponent(key)}`, { method: "PATCH", body: JSON.stringify(patch) }),
+  phases: () => request<{ items: PhaseSummary[]; habits: HabitOption[] }>("/api/phases"),
+  activePhases: () => request<{ items: PhaseSummary[]; habits: HabitOption[] }>("/api/phases/active"),
+  phase: (id: number) => request<PhaseDetail>(`/api/phases/${id}`),
+  createPhase: (body: PhaseBody) => request<PhaseDetail>("/api/phases", { method: "POST", body: JSON.stringify(body) }),
+  updatePhase: (id: number, body: PhaseBody) => request<PhaseDetail>(`/api/phases/${id}`, { method: "PUT", body: JSON.stringify(body) }),
+  deletePhase: (id: number) => request<{ deleted: boolean }>(`/api/phases/${id}`, { method: "DELETE" }),
   events: () => request<{ items: EventSummary[] }>("/api/events"),
   event: (id: number) => request<EventDetail>(`/api/events/${id}`),
   createEvent: (name: string, activityIds: number[]) =>
@@ -176,7 +188,14 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ day, sport, option_key: optionKey, strength_text: extra.strengthText ?? null, start_hour: extra.startHour ?? null, custom: extra.custom ?? null }),
     }),
-  deletePlan: (id: number) => request<{ deleted: boolean }>(`/api/planner/${id}`, { method: "DELETE" }),
+  deletePlan: (id: number) => request<{ deleted: boolean; garmin_removed?: boolean }>(`/api/planner/${id}`, { method: "DELETE" }),
+  sendPlanToGarmin: (id: number) => request<PlannedSessionView>(`/api/planner/${id}/garmin`, { method: "POST" }),
+  removePlanFromGarmin: (id: number) => request<PlannedSessionView>(`/api/planner/${id}/garmin`, { method: "DELETE" }),
+  garminConnect: () => request<GarminConnectStatus>("/api/garmin-connect"),
+  garminLogin: (email: string, password: string) =>
+    request<{ status: "connected" | "needs_code" }>("/api/garmin-connect/login", { method: "POST", body: JSON.stringify({ email, password }) }),
+  garminCode: (code: string) => request<{ status: "connected" }>("/api/garmin-connect/code", { method: "POST", body: JSON.stringify({ code }) }),
+  garminDisconnect: () => request<GarminConnectStatus>("/api/garmin-connect", { method: "DELETE" }),
   weatherSetting: () => request<{ enabled: boolean; available: boolean }>("/api/settings/weather"),
   setWeather: (enabled: boolean) =>
     request<{ enabled: boolean; available: boolean }>("/api/settings/weather", { method: "PUT", body: JSON.stringify({ enabled }) }),
@@ -188,6 +207,7 @@ export const api = {
   addWeight: (day: string, weight_kg: number) =>
     request<{ day: string; weight_kg: number }>("/api/weight/entries", { method: "POST", body: JSON.stringify({ day, weight_kg }) }),
   food: (day: string) => request<FoodView>(`/api/food?day=${day}`),
+  foodCrawl: () => request<{ progress: FoodCrawlProgress | null }>("/api/food/crawl"),
   foodDishes: () => request<{ dishes: FoodDish[] }>("/api/food/dishes"),
   addFoodDish: (dish: FoodDishInput) => request<FoodDish>("/api/food/dishes", { method: "POST", body: JSON.stringify(dish) }),
   addFoodEntry: (entry: FoodEntryInput) => request<unknown>("/api/food/entries", { method: "POST", body: JSON.stringify(entry) }),

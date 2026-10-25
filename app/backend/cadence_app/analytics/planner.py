@@ -115,6 +115,15 @@ def _profile(*parts: tuple[float, int]) -> list[float]:
     return out
 
 
+def _step(kind: str, minutes: float, zone: int, metres: float | None = None) -> dict:
+    """One workout step: kind is warmup | steady | work | recovery | cooldown; metres ends it by distance instead."""
+    return {"kind": kind, "minutes": round(minutes, 2), "zone": zone, **({"metres": round(metres)} if metres else {})}
+
+
+def _repeat(n: int, *steps: dict) -> dict:
+    return {"repeat": n, "steps": list(steps)}
+
+
 def _reps(reps: str, pace_s: float | None) -> tuple[float, int]:
     """'3 × 8 min' → (3, 8.0); '5 × 1 km' → minutes at race pace; '14 km continuous' → one rep."""
     m = re.match(r"(\d+)\s*×\s*([\d.]+)\s*(min|km|s)", reps)
@@ -141,13 +150,14 @@ def run_options(c: dict, plan: dict | None) -> list[dict]:
     long_min = t.get("long_min") or 75
     out = [
         {"key": "run_recovery", "sport": "run", "kind": "recovery", "title": "Recovery jog · 25 min", "minutes": 25,
-         "detail": f"Very easy, {easy_txt}; walk breaks are fine.", "profile": _profile((25, 1))},
+         "detail": f"Very easy, {easy_txt}; walk breaks are fine.", "profile": _profile((25, 1)), "steps": [_step("steady", 25, 1)]},
         {"key": "run_easy", "sport": "run", "kind": "easy", "title": f"Easy run · {easy_min} min", "minutes": easy_min,
-         "detail": f"Conversational, {easy_txt}. Add 4 × 20 s relaxed strides at the end if you feel good.", "profile": _profile((5, 1), (easy_min - 5, 2))},
+         "detail": f"Conversational, {easy_txt}. Add 4 × 20 s relaxed strides at the end if you feel good.", "profile": _profile((5, 1), (easy_min - 5, 2)),
+         "steps": [_step("warmup", 5, 1), _step("steady", easy_min - 5, 2)]},
         {"key": "run_long", "sport": "run", "kind": "long", "title": f"Long run · {long_min} min", "minutes": long_min,
          "detail": f"Easy, {easy_txt}" + (f", no more than {t['long_km_cap']:.1f} km" if t.get("long_km_cap") else "")
                    + ". Start slower than feels necessary; take carbs after the first hour.",
-         "profile": _profile((10, 1), (long_min - 10, 2))},
+         "profile": _profile((10, 1), (long_min - 10, 2)), "steps": [_step("warmup", 10, 1), _step("steady", long_min - 10, 2)]},
     ]
     goal = c.get("goal")
     cs = (c.get("performance") or {}).get("critical_speed")
@@ -167,14 +177,19 @@ def run_options(c: dict, plan: dict | None) -> list[dict]:
     for q in quality:
         if q["kind"] == "hills":
             profile, minutes = _profile((5, 1), (35, 2), (3, 5)), 45
+            steps = [_step("warmup", 5, 1), _step("steady", 35, 2), _repeat(8, _step("work", 1 / 6, 5), _step("recovery", 5 / 6, 1))]
         else:
             rep_min, n = _reps(q["reps"], race_pace)
             rest = _rest_minutes(q["detail"].split(" with ")[-1]) if " with " in q["detail"] else 2.0
             work = rep_min * n
             minutes = round(15 + work + rest * max(0, n - 1) + 10)
             profile = _profile((10, 1), (5, 2), (work, zone_of.get(q["kind"], 4)), (rest * max(0, n - 1), 1), (10, 1))
+            by_distance = re.match(r"\d+\s*×\s*([\d.]+)\s*km", q["reps"])
+            w = _step("work", rep_min, zone_of.get(q["kind"], 4), float(by_distance.group(1)) * 1000 if by_distance else None)
+            steps = [_step("warmup", 10, 1), _step("steady", 5, 2),
+                     _repeat(n, w, _step("recovery", rest, 1)) if n > 1 else w, _step("cooldown", 10, 1)]
         out.append({"key": f"run_{q['kind']}", "sport": "run", "kind": q["kind"], "title": f"{q['title']} · {q['reps']}", "minutes": minutes,
-                    "detail": q["detail"], "profile": profile})
+                    "detail": q["detail"], "profile": profile, "steps": steps})
     return out
 
 
@@ -185,20 +200,23 @@ def ride_options(c: dict) -> list[dict]:
     note = " (cycling HR runs about 5 bpm below running)" if z else ""
     return [
         {"key": "ride_recovery", "sport": "ride", "kind": "recovery", "title": "Recovery spin · 40 min", "minutes": 40,
-         "detail": f"Light gears, high cadence, {zone(1) or 'very easy'}{note}.", "profile": _profile((40, 1))},
+         "detail": f"Light gears, high cadence, {zone(1) or 'very easy'}{note}.", "profile": _profile((40, 1)), "steps": [_step("steady", 40, 1)]},
         {"key": "ride_endurance", "sport": "ride", "kind": "easy", "title": "Endurance ride · 90 min", "minutes": 90,
-         "detail": f"Steady {zone(2) or 'conversational'}{note}. Eat 30–60 g carbs an hour.", "profile": _profile((10, 1), (80, 2))},
+         "detail": f"Steady {zone(2) or 'conversational'}{note}. Eat 30–60 g carbs an hour.", "profile": _profile((10, 1), (80, 2)), "steps": [_step("warmup", 10, 1), _step("steady", 80, 2)]},
         {"key": "ride_long", "sport": "ride", "kind": "long", "title": "Long ride · 150 min", "minutes": 150,
-         "detail": f"Mostly {zone(2) or 'easy'}; fuel from the start.", "profile": _profile((15, 1), (135, 2))},
+         "detail": f"Mostly {zone(2) or 'easy'}; fuel from the start.", "profile": _profile((15, 1), (135, 2)), "steps": [_step("warmup", 15, 1), _step("steady", 135, 2)]},
         {"key": "ride_tempo", "sport": "ride", "kind": "tempo", "title": "Tempo · 2 × 20 min", "minutes": 75,
          "detail": f"Warm up 15 min, then 2 × 20 min at {zone(3) or 'comfortably hard'} with 5 min easy. Cool down 10 min.",
-         "profile": _profile((15, 1), (40, 3), (5, 1), (15, 1))},
+         "profile": _profile((15, 1), (40, 3), (5, 1), (15, 1)),
+         "steps": [_step("warmup", 15, 1), _repeat(2, _step("work", 20, 3), _step("recovery", 5, 1)), _step("cooldown", 10, 1)]},
         {"key": "ride_threshold", "sport": "ride", "kind": "threshold", "title": "Threshold · 3 × 10 min", "minutes": 70,
          "detail": f"Warm up 15 min, then 3 × 10 min at {zone(4) or 'hard, sustainable'} with 5 min easy. Cool down 15 min.",
-         "profile": _profile((15, 1), (30, 4), (10, 1), (15, 1))},
+         "profile": _profile((15, 1), (30, 4), (10, 1), (15, 1)),
+         "steps": [_step("warmup", 15, 1), _repeat(3, _step("work", 10, 4), _step("recovery", 5, 1)), _step("cooldown", 10, 1)]},
         {"key": "ride_vo2", "sport": "ride", "kind": "vo2", "title": "VO₂max · 5 × 4 min", "minutes": 60,
          "detail": f"Warm up 15 min, then 5 × 4 min at {zone(5) or 'very hard'} with 4 min easy. Cool down 10 min.",
-         "profile": _profile((15, 1), (20, 5), (16, 1), (10, 1))},
+         "profile": _profile((15, 1), (20, 5), (16, 1), (10, 1)),
+         "steps": [_step("warmup", 15, 1), _repeat(5, _step("work", 4, 5), _step("recovery", 4, 1)), _step("cooldown", 10, 1)]},
     ]
 
 
@@ -266,7 +284,8 @@ def custom_option(c: dict, sport: str, distance_m: float | None = None, minutes:
     else:
         detail += "."
     return {"key": "custom", "sport": sport, "kind": kind, "title": f"Your {sport} · {dist} at {SPEED_UNITS[sport](speed_mps)}", "minutes": minutes,
-            "detail": detail, "profile": _profile((warm, 1), (minutes - warm, zone)), "custom": True}
+            "detail": detail, "profile": _profile((warm, 1), (minutes - warm, zone)), "custom": True,
+            "steps": [_step("warmup", warm, 1), _step("steady", minutes - warm, zone)] if warm else [_step("steady", minutes, zone)]}
 
 
 def strength_option(c: dict, blocks: list[dict] | None = None, summary: dict | None = None) -> dict:
