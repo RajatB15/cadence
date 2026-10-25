@@ -1,7 +1,7 @@
 import * as Tooltip from "@radix-ui/react-tooltip";
 import { clsx } from "clsx";
-import { Activity, Archive, CalendarCheck, FlaskConical, Flag, Gauge, LayoutGrid, Scale, Settings2, Utensils } from "lucide-react";
-import { motion } from "motion/react";
+import { Activity, Archive, CalendarCheck, FlaskConical, Flag, Flame, Gauge, LayoutGrid, Scale, Settings2, Utensils } from "lucide-react";
+import { motion, useReducedMotion } from "motion/react";
 import type { ReactNode } from "react";
 import { NavLink, Outlet, useLocation, useMatch } from "react-router-dom";
 import { RefreshRailButton } from "./RefreshButton";
@@ -15,6 +15,7 @@ const NAV = [
   { to: "/activities", label: "Activities", icon: Activity },
   // The phone tab bar has room for six: Food opens from a chip on Overview, Goals and the Lab open from Plan and Coach, the Vault from Settings.
   { to: "/food", label: "Food", icon: Utensils, desktopOnly: true },
+  { to: "/phases", label: "Phases", icon: Flame, desktopOnly: true },
   { to: "/goals", label: "Goals", icon: Flag, desktopOnly: true },
   { to: "/lab", label: "Lab", icon: FlaskConical, desktopOnly: true },
   { to: "/vault", label: "Vault", icon: Archive, desktopOnly: true },
@@ -22,10 +23,23 @@ const NAV = [
 ];
 
 function Monogram() {
+  const reduce = useReducedMotion();
   return (
-    <div className="grid h-11 w-11 place-items-center bg-cream text-ink" aria-label="Cadence">
-      <svg viewBox="0 0 32 32" className="h-6 w-6" aria-hidden>
-        <path d="M3 17 H10 L13 9 L18 24 L21 17 H29" stroke="currentColor" strokeWidth="3" strokeLinejoin="round" fill="none" />
+    <div className="h-11 w-11 rounded-[10px] shadow-[0_8px_18px_-8px_rgba(0,0,0,0.95)]" aria-label="Cadence">
+      <svg viewBox="0 0 32 32" className="h-full w-full" aria-hidden>
+        <defs>
+<radialGradient id="cm-t1" gradientUnits="userSpaceOnUse" cx="8" cy="6" r="15"><stop offset="0" stopColor="#7c6bff" stopOpacity=".75"/><stop offset="1" stopColor="#7c6bff" stopOpacity="0"/>{!reduce && (<><animate attributeName="cx" values="6;26;24;8;6" dur="9s" repeatCount="indefinite"/><animate attributeName="cy" values="6;10;27;24;6" dur="9s" repeatCount="indefinite"/></>)}</radialGradient>
+<radialGradient id="cm-t2" gradientUnits="userSpaceOnUse" cx="26" cy="26" r="13"><stop offset="0" stopColor="#3fd0ff" stopOpacity=".6"/><stop offset="1" stopColor="#3fd0ff" stopOpacity="0"/>{!reduce && (<><animate attributeName="cx" values="26;6;8;26;26" dur="11s" repeatCount="indefinite"/><animate attributeName="cy" values="26;24;6;8;26" dur="11s" repeatCount="indefinite"/></>)}</radialGradient>
+<radialGradient id="cm-bg" cx="50%" cy="-10%" r="120%"><stop offset="0" stopColor="#30333a"/><stop offset=".45" stopColor="#14151a"/><stop offset="1" stopColor="#020203"/></radialGradient>
+<radialGradient id="cm-vg" cx="50%" cy="55%" r="60%"><stop offset=".6" stopColor="#000" stopOpacity="0"/><stop offset="1" stopColor="#000" stopOpacity=".55"/></radialGradient>
+<linearGradient id="cm-gl" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#fff" stopOpacity=".17"/><stop offset="1" stopColor="#fff" stopOpacity=".01"/></linearGradient>
+<linearGradient id="cm-rim" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#fff" stopOpacity=".55"/><stop offset=".4" stopColor="#fff" stopOpacity=".06"/><stop offset="1" stopColor="#fff" stopOpacity=".16"/></linearGradient>
+<linearGradient id="cm-core" x1="0" y1="6" x2="0" y2="26" gradientUnits="userSpaceOnUse"><stop offset="0" stopColor="#fff"/><stop offset=".55" stopColor="#eef2ff"/><stop offset="1" stopColor="#b9c4e6"/></linearGradient>
+<filter id="cm-b1" x="-40%" y="-40%" width="180%" height="180%"><feGaussianBlur stdDeviation="2.4"/></filter>
+<filter id="cm-b2" x="-40%" y="-40%" width="180%" height="180%"><feGaussianBlur stdDeviation=".9"/></filter>
+<linearGradient id="cm-sh" gradientUnits="userSpaceOnUse" x1="-9" y1="0" x2="-1" y2="0"><stop offset="0" stopColor="#fff" stopOpacity="0"/><stop offset=".5" stopColor="#fff" stopOpacity="1"/><stop offset="1" stopColor="#fff" stopOpacity="0"/>{!reduce && (<animateTransform attributeName="gradientTransform" type="translate" values="-4 0;44 0;44 0" keyTimes="0;.42;1" dur="3.4s" repeatCount="indefinite" calcMode="spline" keySplines=".45 0 .25 1;0 0 1 1"/>)}</linearGradient>
+<clipPath id="cm-cp"><path d="M0 7.4Q0 0 7.4 0H24.6Q32 0 32 7.4V12.2Q16 17.6 0 12.2Z"/></clipPath>
+</defs><rect width="32" height="32" rx="7.4" fill="url(#cm-bg)"/><rect width="32" height="32" rx="7.4" fill="url(#cm-vg)"/><rect width="32" height="32" rx="7.4" fill="url(#cm-t1)"/><rect width="32" height="32" rx="7.4" fill="url(#cm-t2)"/><g clipPath="url(#cm-cp)"><rect width="32" height="32" fill="url(#cm-gl)"/></g><rect x=".3" y=".3" width="31.4" height="31.4" rx="7.4" fill="none" stroke="url(#cm-rim)" strokeWidth=".6"/><path d="M3.5 17H10L13.5 8L18.5 24.5L21.5 17H28.5" stroke="#7d9bff" strokeOpacity=".55" strokeWidth="5" strokeLinecap="round" strokeLinejoin="round" fill="none" filter="url(#cm-b1)"/><path d="M3.5 17H10L13.5 8L18.5 24.5L21.5 17H28.5" stroke="#fff" strokeOpacity=".7" strokeWidth="3.4" strokeLinecap="round" strokeLinejoin="round" fill="none" filter="url(#cm-b2)"/><path d="M3.5 17H10L13.5 8L18.5 24.5L21.5 17H28.5" stroke="url(#cm-core)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" fill="none"/><path d="M3.5 17H10L13.5 8L18.5 24.5L21.5 17H28.5" stroke="#fff" strokeWidth=".45" strokeLinecap="round" strokeLinejoin="round" fill="none" transform="translate(-.2 -.6)" opacity=".7"/><path d="M3.5 17H10L13.5 8L18.5 24.5L21.5 17H28.5" stroke="url(#cm-sh)" strokeWidth="2.7" strokeLinecap="round" strokeLinejoin="round" fill="none"/>
       </svg>
     </div>
   );

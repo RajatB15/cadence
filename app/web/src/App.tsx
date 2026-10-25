@@ -5,6 +5,7 @@ import { LoadingBlock, Shell } from "./components/Shell";
 import { ActivitiesPage } from "./pages/Activities";
 import { EventPage, EventsPage } from "./pages/Events";
 import { FoodPage } from "./pages/Food";
+import { FoodCrawlPage } from "./pages/FoodCrawl";
 import { GoalsPage } from "./pages/Goals";
 import { OverviewPage } from "./pages/Overview";
 import { PlanPage } from "./pages/Plan";
@@ -19,6 +20,8 @@ const MetricPage = lazy(() => import("./pages/Metric").then((m) => ({ default: m
 const ActivityPage = lazy(() => import("./pages/ActivityDetail").then((m) => ({ default: m.ActivityPage })));
 const CoachPage = lazy(() => import("./pages/Coach").then((m) => ({ default: m.CoachPage })));
 const LabPage = lazy(() => import("./pages/Lab").then((m) => ({ default: m.LabPage })));
+const PhasesPage = lazy(() => import("./pages/Phases").then((m) => ({ default: m.PhasesPage })));
+const PhasePage = lazy(() => import("./pages/Phases").then((m) => ({ default: m.PhasePage })));
 const ScorePage = lazy(() => import("./pages/Score").then((m) => ({ default: m.ScorePage })));
 
 const queryClient = new QueryClient({
@@ -64,6 +67,7 @@ export function App() {
             />
             <Route path="plan" element={<PlanPage />} />
             <Route path="food" element={<FoodPage />} />
+            <Route path="food/library" element={<FoodCrawlPage />} />
             <Route path="goals" element={<GoalsPage />} />
             <Route
               path="lab"
@@ -75,6 +79,22 @@ export function App() {
             />
             <Route path="review" element={<ReviewPage />} />
             <Route path="activities" element={<ActivitiesPage />} />
+            <Route
+              path="phases"
+              element={
+                <Suspense fallback={<LoadingBlock height={420} />}>
+                  <PhasesPage />
+                </Suspense>
+              }
+            />
+            <Route
+              path="phases/:id"
+              element={
+                <Suspense fallback={<LoadingBlock height={640} />}>
+                  <PhasePage />
+                </Suspense>
+              }
+            />
             <Route path="events" element={<EventsPage />} />
             <Route path="events/:id" element={<EventPage />} />
             <Route

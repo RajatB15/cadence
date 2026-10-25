@@ -41,6 +41,11 @@ export function SettingsPage() {
             <ShareCard />
           </div>
         )}
+        {!READ_ONLY && (
+          <div className="lg:col-span-5">
+            <GarminWorkoutsCard />
+          </div>
+        )}
         <div className="lg:col-span-5">
           <WeatherCard />
         </div>
@@ -55,6 +60,76 @@ export function SettingsPage() {
         </div>
       </div>
     </>
+  );
+}
+
+function GarminWorkoutsCard() {
+  const client = useQueryClient();
+  const q = useQuery({ queryKey: ["garmin-connect"], queryFn: api.garminConnect });
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [code, setCode] = useState("");
+  const [asking, setAsking] = useState(false);
+  const done = () => {
+    setPassword("");
+    setCode("");
+    setAsking(false);
+    client.invalidateQueries({ queryKey: ["garmin-connect"] });
+  };
+  const login = useMutation({
+    mutationFn: () => api.garminLogin(email, password),
+    onSuccess: (r) => {
+      setPassword("");
+      if (r.status === "needs_code") setAsking(true);
+      else done();
+    },
+  });
+  const verify = useMutation({ mutationFn: () => api.garminCode(code), onSuccess: done, onError: () => setAsking(false) });
+  const disconnect = useMutation({ mutationFn: api.garminDisconnect, onSuccess: done });
+  if (q.isPending) return <LoadingBlock height={160} />;
+  if (q.isError) return <ErrorBlock error={q.error} retry={() => q.refetch()} />;
+  const s = q.data;
+  return (
+    <section className="surface p-8">
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div className="max-w-2xl">
+          <h2 className="font-display text-3xl text-cream">Send workouts to Garmin</h2>
+          <p className="mt-3 text-sm leading-relaxed text-mute">
+            Optional. Planned runs and rides can be sent to your Garmin Connect calendar as structured workouts (warm-up, intervals, cool-down,
+            heart-rate zone targets) and sync to your watch. This signs in the way the Garmin website does, not through the official API,
+            so it can stop working when Garmin changes its login and may be against Garmin&apos;s terms. It only creates and removes the
+            workouts Cadence sends: it never reads or changes your activities or health data. Your password is used once and never stored;
+            only a session token stays on this computer.
+          </p>
+        </div>
+        {s.connected && <span className="chip !border-lime/40 !text-lime">Connected</span>}
+      </div>
+      {!s.available ? (
+        <p className="mt-4 text-sm text-dim">Not installed on this server. Run <code>pip install &apos;garminconnect&gt;=0.3.20&apos;</code> in the backend environment.</p>
+      ) : s.connected ? (
+        <button type="button" className="pop pop-ghost mt-5" disabled={disconnect.isPending} onClick={() => disconnect.mutate()}>Disconnect</button>
+      ) : asking ? (
+        <form className="mt-5 flex flex-wrap items-end gap-3" onSubmit={(e) => { e.preventDefault(); verify.mutate(); }}>
+          <label className="text-xs text-dim">Code from Garmin (email or app)
+            <input className="mt-1 block w-64 max-w-full border-b-2 border-line-strong bg-transparent py-2 text-base text-paper outline-none focus:border-gold" inputMode="numeric" autoComplete="one-time-code" value={code} onChange={(e) => setCode(e.target.value)} />
+          </label>
+          <button type="submit" className="pop pop-lime" disabled={verify.isPending || code.trim().length < 4}>Verify</button>
+        </form>
+      ) : (
+        <form className="mt-5 flex flex-wrap items-end gap-3" onSubmit={(e) => { e.preventDefault(); login.mutate(); }}>
+          <label className="text-xs text-dim">Garmin email
+            <input className="mt-1 block w-64 max-w-full border-b-2 border-line-strong bg-transparent py-2 text-base text-paper outline-none focus:border-gold" type="email" autoComplete="username" value={email} onChange={(e) => setEmail(e.target.value)} />
+          </label>
+          <label className="text-xs text-dim">Garmin password
+            <input className="mt-1 block w-64 max-w-full border-b-2 border-line-strong bg-transparent py-2 text-base text-paper outline-none focus:border-gold" type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} />
+          </label>
+          <button type="submit" className="pop pop-lime" disabled={login.isPending || !email || !password}>{login.isPending ? "Signing in…" : "Connect"}</button>
+        </form>
+      )}
+      {(login.isError || verify.isError || disconnect.isError) && (
+        <p className="mt-3 text-sm text-coral">{((login.error ?? verify.error ?? disconnect.error) as Error).message}</p>
+      )}
+    </section>
   );
 }
 

@@ -473,8 +473,15 @@ export interface PlannedSessionView {
   heavy_lower: boolean;
   blocks: StrengthBlock[];
   start_hour: number | null;
+  garmin: { workout_id: number; schedule_id: number | null } | null;
   status: "planned" | "done" | "missed";
   activity: { id: number; name: string; load: number | null; minutes: number } | null;
+}
+
+export interface GarminConnectStatus {
+  available: boolean;
+  connected: boolean;
+  awaiting_code: boolean;
 }
 
 export interface PlannerWeek {
@@ -1502,6 +1509,36 @@ export type Outcomes =
       lines: string[];
     };
 
+export interface FoodCrawlReason {
+  reason: string;
+  pages: number;
+}
+
+export interface FoodCrawlProgress {
+  total: number;
+  parsed: number;
+  failed: number;
+  untried: number;
+  failed_reasons: FoodCrawlReason[];
+  workers: { fetchers: number; retry: boolean };
+  now: string;
+  /** Pages parsed per 10 minutes over the last day, with the running total. Quiet periods are zero. */
+  timeline: { at: string; pages: number; cumulative: number }[];
+  /** Pages per minute over the last hour; null until the crawl has run half an hour. */
+  rate_per_min: number | null;
+  finish: string | null;
+  /** What the parsed pages became in the last catalogue build; null before the first build. */
+  library: {
+    pages: number | null;
+    dishes: number | null;
+    merged: number | null;
+    dropped: FoodCrawlReason[];
+    no_latin_name: number | null;
+    with_portion: number | null;
+    unverified: number | null;
+  } | null;
+}
+
 /** Totals over linked activities; a field no activity reported is null (missing), never 0. */
 export interface EventTotals {
   count: number;
@@ -1552,4 +1589,159 @@ export interface EventDay {
 export interface EventDetail extends EventSummary {
   created_at: string;
   days: EventDay[];
+}
+
+// ---- phases ------------------------------------------------------------------------------
+
+export type PillarKind = "daily" | "total" | "weekly" | "habit" | "goal";
+export type PillarStatus = "early" | "upcoming" | "on" | "ahead" | "behind" | "slipping" | "complete";
+
+/** What you saved for a pillar (the request shape). */
+export interface PillarSpec {
+  kind: PillarKind;
+  metric?: string;
+  family?: string | null;
+  target?: number;
+  label?: string;
+  behaviour?: string;
+  want?: "no" | "yes";
+  passes?: number;
+}
+
+export interface PhaseCell {
+  day: string;
+  status: "hit" | "miss" | "pending" | "unknown" | "future";
+  value: number | null;
+}
+
+export interface PhaseWeekCell {
+  start: string;
+  value: number;
+  partial: boolean;
+  current: boolean;
+  future: boolean;
+  hit: boolean | null;
+}
+
+/** A pillar as computed from the vault: the saved spec plus kind-specific results. */
+export interface PillarResult extends PillarSpec {
+  id: string;
+  status: PillarStatus;
+  // daily / habit
+  hits?: number;
+  misses?: number;
+  unknown?: number;
+  judged?: number;
+  rate?: number | null;
+  streak?: number;
+  best_streak?: number;
+  passes_left?: number;
+  intact?: boolean;
+  cells?: PhaseCell[];
+  // total
+  value?: number;
+  pct?: number;
+  expected?: number;
+  projection?: number | null;
+  series?: [string, number][];
+  missing?: number;
+  per_day_to_go?: number | null;
+  // weekly
+  weeks?: PhaseWeekCell[];
+  best?: number;
+  // goal
+  base?: number | null;
+  current?: number | null;
+  better?: "lower" | "higher";
+  progress?: number | null;
+  n?: number;
+  no_data?: boolean;
+}
+
+export interface PhaseFamilyTotals {
+  sessions: number;
+  duration_s: number;
+  distance_m: number;
+}
+
+export interface PhaseTotals {
+  sessions: number;
+  duration_s: number;
+  distance_m: number;
+  ascent_m: number;
+  load: number | null;
+  active_days: number;
+  families: Record<string, PhaseFamilyTotals>;
+}
+
+export interface PhaseHighlight {
+  id: number;
+  name: string;
+  day: string;
+  family: string;
+  duration_s: number;
+  distance_m: number | null;
+  ascent_m: number | null;
+}
+
+export interface PhaseVital {
+  first: number | null;
+  latest: number | null;
+  n_first: number;
+  n_latest: number;
+}
+
+export interface PhaseSummary {
+  id: number;
+  name: string;
+  tagline: string;
+  emoji: string;
+  color: string;
+  start: string;
+  end: string;
+  state: "upcoming" | "active" | "done";
+  day_number: number;
+  total_days: number;
+  days_left: number;
+  starts_in: number | null;
+  pct: number;
+  pillars: PillarResult[];
+  on_track: number;
+  judged: number;
+  totals: PhaseTotals;
+  has_activity_data: boolean;
+}
+
+export interface PhaseDetail extends PhaseSummary {
+  created_at: string;
+  weeks: { start: string; sessions: number; minutes: number; km: number; load: number | null }[];
+  highlights: {
+    longest: PhaseHighlight | null;
+    biggest_climb: PhaseHighlight | null;
+    biggest_week: { start: string; sessions: number; minutes: number; km: number } | null;
+  };
+  before: { available: false } | ({ available: true; start: string; days: number } & PhaseTotals);
+  days: { day: string; minutes: number; sessions: number }[];
+  vitals: {
+    sleep: PhaseVital;
+    hrv: PhaseVital;
+    resting_hr: PhaseVital;
+    weight: { first: number | null; latest: number | null; n: number; first_day?: string; latest_day?: string };
+  } | null;
+  milestones: { key: string; label: string; done: boolean; detail: string | null; day: string | null }[];
+}
+
+export interface PhaseBody {
+  name: string;
+  tagline: string;
+  emoji: string;
+  color: string;
+  start: string;
+  end: string;
+  pillars: PillarSpec[];
+}
+
+export interface HabitOption {
+  key: string;
+  label: string;
 }

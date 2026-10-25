@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import date, datetime
 
 from sqlalchemy import (
+    BigInteger,
     Boolean,
     Date,
     DateTime,
@@ -142,6 +143,23 @@ class EventActivity(Base):
     event_id: Mapped[int] = mapped_column(ForeignKey("events.id", ondelete="CASCADE"), index=True)
 
 
+class Phase(Base):
+    """A named stretch of the calendar with the commitments (pillars, JSON; see phases.py) you made for it. Only the
+    configuration is stored; progress is always computed from the vault."""
+
+    __tablename__ = "phases"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(80))
+    tagline: Mapped[str] = mapped_column(String(160), default="")
+    emoji: Mapped[str] = mapped_column(String(8), default="")
+    color: Mapped[str] = mapped_column(String(7), default="#6cc7ff")
+    start_date: Mapped[date] = mapped_column(Date, index=True)
+    end_date: Mapped[date] = mapped_column(Date)
+    pillars: Mapped[str] = mapped_column(Text, default="[]")
+    created_at: Mapped[datetime] = mapped_column(DateTime)
+
+
 class DayHeartHistogram(Base):
     """Cached minutes-per-bpm for one settled day of all-day heart rate (derived from the vault; safe to drop)."""
 
@@ -173,6 +191,8 @@ class PlannedSession(Base):
     strength_text: Mapped[str | None] = mapped_column(Text)
     start_hour: Mapped[int | None] = mapped_column(Integer)  # local hour you plan to start; None = your usual time
     created_at: Mapped[datetime] = mapped_column(DateTime)
+    garmin_workout_id: Mapped[int | None] = mapped_column(BigInteger)  # the copy sent to Garmin Connect, if any
+    garmin_schedule_id: Mapped[int | None] = mapped_column(BigInteger)
 
 
 class WeatherHour(Base):
