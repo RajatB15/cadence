@@ -4,6 +4,7 @@
 set -euo pipefail
 HOST="${1:?usage: deploy/push.sh root@<droplet-ip>}"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+source "$ROOT/deploy/ssh-share.sh"
 
 npm --prefix "$ROOT/app/web" run build >/dev/null
 RS=(rsync -az --delete --exclude '.venv' --exclude '__pycache__' --exclude '.pytest_cache' --exclude '*.egg-info' --exclude tests)
