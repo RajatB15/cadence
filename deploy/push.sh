@@ -10,6 +10,11 @@ RS=(rsync -az --delete --exclude '.venv' --exclude '__pycache__' --exclude '.pyt
 "${RS[@]}" "$ROOT/app/backend/" "$HOST:/opt/cadence/app/backend/"
 "${RS[@]}" "$ROOT/app/web/dist/" "$HOST:/opt/cadence/app/web/dist/"
 "${RS[@]}" "$ROOT/deploy/" "$HOST:/opt/cadence/deploy/"
+# The food library: only the built catalogue (not the raw crawl) from the private food-data submodule, when it exists.
+if [[ -f "$ROOT/food-data/library/catalogue.json" ]]; then
+  ssh "$HOST" 'mkdir -p /opt/cadence/food-data/library'
+  rsync -az "$ROOT/food-data/library/catalogue.json" "$HOST:/opt/cadence/food-data/library/"
+fi
 
 ssh "$HOST" 'bash -s' <<'REMOTE'
 set -euo pipefail

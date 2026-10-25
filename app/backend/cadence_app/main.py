@@ -247,6 +247,26 @@ class FoodEntryRequest(BaseModel):
     protein_g: float | None = Field(default=None, ge=0, le=500)
 
 
+class FoodAmountRequest(BaseModel):
+    servings: float = Field(gt=0, le=foodlog.MAX_SERVINGS)
+
+
+class FoodMealSave(BaseModel):
+    name: str = Field(min_length=1, max_length=80)
+    entry_ids: list[int] = Field(min_length=1, max_length=foodlog.MAX_MEAL_ITEMS)
+
+
+class FoodMealRename(BaseModel):
+    name: str = Field(min_length=1, max_length=80)
+
+
+class FoodMealLog(BaseModel):
+    day: date
+    meal: Literal["breakfast", "lunch", "snack", "dinner"]
+    scale: float = Field(default=1, gt=0, le=foodlog.MAX_MEAL_SCALE)
+    eating_out: bool = False
+
+
 class FoodCopyRequest(BaseModel):
     source: date
     target: date
@@ -1435,6 +1455,51 @@ def create_app(
         if not foodlog.remove(session, entry_id):
             raise HTTPException(404, "No such entry")
         return {"deleted": entry_id}
+
+    @app.patch("/api/food/entries/{entry_id}")
+    def food_entry_amount(entry_id: int, body: FoodAmountRequest, session: Session = Depends(get_session)) -> dict:
+        try:
+            entry = foodlog.set_amount(session, entry_id, body.servings)
+        except foodlog.FoodError as exc:
+            raise HTTPException(400, str(exc)) from None
+        if entry is None:
+            raise HTTPException(404, "No such entry")
+        return entry
+
+    @app.get("/api/food/meals")
+    def food_meals(session: Session = Depends(get_session)) -> dict:
+        foodlog.ensure_catalogue(session, clock.now(), settings.food_data_dir)
+        return {"meals": foodlog.meals(session)}
+
+    @app.post("/api/food/meals")
+    def food_meal_save(body: FoodMealSave, session: Session = Depends(get_session)) -> dict:
+        try:
+            return foodlog.save_meal(session, body.name, body.entry_ids, clock.now())
+        except foodlog.FoodError as exc:
+            raise HTTPException(400, str(exc)) from None
+
+    @app.patch("/api/food/meals/{meal_id}")
+    def food_meal_rename(meal_id: int, body: FoodMealRename, session: Session = Depends(get_session)) -> dict:
+        try:
+            meal = foodlog.rename_meal(session, meal_id, body.name)
+        except foodlog.FoodError as exc:
+            raise HTTPException(400, str(exc)) from None
+        if meal is None:
+            raise HTTPException(404, "No such meal")
+        return meal
+
+    @app.delete("/api/food/meals/{meal_id}")
+    def food_meal_delete(meal_id: int, session: Session = Depends(get_session)) -> dict:
+        if not foodlog.delete_meal(session, meal_id):
+            raise HTTPException(404, "No such meal")
+        return {"deleted": meal_id}
+
+    @app.post("/api/food/meals/{meal_id}/log")
+    def food_meal_log(meal_id: int, body: FoodMealLog, session: Session = Depends(get_session)) -> dict:
+        try:
+            return {"entries": foodlog.log_meal(session, meal_id, body.day, body.meal, body.scale, body.eating_out, clock.today(), clock.now())}
+        except foodlog.FoodError as exc:
+            raise HTTPException(400, str(exc)) from None
 
     @app.post("/api/food/copy")
     def food_copy(body: FoodCopyRequest, session: Session = Depends(get_session)) -> dict:

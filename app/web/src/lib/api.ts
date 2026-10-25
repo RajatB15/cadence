@@ -11,7 +11,9 @@ import type {
   FoodDish,
   FoodDishInput,
   FoodEntryInput,
+  FoodSavedMeal,
   FoodView,
+  Meal,
   BackupStatus,
   GarminConnectStatus,
   PlannedSessionView,
@@ -212,6 +214,16 @@ export const api = {
   addFoodDish: (dish: FoodDishInput) => request<FoodDish>("/api/food/dishes", { method: "POST", body: JSON.stringify(dish) }),
   addFoodEntry: (entry: FoodEntryInput) => request<unknown>("/api/food/entries", { method: "POST", body: JSON.stringify(entry) }),
   deleteFoodEntry: (id: number) => request<{ deleted: number }>(`/api/food/entries/${id}`, { method: "DELETE" }),
+  setFoodEntryAmount: (id: number, servings: number) =>
+    request<unknown>(`/api/food/entries/${id}`, { method: "PATCH", body: JSON.stringify({ servings }) }),
+  foodMeals: () => request<{ meals: FoodSavedMeal[] }>("/api/food/meals"),
+  saveFoodMeal: (name: string, entry_ids: number[]) =>
+    request<FoodSavedMeal>("/api/food/meals", { method: "POST", body: JSON.stringify({ name, entry_ids }) }),
+  renameFoodMeal: (id: number, name: string) =>
+    request<FoodSavedMeal>(`/api/food/meals/${id}`, { method: "PATCH", body: JSON.stringify({ name }) }),
+  deleteFoodMeal: (id: number) => request<{ deleted: number }>(`/api/food/meals/${id}`, { method: "DELETE" }),
+  logFoodMeal: (id: number, input: { day: string; meal: Meal; scale: number; eating_out?: boolean }) =>
+    request<{ entries: unknown[] }>(`/api/food/meals/${id}/log`, { method: "POST", body: JSON.stringify(input) }),
   copyFoodDay: (source: string, target: string) =>
     request<{ copied: number }>("/api/food/copy", { method: "POST", body: JSON.stringify({ source, target }) }),
   deleteWeight: (day: string) => request<{ deleted: string }>(`/api/weight/entries/${day}`, { method: "DELETE" }),
