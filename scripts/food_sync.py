@@ -2,7 +2,7 @@
 """One pass of the food deploy loop. launchd runs this every 15 minutes (scripts/food-sync.sh install).
 
 Each pass:
-1. Keeps the the source site crawl alive: restarts any missing worker while pages are left to fetch, and runs one pass over
+1. Keeps the food library crawl alive: restarts any missing worker while pages are left to fetch, and runs one pass over
    the pages that failed at most every 6 hours (so dead pages don't cause a restart loop).
 2. Rebuilds the catalogue from everything crawled so far (`cadence_app.food_import`), written atomically.
 3. Makes it live: the running service reloads the catalogue when the file changes; one request here confirms it.

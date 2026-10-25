@@ -1,4 +1,4 @@
-"""Progress of the food library build, read from the private `food-data` folder: how many the source site pages are parsed,
+"""Progress of the food library build, read from the private `food-data` folder: how many source pages are parsed,
 failed or not tried yet, how fast, and what the pages became (dishes, merged aliases, dropped by checks).
 
 Counts only: no page content leaves this module. Pure counting in `progress`; `workers` asks the OS which crawl

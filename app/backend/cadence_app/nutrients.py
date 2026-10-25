@@ -11,7 +11,7 @@ Total sugars include sugar in fruit and milk, so they carry no limit here.
 
 from __future__ import annotations
 
-# key, label, unit, name in the the source site nutrient table, reference amount, kind ("target" to reach, "limit" to stay under, None)
+# key, label, unit, name in the source nutrient table, reference amount, kind ("target" to reach, "limit" to stay under, None)
 MICROS: tuple[tuple[str, str, str, str, float | None, str | None, str], ...] = (
     ("fibre_g", "Fibre", "g", "Fibre", 25, "target", "WHO"),
     ("sugars_g", "Sugars", "g", "Sugars", None, None, ""),

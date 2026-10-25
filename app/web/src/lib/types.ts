@@ -1334,7 +1334,7 @@ export interface FoodDish {
   unit_g: number | null;
   per_100g: { kcal: number; protein_g: number; carbs_g: number; fat_g: number } | null;
   basis: "library" | "estimate";
-  /** Where the numbers come from, e.g. the recipe site the source site calculated them from. */
+  /** Where the numbers come from, e.g. the recipe site the numbers were calculated from. */
   note: string | null;
   /** Other names for the same food, searched alongside the name. */
   aliases: string[];

@@ -38,7 +38,7 @@ export function servingsLabel(n: number): string {
 }
 
 export const SOURCE_NOTE: Record<string, string> = {
-  library: "the food library",
+  library: "Food library",
   mine: "Your own dish",
 };
 

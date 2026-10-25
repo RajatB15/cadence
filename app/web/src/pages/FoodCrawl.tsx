@@ -79,14 +79,14 @@ export function FoodCrawlPage() {
       {query.isSuccess && !p && (
         <div className="surface p-8 text-center">
           <p className="text-paper">The food library isn't set up on this Mac.</p>
-          <p className="mt-2 text-sm text-mute">The private food-data folder with the the source site crawl isn't there yet, so there is nothing to track. Your own dishes still work.</p>
+          <p className="mt-2 text-sm text-mute">The private food-data folder with the food library crawl isn't there yet, so there is nothing to track. Your own dishes still work.</p>
         </div>
       )}
 
       {p && charts && (
         <div className="grid gap-6">
           <section className="surface p-6">
-            <p className="eyebrow mb-2">Pages from the source site</p>
+            <p className="eyebrow mb-2">Pages from the source</p>
             <p className="font-display text-5xl text-cream">
               <span className="num">{nf.format(p.parsed)}</span>
               <span className="text-mute"> of </span>

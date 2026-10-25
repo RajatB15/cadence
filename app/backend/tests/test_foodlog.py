@@ -19,7 +19,7 @@ def synthetic_dish(i, name=None, grams=100.0, kcal100=100.0, aliases=(), portion
     return {"name": name or f"Test food {i}", "unit": f"1 katori (≈{grams:g} g)" if grams != 100 else "100 g", "grams": grams,
             "per_100g": {"kcal": kcal100, "protein_g": 10.0, "carbs_g": 10.0, "fat_g": 2.0},
             "kcal": kcal100 * grams / 100, "protein_g": 10.0 * grams / 100, "carbs_g": 10.0 * grams / 100, "fat_g": 2.0 * grams / 100,
-            "spread_pct": 25, "basis": "library", "source": "library", "ref_code": f"code{i:05d}", "note": "the source site: test.",
+            "spread_pct": 25, "basis": "library", "source": "library", "ref_code": f"code{i:05d}", "note": "Test source.",
             "aliases": list(aliases), "portions": portions or [{"unit": "katori", "grams": grams}]}
 
 
@@ -73,7 +73,7 @@ def test_the_catalogue_loads_with_source_portions_and_aliases(fenv):
     assert len(d) == 112 and paneer["source"] == "library" and paneer["basis"] == "library" and paneer["builtin"] is True
     assert paneer["aliases"] == ["Cottage cheese"] and paneer["portions"][1] == {"unit": "cup", "grams": 226}
     assert paneer["unit_g"] == 50 and paneer["per_100g"]["kcal"] == 265 and abs(paneer["kcal"] - 132.5) < 0.01 and paneer["grams_ok"] is True
-    assert "not verified" in (paneer["note"] or "") or paneer["note"] == "the source site: test."
+    assert "not verified" in (paneer["note"] or "") or paneer["note"] == "Test source."
     assert len(dishes_of(client)) == 112  # asking again adds nothing
 
 
