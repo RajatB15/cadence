@@ -18,7 +18,7 @@ from datetime import date, datetime, timedelta
 from functools import lru_cache
 from pathlib import Path
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, select, update
 from sqlalchemy.orm import Session
 
 from cadence_app.models import FoodDish, FoodEntry
@@ -99,17 +99,56 @@ def ensure_catalogue(session: Session, now: datetime, food_data_dir: Path | None
                 removed.add(r.id)
     session.flush()
     rows = [r for r in rows if r.id not in removed]
-    by_code = {r.ref_code: r for r in rows if r.source == "library" and r.ref_code}
-    taken = {r.name.lower() for r in rows if r.source != "library"}
+    library = sorted((r for r in rows if r.source == "library"), key=lambda r: (not r.edited, r.id))
+    by_code: dict[str, list[FoodDish]] = {}
+    for r in library:
+        if r.ref_code:
+            by_code.setdefault(r.ref_code, []).append(r)
+    # A dish may be stored under a page code from an earlier build (the code used to follow whichever page named the group).
+    # Find every stored row for each catalogue dish: keep one, fold the rest into it.
+    plan: list[tuple[dict, FoodDish | None]] = []
+    used: set[int] = set()
     for d in catalogue:
-        row = by_code.get(d["ref_code"])
+        found, seen = [], set()
+        for code in [d["ref_code"], *d.get("page_codes", [])]:
+            for r in by_code.get(code, []):
+                if r.id not in seen and r.id not in used:
+                    seen.add(r.id)
+                    found.append(r)
+        found.sort(key=lambda r: (not r.edited, r.id))
+        keep = found[0] if found else None
+        for extra in found[1:]:
+            used.add(extra.id)
+            if extra.edited:
+                extra.source, extra.builtin, extra.ref_code = "mine", False, None
+            else:
+                session.execute(update(FoodEntry).where(FoodEntry.dish_id == extra.id).values(dish_id=keep.id))
+                session.delete(extra)
+        if keep:
+            used.add(keep.id)
+        plan.append((d, keep))
+    for r in library:  # no longer in the catalogue at all (its page was dropped by a stricter rule)
+        if r.id not in used:
+            if r.edited:
+                r.source, r.builtin, r.ref_code = "mine", False, None
+            else:
+                session.delete(r)
+    session.flush()
+    for d, row in plan:  # names are unique: free the ones about to change so two dishes can swap
+        if row is not None and row.name != d["name"]:
+            row.name = f"\0{row.id}"
+    session.flush()
+    taken = {r.name.lower() for r in session.scalars(select(FoodDish)) if r.source != "library"}
+    for d, row in plan:
         if row is None:
             if d["name"].lower() in taken:  # one of your own dishes already has this name
                 continue
-            row = FoodDish(name=d["name"], builtin=True, active=True, source="library", ref_code=d["ref_code"], created_at=now)
+            row = FoodDish(name=d["name"], builtin=True, active=True, source="library", created_at=now)
             session.add(row)
         elif row.edited:
+            row.ref_code = d["ref_code"]
             continue
+        row.ref_code = d["ref_code"]
         _apply(row, d)
         taken.add(d["name"].lower())
     session.commit()

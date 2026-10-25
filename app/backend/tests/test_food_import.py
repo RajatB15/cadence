@@ -32,7 +32,7 @@ def test_aliases_of_one_food_become_one_dish():
 def test_different_foods_with_one_name_keep_it_plus_a_code():
     dishes, _ = FI.build_catalogue([rec("upma-aaaa111111", "Upma", kcal=85, table={"Calcium": [15.0, "mg"]}),
                                     rec("upma-bbbb222222", "Upma", kcal=150, table={"Calcium": [30.0, "mg"]})])
-    assert sorted(d["name"] for d in dishes) == ["Upma (aaaa)", "Upma (bbbb)"]
+    assert sorted(d["name"] for d in dishes) == sorted(f'Upma ({d["ref_code"][:4]})' for d in dishes) and len({d["name"] for d in dishes}) == 2
 
 
 def test_portions_carry_weights_and_the_default_unit_states_its_grams():
@@ -42,7 +42,7 @@ def test_portions_carry_weights_and_the_default_unit_states_its_grams():
     (d,), _ = FI.build_catalogue([r])
     assert d["unit"] == "1 katori (≈130 g)" and d["grams"] == 130.0
     assert [p["unit"] for p in d["portions"]] == ["katori", "bowl", "Small Bowl"]  # oz dropped, duplicate weight of the default kept once per unit
-    assert abs(d["kcal"] - 110.9) < 0.1 and d["per_100g"]["kcal"] == 85.34 and d["ref_code"] == "ce3d43bb57"
+    assert abs(d["kcal"] - 110.9) < 0.1 and d["per_100g"]["kcal"] == 85.34 and d["page_codes"] == ["ce3d43bb57"]
     assert "hebbarskitchen.com" in d["note"] and "not verified" in d["note"] and d["spread_pct"] == FI.SPREAD_UNVERIFIED
 
 
@@ -55,3 +55,11 @@ def test_a_gram_only_page_becomes_a_100_g_dish_and_foreign_names_are_aliases_onl
     assert [x["name"] for x in dishes] == ["Cottage cheese"] and dishes[0]["aliases"] == ["Творог"]
     only_foreign, rep = FI.build_catalogue([rec("w-dddddddddd", "Творог", table={"Calcium": [9.0, "mg"]})])
     assert only_foreign == [] and rep["skipped_no_latin_name"] == 1
+
+
+def test_a_dish_keeps_its_code_when_more_pages_join_it():
+    first = [rec("ada-1111111111", "Ada", kcal=100, table={"Calcium": [5.0, "mg"]})]
+    later = first + [rec("adu-0000000000", "Adu", kcal=100, table={"Calcium": [5.0, "mg"]})]
+    (a,), _ = FI.build_catalogue(first)
+    (b,), _ = FI.build_catalogue(later)
+    assert a["ref_code"] == b["ref_code"] and b["page_codes"] == ["0000000000", "1111111111"]
