@@ -4,7 +4,7 @@ Last updated: 2026-10-25.
 
 ## Direction
 
-Build a single-user, local-first health and training web app, then package the validated experience as a standalone macOS app. LLM integration is the final stage.
+Build a single-user, local-first health and training web app, LLM integration is the final stage. A standalone macOS app is no longer planned (2026-10-26): Cadence is a server plus the web app.
 
 Differentiate through transparent analytics, cross-source context, customizable workflows, and data ownership. Garmin already provides overlapping trends, readiness, training load, and summaries; verify current product capabilities before claiming a feature is unique.
 
@@ -145,6 +145,7 @@ Local food log tuned for home-cooked Indian food; no Garmin involvement.
 - [x] Food page as a coaching tool (2026-10-25): `analytics/nutrition.py` (pure) sets a phase from the weight goal (cut / gain / maintain), a reference energy (Garmin's 14-day mean total calories, else the Mifflin-St Jeor x activity estimate, both about +-10%), and daily ranges for energy, protein (1.6-2.2 g/kg, Morton 2018, Iraki 2019), fat (0.5-1.5 g/kg) and per-meal protein (0.40-0.55 g/kg). Cut pace 0.5-1% of body weight a week (Helms 2014; deficit capped at 25% and never below BMR); gain surplus 10-20% for 0.25-0.5% a week (Iraki 2019). Days are compared as ranges against the target band; weekly averages need 4 logged days with a Garmin figure; an "implied expenditure" from intake plus weight trend needs 10 logged days in 14 and is flagged as rough (7,700 kcal/kg, Hall 2011). Wording in `notes.nutrition`. UI: energy and protein cards, protein by meal, 7-day chart with target band and Garmin burn, notes; empty state says what is missing. Checked at desktop and phone widths on synthetic data.
 - [x] Food ease of use, micronutrients and saved meals (2026-10-26): the catalogue now carries 11 tracked micronutrients per dish (`nutrients.py`: fibre, sugars, saturated fat, sodium, potassium, calcium, iron, magnesium, zinc, vitamin C, vitamin A) taken from the stored nutrient tables; entries copy the amounts eaten at log time (migration 0020). Day totals say how many foods reported each nutrient, so a missing value is never counted as zero; references are WHO (fibre, sodium, potassium) and FDA Daily Values, shown as context only. Saved meals (`food_meals`, `food_meal_items`): group logged foods under your own name, log them again in one tap with a portion scale; items are stored by dish and amount, so editing a dish updates the meal, with the saved copy as fallback. Entries can be scaled with a ± stepper. Search rows have a one-tap + for one usual serving, the add sheet stays open with an "Added" bar, empty meals offer your saved meals, and the add sheet lifts above the phone keyboard. Backend tests in `tests/test_food_meals.py`.
 - [ ] (low priority) Strip the source `url` field from every record in the private `food-data/library/nutrifacts.jsonl`: nothing reads it (resume uses `id`, the page slug), and the address can be rebuilt from the id. Check the catalogue rebuilds to the same dish count first. Once the crawl finishes, also drop `library/sitemap-seo.xml` and the crawler's own address, and compact `failed.jsonl` to one line per page still failing (stop retrying the "no nutrition data on page" pages, which look permanent).
+- [ ] Packaged foods: read a nutrition-label photo with Tesseract on the server (the same `ocr.py` as class screenshots; no Apple Vision, no cloud). Review screen with the photo beside editable fields, choice of per-100 g or per-serve column when both are printed, plausibility checks (macros vs calories, as in `food_import.check`), unreadable fields left unknown, saved as your own dish. Optional later: an Open Food Facts barcode lookup (one request per scan, ODbL, saved locally as your dish; no bulk copy).
 - [ ] Next for the food page: training-day vs rest-day targets from the day's Garmin strain, a phase override (muscle gain at a flat weight / recomposition), a weekly review, and a nutrient-per-portion view when picking a dish.
 - [ ] Finish the crawl (about 9,000 pages, several hours), run `food_import`, spot-check the catalogue against IFCT, then restart the service.
 - [ ] Later: intake vs estimated energy use (`analytics/body.py` ranges) and vs training load; edit/deactivate dishes in the UI; LLM text/photo estimates (last stage).
@@ -235,7 +236,9 @@ Gate: external integrations can be disconnected, provenance remains visible, and
 - [ ] Build monthly/yearly reports and shareable graphics from verified statistics, including consistency and recovery patterns.
 - [ ] Provide private previews and deliberate export rather than automatic publication.
 
-### Stage 8: Standalone macOS Release
+### Stage 8: Standalone macOS Release (scrapped 2026-10-26)
+
+Not planned: no macOS app, Tauri shell or Keychain migration. Cadence runs as a server (DigitalOcean) plus the web app, and text recognition is always Tesseract.
 
 - [ ] Package validated web workflows with Tauri if the early spike succeeds.
 - [ ] Move credentials to macOS Keychain with a deliberate migration from the local development file.

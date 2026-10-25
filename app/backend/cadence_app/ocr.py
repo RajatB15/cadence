@@ -1,7 +1,7 @@
-"""On-device text recognition for class screenshots. Nothing leaves the machine running Cadence.
+"""Text recognition for photos and screenshots (class lists, nutrition labels). Nothing leaves the machine running Cadence.
 
-Apple Vision (the engine behind Live Text) on a Mac; the Tesseract command-line tool elsewhere (the Linux server:
-`apt install tesseract-ocr`). Vision is preferred when both exist.
+Always the Tesseract command-line tool (the server installs it with `apt install tesseract-ocr`; on a Mac for development,
+`brew install tesseract`), so a given image reads the same everywhere.
 """
 
 from __future__ import annotations
@@ -14,26 +14,17 @@ MAX_IMAGE_BYTES = 15 * 1024 * 1024
 TESSERACT_TIMEOUT_S = 60
 FULL_EDGE = 1800  # long edge of the image that is read
 PROBE_EDGE = 900  # long edge of the copy used to pick the rotation
-VISION_ORIENTATIONS = (1, 6, 8, 3)
 WORD_CONFIDENCE = 80
 UPRIGHT_ENOUGH = 8  # real words in the upright read above which the page is taken as it is
 
 
-def _has_vision() -> bool:
-    try:
-        import Vision  # noqa: F401  # pylint: disable=import-outside-toplevel,unused-import
-    except ImportError:
-        return False
-    return True
-
-
 def available() -> bool:
-    return _has_vision() or shutil.which("tesseract") is not None
+    return shutil.which("tesseract") is not None
 
 
 def image_text(data: bytes) -> str:
     """Recognised lines, top to bottom (left to right within a row)."""
-    return _vision_text(data) if _has_vision() else _tesseract_text(data)
+    return _tesseract_text(data)
 
 
 def _upright(data: bytes):
@@ -109,40 +100,3 @@ def _trim_noise(line: str) -> str:
     while len(words) > 1 and (len(words[-1]) == 1 and not words[-1].isdigit() and not words[-1].isupper() or not any(c.isalnum() for c in words[-1])):
         words.pop()
     return " ".join(words)
-
-
-def _vision_text(data: bytes) -> str:
-    """Vision reads rotated text but reports positions in the unrotated image, so try the four orientations (a photo of
-    a phone is often sideways). Sideways lines come out taller than wide and upside-down text reads with low confidence,
-    so the orientation scores only wide lines, by confidence x characters."""
-    # pylint: disable=import-outside-toplevel
-    import Vision
-    from Foundation import NSData
-
-    img = _upright(data)
-    png = _png(img)
-    ns_data = NSData.dataWithBytes_length_(png, len(png))
-    best_score, best_rows = -1.0, []
-    for orientation in VISION_ORIENTATIONS:  # CGImagePropertyOrientation: up, right, left, down
-        width, height = img.size if orientation in (1, 3) else img.size[::-1]
-        handler = Vision.VNImageRequestHandler.alloc().initWithData_orientation_options_(ns_data, orientation, None)
-        request = Vision.VNRecognizeTextRequest.alloc().init()
-        request.setRecognitionLevel_(Vision.VNRequestTextRecognitionLevelAccurate)
-        request.setUsesLanguageCorrection_(True)
-        ok, error = handler.performRequests_error_([request], None)
-        if not ok:
-            raise ValueError(f"Couldn't read the image ({error.localizedDescription() if error else 'unknown error'})")
-        rows, score = [], 0.0
-        for obs in request.results() or []:
-            candidates = obs.topCandidates_(1)
-            if not candidates:
-                continue
-            box = obs.boundingBox()  # normalised to the oriented image, origin bottom-left
-            text = str(candidates[0].string())
-            rows.append((1 - (box.origin.y + box.size.height), box.origin.x, text))
-            if box.size.width * width > box.size.height * height:
-                score += float(candidates[0].confidence()) * len(text)
-        if score > best_score:
-            best_score, best_rows = score, rows
-    best_rows.sort(key=lambda r: (round(r[0], 2), r[1]))
-    return "\n".join(r[2] for r in best_rows)

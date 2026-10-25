@@ -1,7 +1,7 @@
 # Project Instructions
 
 - Read [plan.md](../plan.md) before planning or implementing project changes. It is the source of truth for scope, stack, roadmap, and acceptance criteria; update its checklist when milestones are verified.
-- Build the local-first web experience first, package for macOS after functionality is validated, and implement LLM integration last.
+- Build the local-first web experience first and implement LLM integration last. There is no macOS app or packaging: Cadence is a server plus the web app, and text recognition is always Tesseract.
 - Do not assume Garmin API capabilities are verified.
 - Store everything, surface what matters: keep every imported response in the vault (never drop data at import), but product pages show curated, meaningful views and derived insights rather than raw field dumps. Raw records stay inspectable through the Vault data explorer.
 - Local Garmin credentials are in `.secrets/garmin.env`. Load them directly in the backend process when needed; never print, copy into prompts, put in frontend bundles, log, or commit them. Do not request the key again while this file is available.
