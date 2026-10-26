@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import { api } from "../lib/api";
 import { formatShortDate } from "../lib/format";
 import { STATUS_STYLE, deltaText } from "../lib/trends";
-import type { SeriesTrend, TrainingStatusKey, TrainingTrend } from "../lib/types";
+import type { EvidenceMarker, FitnessEvidence, SeriesTrend, TrainingStatusKey, TrainingTrend } from "../lib/types";
 import { Chart, chartBase, type ChartOption } from "./Chart";
 import { readyColor } from "./CoachNotes";
 import { ErrorBlock, LoadingBlock, Segmented } from "./Shell";
@@ -129,6 +129,63 @@ function statusOption(t: Extract<TrainingTrend, { has_data: true }>): ChartOptio
   };
 }
 
+const MARKER_STYLE = { better: { color: "#c8f560", sign: "▲", word: "improving" }, worse: { color: "#ff6a55", sign: "▼", word: "worsening" },
+  flat: { color: "#8d8a82", sign: "●", word: "unchanged" }, missing: { color: "#5c5a55", sign: "–", word: "not enough data" } } as const;
+const VERDICT_COLOR = { adapting: "#c8f560", not_adapting: "#ff9f5a", fading: "#ff6a55", mixed: "#6cc7ff", unknown: "#5c5a55" } as const;
+
+function markerChange(m: EvidenceMarker): string {
+  if (m.change == null || m.ci == null) return m.reason ?? "not enough data";
+  const sign = m.change > 0 ? "+" : m.change < 0 ? "−" : "";
+  const fmt = (v: number) => Math.abs(v).toFixed(1);
+  return `${sign}${fmt(m.change)}${m.unit} (${m.ci[0] > 0 ? "+" : "−"}${fmt(m.ci[0])} to ${m.ci[1] > 0 ? "+" : "−"}${fmt(m.ci[1])})`;
+}
+
+/** Do independent body markers agree with what load says? Each marker stands alone; nothing is blended into one score. */
+export function EvidencePanel({ evidence }: { evidence: FitnessEvidence }) {
+  const v = evidence.verdict;
+  const color = VERDICT_COLOR[v.key];
+  const life = evidence.life_strain;
+  return (
+    <section aria-label="Fitness evidence" className="space-y-4">
+      <p className="eyebrow">Is your body adapting?</p>
+      <div className="border-l-2 pl-3" style={{ borderColor: color }}>
+        <p className="font-display text-2xl" style={{ color }}>{v.label}</p>
+        <p className="mt-1 text-xs leading-relaxed text-mute">{v.text}</p>
+        {evidence.load && (
+          <p className="mt-1 text-xs text-dim">
+            Training load: fitness {evidence.load.then} → {evidence.load.now} over 6 weeks ({evidence.load.change_pct > 0 ? "+" : ""}{evidence.load.change_pct}%).
+          </p>
+        )}
+      </div>
+      <ul className="space-y-3">
+        {evidence.markers.map((m) => {
+          const st = MARKER_STYLE[m.state];
+          return (
+            <li key={m.key} className="flex gap-3">
+              <span className="num mt-0.5 w-4 shrink-0 text-center" style={{ color: st.color }} aria-hidden>{st.sign}</span>
+              <div className="min-w-0">
+                <p className="text-sm text-paper">{m.label} <span className="text-xs" style={{ color: st.color }}>{st.word}</span></p>
+                <p className="num text-xs text-mute">{markerChange(m)}{m.change != null ? ` · ${m.n} readings, last ${m.window_days} days` : ""}</p>
+                <p className="text-[11px] text-dim">{m.note}</p>
+              </div>
+            </li>
+          );
+        })}
+      </ul>
+      {life && (
+        <p className="text-xs leading-relaxed text-mute">
+          {life.state === "missing"
+            ? `Everyday strain: ${life.reason}.`
+            : `Everyday strain (outside workouts) is ${life.state === "heavy" ? "heavier" : life.state === "light" ? "lighter" : "about the same"} than usual this week: ${life.week} vs ${life.usual} typical (${life.weeks} weeks). ${life.note}`}
+        </p>
+      )}
+      <p className="text-xs leading-relaxed text-dim">
+        A marker counts as improving or worsening only when its 95% range excludes zero and the change is bigger than everyday noise. Associations over weeks, not proof training caused them.
+      </p>
+    </section>
+  );
+}
+
 /** Week-by-week verdicts (progressing, maintaining, overloading, deloading, easing back, time off) from fitness change and load. */
 export function StatusPanel() {
   const [weeks, setWeeks] = useState(12);
@@ -153,6 +210,7 @@ export function StatusPanel() {
             <p className="mt-1 text-sm text-mute">{now.blurb}</p>
             <p className="mt-1 text-xs text-dim">{now.why}</p>
           </div>
+          {t.evidence && <EvidencePanel evidence={t.evidence} />}
           {t.n >= 2 && <Chart option={option} height={200} label="Weekly training load coloured by status" />}
           <div className="flex flex-wrap gap-x-4 gap-y-1.5 text-xs text-mute">
             {(Object.keys(t.counts) as TrainingStatusKey[]).map((k) => (

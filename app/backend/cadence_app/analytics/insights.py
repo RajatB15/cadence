@@ -341,6 +341,7 @@ def context(session: Session, source_id: str, today: date, now: datetime | None 
     c = build_context(session, source_id, today, now)
     if c is not None:
         c.setdefault("_phase", {})
+        c.setdefault("_memo", {})
     with _ctx_lock:
         _ctx_cache.clear()
         _ctx_cache[key] = (time.monotonic(), c)

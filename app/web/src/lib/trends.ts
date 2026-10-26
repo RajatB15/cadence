@@ -2,6 +2,7 @@ import type { TimeOffItem, TimeOffKind, TrainingStatusKey } from "./types";
 
 export const STATUS_STYLE: Record<TrainingStatusKey, { color: string; short: string }> = {
   progressing: { color: "#c8f560", short: "Up" },
+  not_adapting: { color: "#ff9f5a", short: "Stuck" },
   maintaining: { color: "#6cc7ff", short: "Hold" },
   overloading: { color: "#ff6a55", short: "Over" },
   deloading: { color: "#ffbe55", short: "Easy" },

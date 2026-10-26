@@ -447,6 +447,7 @@ function StatusCard({ coach, onStatus, onTimeOff }: { coach: Brief; onStatus: ()
         <p className="font-display text-3xl leading-tight sm:text-4xl" style={{ color }}>{st.label}</p>
         <p className="mt-1 text-sm text-mute">{st.blurb}</p>
         <p className="mt-1 text-xs text-dim">{st.why}</p>
+        {st.evidence && st.evidence.key !== "unknown" && <p className="mt-2 text-xs text-mute">Body markers: {st.evidence.summary}</p>}
       </button>
       {(entries.length > 0 || off) && (
         <div className="mt-4 space-y-2 border-t border-line pt-4">
