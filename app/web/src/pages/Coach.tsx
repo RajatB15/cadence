@@ -3,8 +3,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { clsx } from "clsx";
 import { Flag, Sparkles, TrendingUp, X } from "lucide-react";
 import { motion } from "motion/react";
-import { useMemo, useState, type FormEvent, type ReactNode } from "react";
-import { Link } from "react-router-dom";
+import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
+import { Link, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { Chart, chartBase, type ChartOption } from "../components/Chart";
 import { NoteGrid, SEVERITY, readyColor } from "../components/CoachNotes";
 import { HabitsPanel } from "../components/Journal";
@@ -35,6 +35,20 @@ const clock = (m: number) => {
 };
 
 export function CoachPage() {
+  const [params] = useSearchParams();
+  const navigate = useNavigate();
+  const { hash } = useLocation();
+  const anchorTab = ANCHOR_TAB[hash.slice(1)];
+  const asked = params.get("tab");
+  const tab: TabId = anchorTab ?? (TABS.some((t) => t.id === asked) ? (asked as TabId) : "today");
+  const pick = (t: TabId) => {
+    navigate({ search: t === "today" ? "" : `?tab=${t}`, hash: "" }, { replace: true });
+    window.scrollTo({ top: 0 });
+  };
+  // A link like /coach#sleep opens its tab, then scrolls to the card once it has rendered.
+  useEffect(() => {
+    if (hash) document.getElementById(hash.slice(1))?.scrollIntoView();
+  });
   const query = useQuery({
     queryKey: ["insights"],
     queryFn: api.insights,
@@ -46,6 +60,7 @@ export function CoachPage() {
     return <div className="surface p-12 text-center text-mute">Sync Garmin data from the Vault to unlock coaching.</div>;
   }
   const d = query.data;
+  const alerts = d.findings.filter((f) => f.severity === "alert" || f.severity === "warn").length;
   return (
     <>
       <PageHeader
@@ -60,71 +75,128 @@ export function CoachPage() {
           </>
         }
       >
+        <Link to="/review" className="pop pop-ghost">Reviews</Link>
         <Link to="/goals" className="pop pop-ghost">Goals</Link>
         <Link to="/lab" className="pop pop-ghost">Lab</Link>
       </PageHeader>
-      <SectionNav />
-      <div className="space-y-6">
-        <Readiness d={d} />
-        <Plan d={d} />
-        <OutcomesCard />
-        <Findings findings={d.findings} />
-        <Performance d={d} />
-        <Recovery d={d} />
-        <Card id="habits" title="Habits" eyebrow="From your journal: what yesterday's choices do to today">
-          <HabitsPanel effects={d.habits.effects} progress={d.habits.progress} />
-        </Card>
-        <Card id="strength" title="Strength" eyebrow="What your named classes trained, last 4 weeks">
-          <StrengthPanel s={d.strength_content} />
-        </Card>
-        <LoadChart d={d} />
-        <div className="grid gap-6 xl:grid-cols-2">
-          <Intensity d={d} />
-          <Weeks d={d} />
-        </div>
-        <Aerobic d={d} />
-        <Sleep d={d} />
-        <Effects effects={d.effects} />
-        <Methods />
+      <TabBar tab={tab} onChange={pick} counts={{ today: alerts }} />
+      <div className="space-y-4 sm:space-y-6">
+        {tab === "today" && (
+          <>
+            <Readiness d={d} />
+            <Plan d={d} />
+            <Findings findings={d.findings} />
+          </>
+        )}
+        {tab === "fitness" && (
+          <>
+            <Performance d={d} />
+            <LoadChart d={d} />
+            <div className="grid gap-4 sm:gap-6 xl:grid-cols-2">
+              <Intensity d={d} />
+              <Weeks d={d} />
+            </div>
+            <Aerobic d={d} />
+          </>
+        )}
+        {tab === "recovery" && (
+          <>
+            <Recovery d={d} />
+            <Sleep d={d} />
+            <Effects effects={d.effects} />
+          </>
+        )}
+        {tab === "patterns" && (
+          <>
+            <OutcomesCard />
+            <Card id="habits" title="Habits" eyebrow="From your journal: what yesterday's choices do to today">
+              <HabitsPanel effects={d.habits.effects} progress={d.habits.progress} />
+            </Card>
+            <Card id="strength" title="Strength" eyebrow="What your named classes trained, last 4 weeks">
+              <StrengthPanel s={d.strength_content} />
+            </Card>
+            <Methods />
+          </>
+        )}
       </div>
     </>
   );
 }
 
-const SECTIONS = [
-  ["plan", "Plan"], ["findings", "Findings"], ["performance", "Performance"], ["recovery", "Recovery"], ["load", "Load"],
-  ["habits", "Habits"], ["strength", "Strength"], ["intensity", "Intensity"], ["aerobic", "Aerobic"], ["sleep", "Sleep"], ["effects", "Patterns"],
+const TABS = [
+  { id: "today", label: "Today" },
+  { id: "fitness", label: "Fitness" },
+  { id: "recovery", label: "Recovery" },
+  { id: "patterns", label: "Patterns" },
 ] as const;
+type TabId = (typeof TABS)[number]["id"];
 
-/** Sticky jump links: the coach page is long, especially on a phone. */
-function SectionNav() {
+/** Which tab holds each card, so old `#anchor` links (e.g. /coach#sleep) still land on the right one. */
+const ANCHOR_TAB: Record<string, TabId> = {
+  readiness: "today", plan: "today", findings: "today",
+  performance: "fitness", load: "fitness", intensity: "fitness", weeks: "fitness", aerobic: "fitness",
+  recovery: "recovery", sleep: "recovery", effects: "recovery",
+  outcomes: "patterns", habits: "patterns", strength: "patterns", methods: "patterns",
+};
+
+/** Sticky tabs: the coach has ~16 cards, so only one theme renders at a time (short scroll on a phone). */
+function TabBar({ tab, onChange, counts }: { tab: TabId; onChange: (t: TabId) => void; counts: Partial<Record<TabId, number>> }) {
   return (
-    <nav
+    <div
+      role="tablist"
       aria-label="Coach sections"
-      className="sticky top-0 z-30 -mx-5 mb-6 flex gap-2 overflow-x-auto border-b border-line bg-ink/90 px-5 py-3 backdrop-blur [scrollbar-width:none] sm:-mx-8 sm:px-8 lg:-mx-12 lg:px-12"
+      className="sticky top-0 z-30 -mx-5 mb-4 flex border-b border-line bg-ink/90 px-5 backdrop-blur sm:-mx-8 sm:mb-6 sm:px-8 lg:-mx-12 lg:px-12"
     >
-      <Link to="/review" className="chip shrink-0 whitespace-nowrap text-gold hover:text-paper pointer-coarse:py-2">Reviews →</Link>
-      {SECTIONS.map(([id, label]) => (
-        <a key={id} href={`#${id}`} className="chip shrink-0 whitespace-nowrap hover:text-paper pointer-coarse:py-2">
-          {label}
-        </a>
-      ))}
-    </nav>
+      {TABS.map((t) => {
+        const active = t.id === tab;
+        return (
+          <button
+            key={t.id}
+            type="button"
+            role="tab"
+            aria-selected={active}
+            onClick={() => onChange(t.id)}
+            className={clsx(
+              "relative flex-1 whitespace-nowrap px-2 py-3.5 text-xs font-semibold tracking-widest uppercase transition-colors sm:flex-none sm:px-6",
+              active ? "text-gold" : "text-mute hover:text-paper",
+            )}
+          >
+            {t.label}
+            {counts[t.id] ? <span className="ml-1.5 rounded-full bg-gold/20 px-1.5 py-0.5 text-[10px] text-gold">{counts[t.id]}</span> : null}
+            {active && <span className="absolute inset-x-2 bottom-0 h-0.5 bg-gold" />}
+          </button>
+        );
+      })}
+    </div>
   );
 }
 
 function Card({ id, title, eyebrow, aside, children }: { id?: string; title: string; eyebrow?: string; aside?: ReactNode; children: ReactNode }) {
   return (
-    <section id={id} className="surface scroll-mt-20 p-5 sm:p-8">
-      <div className="mb-6 flex flex-wrap items-end justify-between gap-3">
+    <section id={id} className="surface scroll-mt-20 p-4 sm:p-8">
+      <div className="mb-4 flex sm:mb-6 flex-wrap items-end justify-between gap-3">
         <div>
           {eyebrow && <p className="eyebrow mb-2">{eyebrow}</p>}
-          <h2 className="font-display text-3xl text-cream">{title}</h2>
+          <h2 className="font-display text-2xl text-cream sm:text-3xl">{title}</h2>
         </div>
         {aside}
       </div>
       {children}
     </section>
+  );
+}
+
+/** Secondary detail folded under a headline: nothing is dropped, it is one tap away. Open by default from `sm` up. */
+function More({ label, children, className }: { label: string; children: ReactNode; className?: string }) {
+  const wide = typeof window !== "undefined" && window.matchMedia("(min-width: 640px)").matches;
+  return (
+    <details open={wide} className={clsx("group", className)}>
+      <summary className="eyebrow flex cursor-pointer list-none items-center justify-between border-t border-line py-3 hover:text-paper sm:hidden">
+        {label}
+        <span className="text-gold transition-transform group-open:rotate-90">›</span>
+      </summary>
+      <div className="pt-2 sm:pt-0">{children}</div>
+    </details>
   );
 }
 
@@ -456,6 +528,7 @@ function Performance({ d }: { d: Data }) {
           jog 30 minutes, then 12 minutes all-out — or race a 5 km. Pace zones and race predictions appear once it fits.
         </p>
       )}
+      <More label="Pace zones, effort curve and form">
       {cs.valid && cs.paces && (
         <div className="mb-8 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           {cs.paces.map((z) => (
@@ -514,6 +587,7 @@ function Performance({ d }: { d: Data }) {
           )}
         </div>
       </div>
+      </More>
       {d.analysis_running && <p className="mt-4 text-xs text-gold">Still analysing {d.analysis_pending} runs…</p>}
     </Card>
   );
@@ -585,6 +659,7 @@ function Recovery({ d }: { d: Data }) {
             );
           })}
           <p className="text-xs text-dim">The plan spaces quality sessions {rec.hard_spacing_days} days apart; live readiness recovers with a {rec.half_life_h} h half-life.</p>
+          <More label="Does readiness predict your runs?">
           {v && (
             <div className="border border-line bg-ink/40 p-4 text-xs leading-relaxed text-mute">
               <p className="eyebrow mb-1">Does readiness predict your runs?</p>
@@ -605,6 +680,7 @@ function Recovery({ d }: { d: Data }) {
               )}
             </div>
           )}
+          </More>
         </div>
       </div>
     </Card>
@@ -616,7 +692,7 @@ function Recovery({ d }: { d: Data }) {
 function Findings({ findings }: { findings: Finding[] }) {
   const [all, setAll] = useState(false);
   const urgent = findings.filter((f) => f.severity === "alert" || f.severity === "warn");
-  const shown = all ? findings : urgent.length ? urgent : findings.slice(0, 4);
+  const shown = all ? findings : (urgent.length ? urgent : findings).slice(0, 4);
   const counts = findings.reduce<Record<string, number>>((acc, f) => ({ ...acc, [f.severity]: (acc[f.severity] ?? 0) + 1 }), {});
   return (
     <Card
@@ -634,11 +710,13 @@ function Findings({ findings }: { findings: Finding[] }) {
       }
     >
       <NoteGrid notes={shown} />
-      {shown.length < findings.length && (
+      {shown.length < findings.length ? (
         <button type="button" onClick={() => setAll(true)} className="pop pop-ghost mt-6">
-          Show {findings.length - shown.length} more ({findings.length - shown.length === 1 ? "an insight" : "insights"} and what's working)
+          Show all {findings.length} (+{findings.length - shown.length} more, including insights and what's working)
         </button>
-      )}
+      ) : all && findings.length > 4 ? (
+        <button type="button" onClick={() => setAll(false)} className="pop pop-ghost mt-6">Show fewer</button>
+      ) : null}
     </Card>
   );
 }
@@ -1035,7 +1113,7 @@ function Effects({ effects }: { effects: Effect[] }) {
 
 function Methods() {
   return (
-    <details className="surface p-6 text-sm text-mute">
+    <details id="methods" className="surface scroll-mt-20 p-5 text-sm text-mute sm:p-6">
       <summary className="flex cursor-pointer list-none items-center gap-2 font-semibold text-paper">
         <Sparkles size={16} className="text-gold" /> How the coach works
       </summary>
