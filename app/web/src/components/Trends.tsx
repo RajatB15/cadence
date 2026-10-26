@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import { api } from "../lib/api";
 import { formatShortDate } from "../lib/format";
 import { STATUS_STYLE, deltaText } from "../lib/trends";
-import type { SeriesTrend, TrainingStatusKey, TrainingStatusNow, TrainingTrend } from "../lib/types";
+import type { SeriesTrend, TrainingStatusKey, TrainingTrend } from "../lib/types";
 import { Chart, chartBase, type ChartOption } from "./Chart";
 import { readyColor } from "./CoachNotes";
 import { ErrorBlock, LoadingBlock, Segmented } from "./Shell";
@@ -111,15 +111,6 @@ export function TrendPanel({ kind, title, onRange }: { kind: "readiness" | "scor
 }
 
 // ---- training status ---------------------------------------------------------------------------
-
-export function StatusChip({ status, onClick }: { status: TrainingStatusNow; onClick?: () => void }) {
-  const s = STATUS_STYLE[status.status];
-  return (
-    <button type="button" onClick={onClick} className="chip text-paper pointer-coarse:py-2" aria-label={`Training status: ${status.label}. Show the weekly history`}>
-      <span className="h-2 w-2 rounded-full" style={{ background: s.color }} /> {status.label}
-    </button>
-  );
-}
 
 function statusOption(t: Extract<TrainingTrend, { has_data: true }>): ChartOption {
   return {
