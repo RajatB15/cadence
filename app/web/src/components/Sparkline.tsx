@@ -35,6 +35,15 @@ export function Sparkline({ values, color, width = 160, height = 44, className }
           <stop offset="0%" stopColor={color} stopOpacity="0.28" />
           <stop offset="100%" stopColor={color} stopOpacity="0" />
         </linearGradient>
+        <clipPath id={`${id}-reveal`}>
+          <motion.rect
+            x="-4" y="-4" height={height + 8}
+            initial={{ width: 0 }}
+            whileInView={{ width: width + 8 }}
+            viewport={{ once: true }}
+            transition={{ duration: 1.2, ease: [0.2, 0.9, 0.1, 1] }}
+          />
+        </clipPath>
       </defs>
       <motion.path
         d={`${line} L${width},${height} L0,${height} Z`}
@@ -50,17 +59,18 @@ export function Sparkline({ values, color, width = 160, height = 44, className }
         stroke={color}
         strokeWidth="1.5"
         vectorEffect="non-scaling-stroke"
-        initial={{ pathLength: 0 }}
-        whileInView={{ pathLength: 1 }}
-        viewport={{ once: true }}
-        transition={{ duration: 1.2, ease: [0.2, 0.9, 0.1, 1] }}
+        clipPath={`url(#${id}-reveal)`}
       />
-      <motion.circle
-        cx={lx} cy={ly} r="2.5" fill={color}
-        initial={{ scale: 0 }}
-        whileInView={{ scale: 1 }}
+      <motion.path
+        d={`M${lx.toFixed(1)},${ly.toFixed(1)}h0`}
+        stroke={color}
+        strokeWidth="5"
+        strokeLinecap="round"
+        vectorEffect="non-scaling-stroke"
+        initial={{ opacity: 0 }}
+        whileInView={{ opacity: 1 }}
         viewport={{ once: true }}
-        transition={{ delay: 1.1, type: "spring", stiffness: 300 }}
+        transition={{ delay: 1.1 }}
       />
     </svg>
   );
