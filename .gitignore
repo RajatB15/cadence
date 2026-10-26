@@ -32,3 +32,6 @@ deploy.md
 marketing/
 
 tools/demo-media/explainers/fonts/
+
+# Private reading library (becomes a submodule once its private repo exists).
+reading-data/

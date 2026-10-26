@@ -41,8 +41,43 @@ def test_hash_titles_and_unknown_exercises():
     blocks = X.parse("# Part A\nTurkish get-up\nKettlebell swings\nMystery move\nPush-ups\n#Finisher\nBurpees")
     assert [b["name"] for b in blocks] == ["Part A", "Finisher"]
     assert [e["name"] for e in blocks[0]["exercises"]] == ["Turkish get-up", "Kettlebell swings", "Mystery move", "Push-ups"]
-    assert X.summary(blocks)["unknown"] == ["Turkish get-up", "Mystery move"]
+    assert X.summary(blocks)["unknown"] == ["Mystery move"]
     assert X.parse("Nothing here\nat all") == []
+
+
+def test_dictionary_file_is_consistent():
+    names = set()
+    for e in X.DATA["exercises"]:
+        assert e["category"] in X.CATEGORIES, e
+        keys = {X._norm(a) for a in [e["name"], *e.get("aliases", [])]}
+        assert not keys & names, f"duplicate name or alias: {e['name']}"
+        names |= keys
+    assert all(c["group"] in {"strength", "conditioning", "cardio", "skill", "recovery"} for c in X.CATEGORIES.values())
+    assert {rx_cat for _, rx_cat in X.RULES} <= set(X.CATEGORIES)
+    assert len(X.DATA["exercises"]) >= 250
+
+
+def test_running_cardio_and_extra_categories_are_known():
+    expect = {
+        "Running": "cardio", "Treadmill Run": "cardio", "Easy jog": "cardio", "Strides": "cardio", "Assault Bike": "cardio",
+        "Row Erg": "cardio", "Swimming": "cardio", "Stair Climber": "cardio", "Walking": "cardio", "Hill Sprints": "cardio",
+        "Calf Raises": "calves", "Tibialis raise": "calves", "Clamshell": "hips", "Monster Walk": "hips",
+        "Power Clean": "olympic", "Snatch": "olympic", "A-Skips": "drill", "Butt Kicks": "drill",
+        "Yoga": "mobility", "Foam Rolling": "mobility", "Lateral Raise": "push", "Leg Curl": "hinge", "Reverse Fly": "pull",
+        "Sled Push": "carry", "Lunges": "lunge", "3x10 Dumbbell Goblet Squats": "squat", "Back-Squat": "squat",
+    }
+    for name, pattern in expect.items():
+        assert X.classify(name)["pattern"] == pattern, name
+    assert X.classify("Treadmill intervals")["modality"] == "run"
+    assert X.classify("Deadlift")["loaded"] and not X.classify("Glute Bridge")["loaded"]
+    assert X.classify("Mystery move")["pattern"] is None
+
+
+def test_cardio_block_counts_as_conditioning_and_olympic_is_not_heavy_lower():
+    blocks = X.parse("# Engine\nTreadmill Run\nRow Erg\nAssault Bike")
+    assert blocks[0]["kind"] == "conditioning"
+    assert not X.summary(X.parse("# Power\nPower Clean\nSnatch"))["heavy_lower"]
+    assert X.summary(blocks)["patterns"] == {"cardio": 3}
 
 
 def test_segments_follow_the_heart_rate_shape():

@@ -230,7 +230,10 @@ export interface Brief {
     start: string;
     days_left: number;
     items: { key: string; label: string; done: number; target: number; low?: number }[];
+    time_off: WeekTimeOff | null;
+    phase: string | null;
   };
+  status: TrainingStatusNow;
   streaks: { key: string; label: string; current: number; best: number; unit: string }[];
   tonight: Tonight | null;
   strain: StrainToday | null;
@@ -1807,3 +1810,168 @@ export interface HabitOption {
   key: string;
   label: string;
 }
+
+export type ReadingStatus = "new" | "shown" | "read" | "saved" | "skipped";
+export type ReadingEvidence = "guideline" | "review" | "trial" | "observational" | "expert";
+
+export interface ReadingCard {
+  id: string;
+  topic: string;
+  title: string;
+  summary: string;
+  takeaways: string[];
+  read_min: number;
+  evidence: ReadingEvidence;
+  caution: string | null;
+  source: { name: string; url: string; licence: string };
+  status: ReadingStatus;
+  picked_day: string | null;
+}
+
+export interface ReadingToday extends ReadingCard {
+  why: string;
+  repeat: boolean;
+}
+
+export interface ReadingFeedItem {
+  id: string;
+  topic: string;
+  title: string;
+  journal: string;
+  published: string;
+  evidence: ReadingEvidence;
+  snippet: string;
+  url: string;
+  licence: string;
+  status: ReadingStatus;
+}
+
+export interface ReadingView {
+  available: boolean;
+  skipped_invalid: number;
+  topics: { key: string; label: string; count: number }[];
+  today: ReadingToday | null;
+  cards: ReadingCard[];
+  counts: Record<ReadingStatus, number>;
+  feed: { available: boolean; enabled: boolean; fetched_at: string | null; items: ReadingFeedItem[] };
+}
+
+// ---- time off, plan settings and trends --------------------------------------------------
+
+export type TimeOffKind = "travel" | "vacation" | "sick" | "injury";
+export type AwayActivity = "none" | "light" | "full";
+
+export interface TimeOffItem {
+  id: number;
+  kind: TimeOffKind;
+  start: string;
+  end: string | null;
+  activity: AwayActivity | null;
+  severity: number | null;
+  return_weeks: number | null;
+  return_start_pct: number | null;
+  note: string | null;
+  ongoing: boolean;
+  days: number;
+  uses: { activity: AwayActivity; return_weeks: number; return_start_pct: number };
+}
+
+export interface PlanSettings {
+  ramp_pct: number;
+  build_weeks: number;
+  deload_pct: number;
+  away_activity: AwayActivity;
+  away_return_weeks: number;
+  away_return_pct: number;
+  sick_return_weeks: number;
+  sick_return_pct: number;
+}
+
+export interface TimeOffView {
+  today: string;
+  settings: PlanSettings;
+  defaults: PlanSettings;
+  ranges: Record<string, { min: number; max: number }>;
+  items: TimeOffItem[];
+}
+
+export interface TimeOffBody {
+  kind: TimeOffKind;
+  start: string;
+  end: string | null;
+  activity?: AwayActivity | null;
+  severity?: number | null;
+  return_weeks?: number | null;
+  return_start_pct?: number | null;
+  note?: string | null;
+}
+
+export interface WeekTimeOff {
+  scale: number;
+  availability: number;
+  ret: number;
+  days_off: number;
+}
+
+export type TrainingStatusKey = "progressing" | "maintaining" | "overloading" | "deloading" | "returning" | "off" | "detraining" | "unknown";
+
+export interface TrainingStatusNow {
+  status: TrainingStatusKey;
+  label: string;
+  why: string;
+  blurb: string;
+}
+
+export interface TrainingStatusWeek {
+  week: string;
+  status: TrainingStatusKey;
+  label: string;
+  why: string;
+  load: number;
+  expected: number | null;
+  ratio: number | null;
+  fitness_start: number | null;
+  fitness_end: number | null;
+  change_pct: number | null;
+  acwr: number | null;
+  sessions: number;
+  availability: number;
+  days_off: number;
+}
+
+export type TrainingTrend =
+  | { has_data: false }
+  | {
+      has_data: true;
+      weeks: TrainingStatusWeek[];
+      n: number;
+      counts: Partial<Record<TrainingStatusKey, number>>;
+      current: TrainingStatusNow;
+      slope_4w: number | null;
+      slope_8w: number | null;
+      projection: { weeks: number; from: number; to: [number, number]; note: string } | null;
+      statuses: Record<TrainingStatusKey, { label: string; blurb: string }>;
+    };
+
+export type SeriesTrend =
+  | { has_data: false }
+  | {
+      has_data: true;
+      kind: "readiness" | "score";
+      as_of: string;
+      days: number;
+      n: number;
+      avg: number | null;
+      min: number | null;
+      max: number | null;
+      prev_avg: number | null;
+      delta: number | null;
+      direction: "up" | "down" | "steady" | null;
+      slope_per_week: number | null;
+      slope_ci: [number, number] | null;
+      heading: { direction: "up" | "down" | "steady" | "unknown"; text: string } | null;
+      projection?: { days: number; value: number; range: [number, number] };
+      bands: { high: number; mid: number; low: number } | null;
+      buckets: { start: string; avg: number; n: number }[];
+      values: { day: string; value: number }[];
+    };

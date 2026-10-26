@@ -1,5 +1,11 @@
 """Strength-session content: exercise dictionary, class-text parsing and heart-rate block segmentation.
 
+The dictionary lives in exercises.json (categories, exercises with aliases, fallback regex rules) so it can be edited
+without touching code. Categories are movement patterns (squat, hinge, lunge, push, pull, carry, core, plyometric,
+olympic, calves, hips) plus cardio, drill and mobility; the pattern taxonomy follows the usual strength-and-conditioning
+split into knee-dominant, hip-dominant, single-leg, push, pull and carry work (e.g. NSCA, Essentials of Strength
+Training and Conditioning). Which exercise belongs where is a judgement call, not a measurement.
+
 The watch records these classes as one long set at ~0.5 Hz heart rate, so exercises are never located in time.
 What the heart rate can show is the class structure: warm-up, the blocks in order, cool-down. Segments are found by
 optimal partitioning (dynamic programming over 15-second bins, least squares on mean heart rate and its
@@ -8,40 +14,72 @@ within-bin variability, minimum segment lengths), the standard offline changepoi
 
 from __future__ import annotations
 
+import json
 import re
+from pathlib import Path
 from statistics import fmean, pstdev
 
 import numpy as np
 
-PATTERNS = ("squat", "hinge", "lunge", "push", "pull", "carry", "core", "plyometric")
-MUSCLES = {
-    "squat": ["quads", "glutes"], "hinge": ["hamstrings", "glutes", "lower back"], "lunge": ["quads", "glutes", "hips"],
-    "push": ["chest", "shoulders", "triceps"], "pull": ["back", "biceps"], "carry": ["grip", "core"], "core": ["core"],
-    "plyometric": ["legs", "power"],
-}
-LOWER = {"squat", "hinge", "lunge"}
-# Ordered: the first matching rule wins, so specific phrases come before generic words.
-RULES: tuple[tuple[str, str], ...] = (
-    (r"reverse nordic", "squat"), (r"nordic", "hinge"), (r"split squat|bulgarian|step[- ]?up|lunge|single[- ]leg squat|pistol", "lunge"),
-    (r"squat|wall sit|leg press|leg extension|thruster", "squat"),
-    (r"dead ?lift|\brdl\b|romanian|good morning|hip thrust|glute bridge|bridge|swing|hamstring curl|hyperextension|back extension", "hinge"),
-    (r"pull[- ]?up|chin[- ]?up|row|pull ?down|lat |face pull|curl", "pull"),
-    (r"push[- ]?up|press|bench|dip|fly|flye|tricep|extension", "push"),
-    (r"carry|farmer|suitcase|waiter", "carry"),
-    (r"jump|burpee|sprawl|skater|bound|hop|high knees|mountain climber|battle rope|jack|sprint|sled|tuck", "plyometric"),
-    (r"plank|crunch|sit[- ]?up|dead ?bug|hollow|beast|bear|v[- ]?up|russian twist|pallof|leg raise|ab |abs\b|toe touch|bird dog|drag|hold", "core"),
-)
-LOADED = r"barbell|dumbbell|\bdb\b|kettlebell|\bkb\b|goblet|wtd|weighted|loaded|trap bar|landmine|sandbag|cable|machine"
+DATA = json.loads((Path(__file__).with_name("exercises.json")).read_text(encoding="utf-8"))
+CATEGORIES: dict[str, dict] = DATA["categories"]
+PATTERNS = tuple(CATEGORIES)
+MUSCLES = {k: v["muscles"] for k, v in CATEGORIES.items()}
+LOWER = {k for k, v in CATEGORIES.items() if v["lower"]}
+# Ordered: the first matching rule wins, so specific phrases come before generic words. Used for names not listed.
+RULES: tuple[tuple[str, str], ...] = tuple((rx, cat) for rx, cat in DATA["rules"])
+LOADED = DATA["loaded_pattern"]
+# Words that change how an exercise is done, not what it is: tried again with these removed before the rules.
+MODIFIERS = r"\b(barbell|dumbbells?|db|kettlebell|kb|wtd|weighted|single arm|one arm|alternating|banded|seated|standing|tempo|paused?|loaded)\b"
+
+
+def _norm(name: str) -> str:
+    return re.sub(r"\s+", " ", re.sub(r"[^a-z0-9]+", " ", name.lower().replace("'", ""))).strip()
+
+
+def _keys(name: str) -> list[str]:
+    n = _norm(name)
+    words = n.split()
+    plural = " ".join(words[:-1] + [words[-1][:-1]]) if words and len(words[-1]) > 3 and words[-1].endswith("s") else n
+    return [n, plural]
+
+
+def _index() -> dict[str, dict]:
+    out: dict[str, dict] = {}
+    for e in DATA["exercises"]:
+        for alias in [e["name"], *e.get("aliases", [])]:
+            for k in _keys(alias):
+                out.setdefault(k, e)
+    return out
+
+
+INDEX = _index()
+NOISE = r"^(book now|what to bring|cancel|join|share|details|book|waitlist|\d{1,2}:\d{2}.*|\d+%?|[^a-z]*)$"
 HEAVY_BLOCK = r"strong|strength|heavy|power|max"
 CONDITIONING_BLOCK = r"hiit|interval|conditioning|endurance|metcon|amrap|emom|cardio|anaerobic|burn|tabata|finisher"
+CONDITIONING_PATTERNS = {"plyometric", "cardio"}
 CORE_BLOCK = r"\bcore\b|\babs?\b|trunk"
-NOISE = r"^(book now|what to bring|cancel|join|share|details|book|waitlist|\d{1,2}:\d{2}.*|\d+%?|[^a-z]*)$"
+
+
+def lookup(name: str) -> dict | None:
+    """The dictionary entry for a name, ignoring case, punctuation, plurals, a leading count and equipment words."""
+    n = re.sub(r"^\d+(\.\d+)?\s*(x\s*\d+\s*)?", "", _norm(name))
+    for candidate in (n, re.sub(MODIFIERS, " ", n)):
+        for k in _keys(candidate):
+            if k.strip() in INDEX:
+                return INDEX[k.strip()]
+    return None
 
 
 def classify(name: str) -> dict:
     n = name.lower()
-    pattern = next((p for rx, p in RULES if re.search(rx, n)), None)
-    return {"name": name.strip(), "pattern": pattern, "muscles": MUSCLES.get(pattern, []), "loaded": bool(re.search(LOADED, n))}
+    entry = lookup(name)
+    pattern = entry["category"] if entry else next((p for rx, p in RULES if re.search(rx, n)), None)
+    loaded = bool(re.search(LOADED, n)) or bool(entry and entry.get("loaded"))
+    out = {"name": name.strip(), "pattern": pattern, "muscles": (entry or {}).get("muscles") or MUSCLES.get(pattern, []), "loaded": loaded}
+    if entry and entry.get("modality"):
+        out["modality"] = entry["modality"]
+    return out
 
 
 # "Endurance WOD: 50s ON, 15s OFF", "PACE Along: 40s ON, 20s OFF": a work/rest interval line heads a block.
@@ -104,7 +142,7 @@ def block_kind(block: dict) -> str:
     patterns = [e["pattern"] for e in block["exercises"]]
     if re.search(CORE_BLOCK, name) or (patterns and patterns.count("core") / len(patterns) > 0.5):
         return "core"
-    if re.search(CONDITIONING_BLOCK, name) or _interval_title(name) or (patterns and patterns.count("plyometric") / len(patterns) >= 0.5):
+    if re.search(CONDITIONING_BLOCK, name) or _interval_title(name) or (patterns and sum(p in CONDITIONING_PATTERNS for p in patterns) / len(patterns) >= 0.5):
         return "conditioning"
     if re.search(HEAVY_BLOCK, name) or any(e["loaded"] and e["pattern"] in LOWER | {"push", "pull"} for e in block["exercises"]):
         return "strength"

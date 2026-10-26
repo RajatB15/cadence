@@ -1,8 +1,14 @@
 import type { CustomSpec } from "./customSession";
 import type {
   ActivityDetail,
+  PlanSettings,
+  SeriesTrend,
+  TimeOffBody,
+  TimeOffView,
+  TrainingTrend,
   Behaviour,
   JournalView,
+  ReadingView,
   PlanOption,
   Review,
   BodyProfile,
@@ -70,7 +76,7 @@ export class ApiError extends Error {
 export const READ_ONLY =
   typeof document !== "undefined" &&
   document.querySelector('meta[name="cadence-mode"]')?.getAttribute("content") === "read-only";
-const PHONE_WRITES = ["/api/push/", "/api/garmin/sync", "/api/journal/", "/api/wellbeing", "/api/strength/", "/api/planner", "/api/phases", "/api/weight/entries", "/api/food/", "/api/settings/weather", "/api/settings/profile"];
+const PHONE_WRITES = ["/api/push/", "/api/garmin/sync", "/api/journal/", "/api/wellbeing", "/api/strength/", "/api/planner", "/api/reading", "/api/phases", "/api/weight/entries", "/api/food/", "/api/settings/weather", "/api/settings/profile", "/api/time-off", "/api/settings/plan"];
 
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const method = init.method ?? "GET";
@@ -132,6 +138,13 @@ export const api = {
       method: "PUT",
       body: JSON.stringify({ goal_kg }),
     }),
+  reading: () => request<ReadingView>("/api/reading"),
+  setReading: (id: string, status: "read" | "saved" | "skipped" | "unread") =>
+    request<ReadingView>(`/api/reading/${encodeURIComponent(id)}`, { method: "PUT", body: JSON.stringify({ status }) }),
+  refreshReadingFeed: () => request<{ started: boolean; reason: string | null }>("/api/reading/feed/refresh", { method: "POST" }),
+  readingFeedSetting: () => request<{ enabled: boolean; available: boolean }>("/api/settings/reading-feed"),
+  setReadingFeed: (enabled: boolean) =>
+    request<{ enabled: boolean; available: boolean }>("/api/settings/reading-feed", { method: "PUT", body: JSON.stringify({ enabled }) }),
   journal: (days = 14) => request<JournalView>(`/api/journal?days=${days}`),
   saveJournal: (day: string, answers: Record<string, number>) =>
     request<{ day: string; answers: Record<string, number> }>(`/api/journal/${day}`, { method: "PUT", body: JSON.stringify({ answers }) }),
@@ -255,6 +268,14 @@ export const api = {
   labWhatIf: () => request<LabWhatIf>("/api/lab/whatif"),
   labReplay: (edits: { id: number; action: string }[]) =>
     request<WhatIfResult>(`/api/lab/whatif/replay?${edits.map((e) => `edit=${e.id}:${e.action}`).join("&")}`),
+  timeOff: () => request<TimeOffView>("/api/time-off"),
+  createTimeOff: (body: TimeOffBody) => request<TimeOffView>("/api/time-off", { method: "POST", body: JSON.stringify(body) }),
+  updateTimeOff: (id: number, body: TimeOffBody) => request<TimeOffView>(`/api/time-off/${id}`, { method: "PUT", body: JSON.stringify(body) }),
+  deleteTimeOff: (id: number) => request<TimeOffView>(`/api/time-off/${id}`, { method: "DELETE" }),
+  savePlanSettings: (patch: Partial<{ [K in keyof PlanSettings]: PlanSettings[K] | null }>) =>
+    request<TimeOffView>("/api/settings/plan", { method: "PUT", body: JSON.stringify(patch) }),
+  seriesTrend: (kind: "readiness" | "score", days: number) => request<SeriesTrend>(`/api/trends/${kind}?days=${days}`),
+  trainingTrend: (weeks: number) => request<TrainingTrend>(`/api/trends/training?weeks=${weeks}`),
   wellbeing: () => request<{ today: string; entry: WellbeingEntry | null; entries: WellbeingEntry[] }>("/api/wellbeing"),
   saveWellbeing: (day: string, patch: Partial<Omit<WellbeingEntry, "day">>) =>
     request<WellbeingEntry>(`/api/wellbeing/${day}`, { method: "PUT", body: JSON.stringify(patch) }),

@@ -16,7 +16,7 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from cadence_app import food_label, garmin_connect, garmin_workout, backup, days, events, food_crawl, foodlog, goal_store, journal, ocr, phases, planner_store, profile as profile_store, push, strength, weather, weightlog, wellbeing_store
+from cadence_app import food_label, garmin_connect, garmin_workout, backup, days, events, food_crawl, foodlog, goal_store, journal, ocr, phases, planner_store, profile as profile_store, push, reading, reading_feed, strength, timeoff_store, weather, weightlog, wellbeing_store
 from cadence_app.analytics import accuracy as accuracy_analytics
 from cadence_app.analytics import banister as banister_analytics
 from cadence_app.analytics import channels as channels_analytics
@@ -28,6 +28,9 @@ from cadence_app.analytics import whatif as whatif_analytics
 from cadence_app.analytics import body as body_analytics
 from cadence_app.analytics import nutrition as nutrition_analytics
 from cadence_app.analytics import plan as training_plan
+from cadence_app.analytics import status as status_analytics
+from cadence_app.analytics import timeoff as timeoff_analytics
+from cadence_app.analytics import trends as trend_analytics
 from cadence_app.analytics import planner as session_planner
 from cadence_app.analytics import review as reviews
 from cadence_app.activity_types import activity_family
@@ -153,8 +156,34 @@ class WellbeingRequest(BaseModel):
     note: str | None = Field(default=None, max_length=200)
 
 
+class TimeOffRequest(BaseModel):
+    kind: Literal["travel", "vacation", "sick", "injury"]
+    start: date
+    end: date | None = None
+    activity: Literal["none", "light", "full"] | None = None
+    severity: int | None = Field(default=None, ge=1, le=3)
+    return_weeks: int | None = Field(default=None, ge=0, le=8)
+    return_start_pct: int | None = Field(default=None, ge=20, le=100)
+    note: str | None = Field(default=None, max_length=200)
+
+
+class PlanSettingsRequest(BaseModel):
+    ramp_pct: float | None = None
+    build_weeks: float | None = None
+    deload_pct: float | None = None
+    away_activity: Literal["none", "light", "full"] | None = None
+    away_return_weeks: float | None = None
+    away_return_pct: float | None = None
+    sick_return_weeks: float | None = None
+    sick_return_pct: float | None = None
+
+
 class TrainingModeRequest(BaseModel):
     mode: Literal["auto", "build", "maintain"]
+
+
+class ReadingStatus(BaseModel):
+    status: Literal["read", "saved", "skipped", "unread"]
 
 
 class JournalDayRequest(BaseModel):
@@ -377,13 +406,26 @@ def create_app(
         lambda: current_credential().configured, clock.now, settings.sync_every_h,
     )
 
+    feed_worker = reading_feed.FeedWorker(lambda: reading_feed.refresh(factory, clock.today(), clock.now(), force=True))
+
+    def warm(session: Session) -> None:
+        """Build what Home needs (context, brief, score, personal models) so the first page open is quick."""
+        ctx = insights_service.context(session, _active_source(session), clock.today())
+        if ctx:
+            coach_notes.brief(ctx)
+            cadence_score.summary(ctx)
+
+    warmer = insights_service.ContextWarmer(factory, _active_source, warm)
+
     @asynccontextmanager
     async def lifespan(_app: FastAPI):
         share.resume()
+        warmer.start()
         if settings.scheduler:
             scheduler.start()
         yield
         scheduler.stop()
+        warmer.stop()
         share.stop(remember=False)
         analysis.stop()
         garmin_jobs.close()
@@ -404,7 +446,10 @@ def create_app(
                 origin is not None and origin not in settings.allowed_origins
             ):
                 return JSONResponse({"detail": "Request rejected"}, status_code=403)
-        return await call_next(request)
+        response = await call_next(request)
+        if request.method not in SAFE_METHODS:
+            insights_service.invalidate_context()  # whatever you just wrote is in the next page
+        return response
 
     def get_session() -> Iterator[Session]:
         with factory() as session:
@@ -1330,6 +1375,45 @@ def create_app(
         goal_store.set_weight_target(session, body.goal_kg, _weight_summary(session, today).latest_trend_kg, today, clock.now())
         return {"goal_kg": body.goal_kg}
 
+    @app.get("/api/reading")
+    def reading_view(session: Session = Depends(get_session)) -> dict:
+        def signals() -> dict | None:
+            ctx = insights_service.context(session, _active_source(session), clock.today())
+            if not ctx:
+                return None
+            brief = coach_notes.brief(ctx)
+            return {"kind": (brief.get("today") or {}).get("kind"), "readiness": (brief.get("readiness") or {}).get("score")}
+
+        if settings.reading_feed and reading_feed.due(session, clock.now()):
+            feed_worker.kick()  # fetched in the background; the page shows what is stored now
+        return reading.view(session, settings.reading_data_dir, clock.today(), signals, clock.now(), settings.reading_feed)
+
+    @app.post("/api/reading/feed/refresh")
+    def reading_feed_refresh(session: Session = Depends(get_session)) -> dict:
+        if not settings.reading_feed or not reading_feed.enabled(session):
+            raise HTTPException(409, "The research feed is turned off")
+        fetched = reading_feed.state(session).get("fetched_at")
+        if fetched and clock.now() - datetime.fromisoformat(fetched) < timedelta(hours=1):
+            return {"started": False, "reason": "Checked within the last hour"}
+        return {"started": feed_worker.kick(), "reason": None}
+
+    @app.get("/api/settings/reading-feed")
+    def reading_feed_setting(session: Session = Depends(get_session)) -> dict:
+        return {"enabled": reading_feed.enabled(session), "available": settings.reading_feed}
+
+    @app.put("/api/settings/reading-feed")
+    def set_reading_feed_setting(body: WeatherSetting, session: Session = Depends(get_session)) -> dict:
+        reading_feed.set_enabled(session, body.enabled)
+        if body.enabled and settings.reading_feed:
+            feed_worker.kick()
+        return {"enabled": body.enabled, "available": settings.reading_feed}
+
+    @app.put("/api/reading/{card_id}")
+    def reading_set(card_id: str, body: ReadingStatus, session: Session = Depends(get_session)) -> dict:
+        if not reading.set_status(session, settings.reading_data_dir, card_id, body.status, clock.today(), clock.now()):
+            raise HTTPException(404, "No such reading card")
+        return reading_view(session)
+
     @app.get("/api/journal")
     def journal_view(days: int = Query(14, ge=1, le=60), session: Session = Depends(get_session)) -> dict:
         journal.ensure_catalogue(session, clock.now())
@@ -1581,6 +1665,65 @@ def create_app(
         if not wellbeing_store.delete(session, day):
             raise HTTPException(404, "Not found")
         return {"deleted": True}
+
+    # ---- time off and plan settings ----
+
+    @app.get("/api/time-off")
+    def time_off_view(session: Session = Depends(get_session)) -> dict:
+        return timeoff_store.view(session, clock.today())
+
+    @app.post("/api/time-off")
+    def time_off_create(body: TimeOffRequest, session: Session = Depends(get_session)) -> dict:
+        try:
+            timeoff_store.create(session, body.model_dump(), clock.now())
+        except timeoff_store.TimeOffError as err:
+            raise HTTPException(400, str(err)) from err
+        return timeoff_store.view(session, clock.today())
+
+    @app.put("/api/time-off/{entry_id}")
+    def time_off_update(entry_id: int, body: TimeOffRequest, session: Session = Depends(get_session)) -> dict:
+        try:
+            saved = timeoff_store.update(session, entry_id, body.model_dump())
+        except timeoff_store.TimeOffError as err:
+            raise HTTPException(400, str(err)) from err
+        if saved is None:
+            raise HTTPException(404, "Not found")
+        return timeoff_store.view(session, clock.today())
+
+    @app.delete("/api/time-off/{entry_id}")
+    def time_off_delete(entry_id: int, session: Session = Depends(get_session)) -> dict:
+        if not timeoff_store.delete(session, entry_id):
+            raise HTTPException(404, "Not found")
+        return timeoff_store.view(session, clock.today())
+
+    @app.put("/api/settings/plan")
+    def plan_settings_save(body: PlanSettingsRequest, session: Session = Depends(get_session)) -> dict:
+        try:
+            timeoff_store.save_settings(session, body.model_dump(exclude_unset=True))
+        except timeoff_store.TimeOffError as err:
+            raise HTTPException(400, str(err)) from err
+        return timeoff_store.view(session, clock.today())
+
+    # ---- trends: where training, readiness and the score are heading ----
+
+    @app.get("/api/trends/training")
+    def trends_training(weeks: int = Query(12, ge=4, le=26), session: Session = Depends(get_session)) -> dict:
+        ctx = insights_service.context(session, _active_source(session), clock.today())
+        return {"has_data": True, **status_analytics.report(ctx, weeks), "statuses": {k: {"label": v[0], "blurb": v[1]} for k, v in status_analytics.STATUSES.items()}} if ctx else {"has_data": False}
+
+    @app.get("/api/trends/{kind}")
+    def trends_series(kind: Literal["readiness", "score"], days: int = Query(28, ge=7, le=84), session: Session = Depends(get_session)) -> dict:
+        ctx = insights_service.context(session, _active_source(session), clock.today())
+        if ctx is None:
+            return {"has_data": False}
+        as_of = ctx["as_of"]
+        span = 2 * days  # the window and the equal one before it
+        if kind == "readiness":
+            history = [{"day": d, "score": r["score"]} for d in (as_of - timedelta(days=i) for i in range(span - 1, -1, -1)) if (r := insights_service.readiness_on(ctx, d))]
+        else:
+            r = cadence_score.report(ctx, span)
+            history = [{"day": h["day"], "score": h["score"]} for h in r["history"]] if r else []
+        return {"has_data": bool(history), "kind": kind, "as_of": as_of, **trend_analytics.summarise(history, as_of, days)}
 
     @app.put("/api/settings/training-mode")
     def set_training_mode(body: TrainingModeRequest, session: Session = Depends(get_session)) -> dict:
