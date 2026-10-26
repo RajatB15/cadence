@@ -32,11 +32,12 @@ import { WhatIfCard } from "../components/WhatIfCard";
 import { RecoveryWinsCard, WellbeingCard } from "../components/Wellbeing";
 import { Sheet } from "../components/Sheet";
 import { TimeOffPanel } from "../components/TimeOff";
-import { StatusChip, StatusPanel, TrendPanel } from "../components/Trends";
+import { StatusPanel, TrendPanel } from "../components/Trends";
+import { KIND_LABEL, STATUS_STYLE, usesText } from "../lib/trends";
 import { DemoChip, ErrorBlock, LoadingBlock } from "../components/Shell";
 import { Sparkline } from "../components/Sparkline";
 import { api } from "../lib/api";
-import { deltaTone, formatDelta, formatDuration, formatMetric, formatWeekday, greeting } from "../lib/format";
+import { deltaTone, formatDelta, formatDuration, formatMetric, formatShortDate, formatWeekday, greeting } from "../lib/format";
 import { METRIC_STYLES, activityStyle, fallbackStyle } from "../lib/metrics";
 import type { Brief, MetricSummary, Overview, ReadinessComponent, ScoreSummary } from "../lib/types";
 
@@ -130,6 +131,8 @@ function Dashboard({ data }: { data: Extract<Overview, { has_data: true }> }) {
         </motion.section>
       )}
 
+      {coach && <StatusCard coach={coach} onStatus={() => setSheet("status")} onTimeOff={() => setSheet("timeoff")} />}
+
       {data.journal && (
         <motion.section variants={rise}>
           <CheckInCard day={data.journal.day} done={data.journal.done} count={data.journal.behaviours.length} autoOpen={params.get("checkin") === "1"} />
@@ -169,8 +172,6 @@ function Dashboard({ data }: { data: Extract<Overview, { has_data: true }> }) {
       {coach && coach.recent.items.length > 0 && <RecentSessions recent={coach.recent} />}
 
       {coach && <WhatIfCard card={coach.what_if} />}
-
-      {coach && <StatusRow coach={coach} onStatus={() => setSheet("status")} onTimeOff={() => setSheet("timeoff")} />}
 
       {coach && coach.week.items.length > 0 && <WeekStrip coach={coach} onOpen={() => setSheet("week")} />}
 
@@ -429,22 +430,45 @@ const WEEK_SHORT: Record<string, string> = {
   load: "Load", sessions: "Sessions", hard: "Quality", long: "Long run", easy: "Kept easy", sleep: "Full nights", strength: "Strength", bed: "By 23:30",
 };
 
-function StatusRow({ coach, onStatus, onTimeOff }: { coach: Brief; onStatus: () => void; onTimeOff: () => void }) {
+function StatusCard({ coach, onStatus, onTimeOff }: { coach: Brief; onStatus: () => void; onTimeOff: () => void }) {
   const off = coach.week.time_off;
+  const st = coach.status;
+  const color = STATUS_STYLE[st.status].color;
+  const q = useQuery({ queryKey: ["time-off"], queryFn: api.timeOff });
+  const today = q.data?.today ?? coach.as_of;
+  const soon = new Date(`${today}T00:00:00`);
+  soon.setDate(soon.getDate() + 14);
+  const horizon = toDay(soon);
+  const entries = (q.data?.items ?? []).filter((i) => (!i.end || i.end >= today) && i.start <= horizon);
   return (
-    <motion.section variants={rise} aria-label="Training status" className="space-y-3">
-      <div className="flex flex-wrap items-center gap-3">
-        <StatusChip status={coach.status} onClick={onStatus} />
-        <button type="button" onClick={onTimeOff} className="chip text-mute hover:text-paper pointer-coarse:py-2">
-          <Plane size={12} className="text-gold" /> Away or ill?
-        </button>
-      </div>
-      {off && (
-        <p className="text-sm text-mute">
-          {coach.week.phase === "away" ? "Time off this week: nothing is planned." : `Time off this week: targets are ${Math.round(off.scale * 100)}% of usual.`}
-          {" "}It isn't counted as a miss.
-        </p>
+    <motion.section variants={rise} aria-label="Training status" className="surface p-5 sm:p-6" style={{ borderLeft: `3px solid ${color}` }}>
+      <button type="button" onClick={onStatus} className="group block w-full text-left" aria-label={`Training status: ${st.label}. Show the weekly history`}>
+        <p className="eyebrow mb-2 flex items-center justify-between">Training status <ChevronRight size={11} className="opacity-60 group-hover:opacity-100" /></p>
+        <p className="font-display text-3xl leading-tight sm:text-4xl" style={{ color }}>{st.label}</p>
+        <p className="mt-1 text-sm text-mute">{st.blurb}</p>
+        <p className="mt-1 text-xs text-dim">{st.why}</p>
+      </button>
+      {(entries.length > 0 || off) && (
+        <div className="mt-4 space-y-2 border-t border-line pt-4">
+          {entries.map((i) => (
+            <button key={i.id} type="button" onClick={onTimeOff} className="flex w-full items-start gap-2 text-left text-sm text-paper hover:text-cream">
+              <Plane size={13} className="mt-1 shrink-0 text-gold" />
+              <span>
+                {KIND_LABEL[i.kind]} · {i.ongoing ? `since ${formatShortDate(i.start)}, ongoing` : i.start > today ? `${formatShortDate(i.start)}${i.end && i.end !== i.start ? ` → ${formatShortDate(i.end)}` : ""}` : `until ${formatShortDate(i.end!)}`}
+                <span className="block text-xs text-mute">{usesText(i)}</span>
+              </span>
+            </button>
+          ))}
+          {off && (
+            <p className="text-xs text-mute">
+              {coach.week.phase === "away" ? "This week is time off: nothing is planned." : `This week's targets are ${Math.round(off.scale * 100)}% of usual.`} It isn't counted as a miss.
+            </p>
+          )}
+        </div>
       )}
+      <button type="button" onClick={onTimeOff} className="chip mt-4 text-mute hover:text-paper pointer-coarse:py-2">
+        <Plane size={12} className="text-gold" /> Away or ill?
+      </button>
     </motion.section>
   );
 }
