@@ -2,8 +2,12 @@
 
 - Phases count back from a goal race: taper (1–3 weeks by distance), race-specific (6 weeks), build (8), base before.
   Without a goal, the plan builds continuously and inserts a recovery week after three building weeks.
-- Weekly load: fitness (42-day CTL) rises ~2–5 points a week in building weeks (≈ 6% of current fitness), never above
-  1.25 × chronic load; recovery weeks drop to ~65% (3:1 mesocycles), tapers step down 20–50%.
+- Weekly load: fitness (42-day CTL) rises ~2–8 points a week in building weeks (your ramp setting, 5% of current fitness by
+  default), never above 1.25 × chronic load; recovery weeks drop to your deload setting (65%) after your build length (3
+  weeks) (3:1 mesocycles), tapers step down 20–50%.
+- Time off (analytics/timeoff.py): travel, holiday, illness and injury scale the week's targets by the days you can train
+  and ease you back on a ramp from your pre-break load. A week lost to a break counts as the block's recovery week.
+- Sessions: +1 in the last building week of a block when the last three clean weeks all reached the current number.
 - Long run: +10 minutes per building week up to what the goal needs, and never more than 10% longer (by distance) than
   the longest run of the last 30 days. Single-run spikes predicted overuse injury better than weekly ratios in a
   large 2025 cohort of Garmin runners (Frandsen et al., BJSM).
@@ -19,6 +23,7 @@ from statistics import fmean
 
 from cadence_app.analytics import athlete as A
 from cadence_app.analytics import performance as P
+from cadence_app.analytics import timeoff as T
 from cadence_app.analytics import wellbeing as WB
 
 DAY = timedelta(days=1)
@@ -37,6 +42,8 @@ PHASES = {
     "specific": ("Race-specific", "Race-pace work and long runs that look like race day."),
     "recovery": ("Recovery week", "Load drops ~35% so the last three weeks turn into fitness."),
     "maintain": ("Maintain", "Hold fitness steady: the same load, one quality session, no ramp."),
+    "away": ("Time off", "Nothing planned: this week is travel, holiday, illness or injury."),
+    "return": ("Easing back", "Load ramps back from a share of your pre-break level; no new peaks this week."),
     "absorb": ("Absorb", "Your body is signalling strain: hold load down until it settles."),
     "taper": ("Taper", "Volume down, a little intensity kept: arrive fresh."),
     "race": ("Race week", "Short, sharp and rested."),
@@ -53,7 +60,7 @@ THRESHOLD = {"base": (("2 × 10 min", "2 min jog"), ("3 × 10 min", "2 min jog")
 VO2 = (("5 × 3 min", "3 min jog"), ("5 × 4 min", "3 min jog"), ("6 × 4 min", "3 min jog"))
 
 
-def _goal_phase(goal: dict, ws: date) -> dict | None:
+def _goal_phase(goal: dict, ws: date, build_weeks: int = 3) -> dict | None:
     race_ws = A.week_start(goal["date"])
     if race_ws < ws:
         return None
@@ -64,10 +71,11 @@ def _goal_phase(goal: dict, ws: date) -> dict | None:
     if weeks_out <= taper:
         return {"phase": "taper", "week_in_block": taper - weeks_out + 1, "weeks_to_race": weeks_out}
     k = weeks_out - taper - 1  # 0 = the last week before the taper
-    if k % 4 == 3:
-        return {"phase": "recovery", "week_in_block": 4, "weeks_to_race": weeks_out}
+    block = build_weeks + 1
+    if k % block == build_weeks:
+        return {"phase": "recovery", "week_in_block": block, "weeks_to_race": weeks_out}
     name = "specific" if k < 6 else "build" if k < 14 else "base"
-    return {"phase": name, "week_in_block": 3 - k % 4, "weeks_to_race": weeks_out}
+    return {"phase": name, "week_in_block": build_weeks - k % block, "weeks_to_race": weeks_out}
 
 
 def active_goal(c: dict) -> dict | None:
@@ -105,7 +113,7 @@ def phase(c: dict, ws: date) -> dict:
     if ws in cache:
         return cache[ws]
     goal = active_goal(c)
-    out = _goal_phase(goal, ws) if goal else None
+    out = _goal_phase(goal, ws, (c.get("plan_settings") or T.DEFAULTS)["build_weeks"]) if goal else None
     if out is None:
         mode = c.get("training_mode", "auto")
         flat = plateau(c, ws) if mode == "auto" else None
@@ -115,18 +123,24 @@ def phase(c: dict, ws: date) -> dict:
                           f"No goal is set and fitness has been flat for {flat['weeks']} weeks ({flat['change_pct']:+.1f}%)."}
     if out is None:
         by_week = {w["week"]: w for w in c["weeks"]}
+        cfg = c.get("plan_settings") or T.DEFAULTS
         streak = 0
         for i in range(1, 7):
             w = by_week.get(ws - timedelta(weeks=i))
             p = c["pmc_by_day"].get(ws - timedelta(weeks=i) - DAY)
             if not w or not w["complete"] or not p or p["fitness"] <= 5:
                 break
+            scale = T.week_scale(c.get("time_off") or [], cfg, c.get("today", c["as_of"]), w["week"])
+            if T.is_break(scale):
+                break  # a week lost to time off is the block's recovery week
+            if scale["scale"] < 0.95:
+                continue  # a lighter interruption neither breaks nor extends the block
             if w["load"] < 0.85 * 7 * p["fitness"]:
                 break  # a lighter week resets the block
             streak += 1
         p = c["pmc_by_day"].get(ws - DAY)
-        if streak >= 3:
-            out = {"phase": "recovery", "week_in_block": 4, "weeks_to_race": None}
+        if streak >= cfg["build_weeks"]:
+            out = {"phase": "recovery", "week_in_block": cfg["build_weeks"] + 1, "weeks_to_race": None}
         else:
             out = {"phase": "base" if not p or p["fitness"] < 20 else "build", "week_in_block": streak + 1, "weeks_to_race": None}
     out = {**out, "label": PHASES[out["phase"]][0], "blurb": PHASES[out["phase"]][1] + (f" {out['why']}" if out.get("why") else "")}
@@ -176,7 +190,7 @@ def key_sessions(ph: dict, count: int, goal: dict | None, zones: dict | None, cs
     if count <= 0:
         return []
     name = ph["phase"]
-    i = min(max(ph.get("week_in_block") or 1, 1), 3) - 1
+    i = min(max(ph.get("week_in_block") or 1, 1), 3) - 1  # sessions rotate through three steps whatever the block length
     distance = goal["distance"] if goal else None
     race_pace = P.pace_for(distance, cs, goal.get("target_s"), GOALS[distance]["distance_m"]) if distance else None
     unit = "run" if runner else "session"
@@ -201,8 +215,10 @@ def key_sessions(ph: dict, count: int, goal: dict | None, zones: dict | None, cs
         options = [spec, threshold(THRESHOLD["build"])]
     elif name == "maintain":
         options = [threshold(THRESHOLD["build"]), vo2]
-    elif name in ("recovery", "absorb"):
+    elif name in ("recovery", "absorb", "return"):
         options = [threshold(THRESHOLD["recovery"])]
+    elif name == "away":
+        options = []
     elif name == "taper":
         options = [make("sharpener", "4 × 1 km" if runner else "4 × 4 min", "full recovery", "Sharpener")]
     else:  # race week
@@ -221,6 +237,11 @@ def weekly_plan(c: dict) -> dict | None:
     latest = c["pmc"][-1] if c["pmc"] else None
     start = c["pmc_by_day"].get(ws - DAY) or latest
     ctl = start["fitness"] if start else 0.0
+    cfg, periods = c.get("plan_settings") or T.DEFAULTS, c.get("time_off") or []
+    wk = T.week_scale(periods, cfg, c.get("today", as_of), ws)
+    pre = c["pmc_by_day"].get(T.pre_break_day(periods, cfg, c.get("today", as_of), ws)) if wk["ret"] < 0.999 else None
+    if pre and pre["fitness"] > ctl:
+        ctl = pre["fitness"]  # ease back from the fitness you had before the break, not the lower one the break left
     fatigued = bool(latest and latest["fitness"] > 5 and latest["form"] / latest["fitness"] < -0.3)
     spiking = bool(latest and latest["acwr"] and latest["acwr"] > 1.3)
     warnings = c.get("warnings")
@@ -232,18 +253,24 @@ def weekly_plan(c: dict) -> dict | None:
                   else "deep fatigue" if fatigued else "a load spike" if spiking else None)
     if absorb_why and ph["phase"] not in ("recovery", "taper", "race"):
         ph.update(phase="absorb", label=PHASES["absorb"][0], blurb=f"Held back for {absorb_why}. " + PHASES["absorb"][1])
+    if wk["availability"] < T.OFF_BELOW:
+        ph.update(phase="away", label=PHASES["away"][0], blurb=PHASES["away"][1])
+    elif wk["ret"] < 0.95 and ph["phase"] not in ("taper", "race"):
+        ph.update(phase="return", label=PHASES["return"][0], blurb=PHASES["return"][1])
     name = ph["phase"]
 
     avg_load = fmean(w["load"] for w in weeks)
     chronic = 7 * ctl if ctl > 5 else avg_load
-    ramp = max(2.0, min(5.0, 0.06 * ctl))
+    ramp = max(2.0, min(8.0, cfg["ramp_pct"] / 100 * ctl))
     if name in ("build", "specific", "base"):
         gain = ramp * (0.75 if name == "base" else 1.0)
         target = 7 * (ctl + gain / CTL_WEEK_GAIN) if ctl > 5 else avg_load * 1.05
         target = max(chronic, min(target, (1.2 if name == "base" else 1.25) * chronic))
-        why = f"Fitness {ctl:.0f} → about {ctl + gain:.0f} by next week, capped at 1.25 × your chronic load."
+        why = f"Fitness {ctl:.0f} → about {ctl + gain:.0f} by next week ({cfg['ramp_pct']:g}% ramp), capped at 1.25 × your chronic load."
     elif name == "recovery":
-        target, why = 0.65 * chronic, "About 65% of your chronic load: the recovery week of a 3:1 block."
+        target, why = cfg["deload_pct"] / 100 * chronic, f"About {cfg['deload_pct']:g}% of your chronic load: the recovery week after {cfg['build_weeks']} building weeks."
+    elif name in ("away", "return"):
+        target, why = chronic, "Your pre-break load, scaled by the days you can train and the easing-back ramp."
     elif name == "maintain":
         target, why = chronic, f"Holding fitness at {ctl:.0f}: your chronic load, no ramp. " + (ph.get("why") or "")
     elif name == "absorb":
@@ -257,13 +284,29 @@ def weekly_plan(c: dict) -> dict | None:
     if WB.stress_high(wb, now) and name not in ("recovery", "absorb", "taper", "race"):
         target *= 0.9
         why += " Trimmed 10% because you've reported heavy life stress most of this week."
+    if wk["scale"] < 0.999:
+        target *= wk["scale"]
+        bits = []
+        if wk["availability"] < 0.999:
+            bits.append(f"{wk['days_off']} day{'s' if wk['days_off'] != 1 else ''} off or light")
+        if wk["ret"] < 0.999:
+            bits.append(f"easing back ({round(wk['ret'] * 100)}% of your usual on average)")
+        why += f" Scaled to {round(wk['scale'] * 100)}% for " + " and ".join(bits) + "."
     load_band = [round(target * 0.93), round(target * 1.07)]
 
-    sessions = int(max(3, min(7, round(fmean(w["total_sessions"] for w in weeks)))))
-    if name in ("recovery", "absorb", "taper", "race"):
+    clean = [w for w in weeks if T.week_scale(periods, cfg, c.get("today", as_of), w["week"])["scale"] >= 0.95] or weeks
+    sessions = int(max(3, min(7, round(fmean(w["total_sessions"] for w in clean)))))
+    if name in ("build", "specific", "base") and ph.get("week_in_block") == cfg["build_weeks"] and sessions < 6 and len(clean) >= 3 \
+            and all(w["total_sessions"] >= sessions for w in clean[-3:]):
+        sessions += 1  # the block's peak week asks for one more session than you've been sustaining
+    if name in ("recovery", "absorb", "taper", "race", "return"):
         sessions = max(3, sessions - 1)
+    if wk["scale"] < 0.999:
+        sessions = 0 if name == "away" else max(1, min(sessions, round(sessions * wk["scale"] + 0.25)))
     hard = {"base": 1, "build": 2 if sessions >= 4 else 1, "specific": 2 if sessions >= 4 else 1, "maintain": 1, "recovery": 1, "taper": 1, "race": 1,
-            "absorb": 0 if warnings or hrv.get("status") == "below" else 1}[name]
+            "absorb": 0 if warnings or hrv.get("status") == "below" else 1, "away": 0, "return": 1 if wk["ret"] >= 0.8 else 0}[name]
+    if wk["availability"] < 0.6:
+        hard = 0
     runs_per_week = fmean(w["sessions"].get("run", 0) for w in weeks)
     goal = c.get("goal")
     runner = runs_per_week >= 1.5 or goal is not None
@@ -271,9 +314,16 @@ def weekly_plan(c: dict) -> dict | None:
     easy_cap = zones["floors"][2] - 1 if zones else None
     easy_pace = _easy_pace(c, easy_cap, cs)
 
-    items = [
+    items = []
+    if wk["scale"] < 0.999:
+        away = [p for p in periods if p["id"] in wk["entries"]]
+        kinds = " and ".join(sorted({p["kind"] for p in away})) or "time off"
+        items.append({"label": "Time off", "value": f"{wk['days_off']} day{'s' if wk['days_off'] != 1 else ''} · {round(wk['scale'] * 100)}% of usual",
+                      "why": f"Targets scale for {kinds}. " + ("Nothing is planned: rest, or move gently if you feel well. "
+                                                              if name == "away" else "") + "Change the settings from the week card."})
+    items += [
         {"label": "Weekly load", "value": f"{load_band[0]}–{load_band[1]}", "why": why + f" (4-week average {round(avg_load)})."},
-        {"label": "Sessions", "value": f"{sessions}: {hard} quality, {sessions - hard} easy",
+        {"label": "Sessions", "value": f"{sessions}: {hard} quality, {sessions - hard} easy" if sessions else "None planned",
          "why": f"At least {_spacing(c)} days between quality sessions; easy days genuinely easy."},
     ]
     if easy_cap:
@@ -281,24 +331,28 @@ def weekly_plan(c: dict) -> dict | None:
                       "why": f"Below your Zone 3 floor ({zones['floors'][2]} bpm, {str(zones['method'] or '').replace('_', ' ').lower()} zones)."})
 
     long_min = long_km_cap = None
-    if runner and name != "race":
+    if runner and name not in ("race", "away") and wk["availability"] >= 0.5:
         long_min, long_km_cap, long_why = _long_run(c, name, goal, easy_pace)
         if long_min:
             items.append({"label": "Long run", "value": f"1 × {long_min} min easy" + (f" · ≤ {long_km_cap:.1f} km" if long_km_cap else ""),
                           "why": long_why})
     sg = c.get("sport_goal")
-    long_sport = _long_sport(c, name, sg) if sg and active_goal(c) is sg and name != "race" else None
+    long_sport = _long_sport(c, name, sg) if sg and active_goal(c) is sg and name not in ("race", "away") and wk["availability"] >= 0.5 else None
     if long_sport:
         items.append(long_sport["item"])
     km = [w["run_km"] for w in weeks]
     run_km = None
     if runner and fmean(km) >= 5:
         base_km = fmean(km)
-        lo, hi = {"recovery": (0.6, 0.75), "absorb": (0.7, 0.85), "taper": (0.5, 0.75), "race": (0.3, 0.5), "maintain": (0.92, 1.05)}.get(name, (0.95, 1.10))
+        lo, hi = {"recovery": (0.6, 0.75), "absorb": (0.7, 0.85), "taper": (0.5, 0.75), "race": (0.3, 0.5), "maintain": (0.92, 1.05),
+                  "away": (0, 0), "return": (0.8, 0.9)}.get(name, (0.95, 1.10))
+        lo, hi = lo * wk["availability"] * (wk["ret"] if name != "return" else 1), hi * wk["availability"] * (wk["ret"] if name != "return" else 1)
         run_km = [round(base_km * lo), round(base_km * hi)]
         items.append({"label": "Running volume", "value": f"{run_km[0]}–{run_km[1]} km",
                       "why": "Running km grow ≤ 10% a week: tendons and bones adapt slower than heart and lungs."})
-    strength = {"race": 0, "taper": 1, "recovery": 1}.get(name, 2)
+    strength = {"race": 0, "taper": 1, "recovery": 1, "away": 0}.get(name, 2)
+    if wk["availability"] < 0.6:
+        strength = min(strength, 1)
     if strength:
         named = bool((c.get("strength_content") or {}).get("labelled_28d"))
         items.append({"label": "Strength", "value": f"{strength} × 30–40 min" + (" · 1 heavy lower" if named and strength >= 2 else ""),
@@ -326,6 +380,7 @@ def weekly_plan(c: dict) -> dict | None:
             "long_min": long_min, "long_km_cap": long_km_cap, "long_sport": long_sport["target"] if long_sport else None, "run_km": run_km, "strength": strength, "sleep_h": need,
             "lights_out_min": -30, "hard_spacing": _spacing(c),
         },
+        "time_off": {**wk, "entries": [p for p in periods if p["id"] in wk["entries"]]},
     }
 
 
@@ -353,7 +408,7 @@ def _long_run(c: dict, name: str, goal: dict | None, easy_pace: float | None) ->
     need = GOALS[goal["distance"]]["long_min"] if goal else GENERAL_LONG_MIN
     recent = [w for w in c["weeks"] if w["complete"]][-3:]
     longest = max((w.get("long_run_min", 0) for w in recent), default=0)
-    if name in ("recovery", "absorb"):
+    if name in ("recovery", "absorb", "return"):
         minutes, why = max(45, 0.75 * max(longest, 60)), "Shortened by a quarter for the lighter week."
     elif name == "taper":
         minutes, why = 0.6 * need, "Trimmed for the taper; keep it relaxed."
@@ -381,7 +436,7 @@ def _long_sport(c: dict, name: str, sg: dict) -> dict | None:
     if not recent:
         return None
     longest, ready = max(recent), 0.85 * target
-    if name in ("recovery", "absorb"):
+    if name in ("recovery", "absorb", "return"):
         metres, why = 0.75 * longest, "Shortened by a quarter for the lighter week."
     elif name == "taper":
         metres, why = 0.6 * longest, "Trimmed for the taper; keep it relaxed."

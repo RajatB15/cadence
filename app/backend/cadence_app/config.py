@@ -29,6 +29,8 @@ class Settings:
     push_contact: str = "mailto:cadence@example.com"
     weather: bool = False  # Open-Meteo requests; on for the real service, off in tests unless asked for
     food_data_dir: Path | None = None  # the private food-data submodule (the food library crawl); never in this repo
+    reading_feed: bool = False  # Europe PMC requests; on for the real service, off in tests unless asked for
+    reading_data_dir: Path | None = None  # the private reading-data folder (reading cards); never in this repo
 
     @property
     def archive_dir(self) -> Path:
@@ -59,4 +61,6 @@ def load_settings() -> Settings:
         push_contact=os.environ.get("CADENCE_PUSH_CONTACT", "mailto:cadence@example.com"),
         weather=os.environ.get("CADENCE_WEATHER", "1") != "0",
         food_data_dir=Path(os.environ.get("CADENCE_FOOD_DATA_DIR", REPO_ROOT / "food-data")),
+        reading_feed=os.environ.get("CADENCE_READING_FEED", "1") != "0",
+        reading_data_dir=Path(os.environ.get("CADENCE_READING_DIR", REPO_ROOT / "reading-data")),
     )

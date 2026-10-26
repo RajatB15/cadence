@@ -9,6 +9,7 @@ import type { ActivityDetail, StrengthBlock, StrengthContent, StrengthLabel } fr
 
 export const PATTERN_LABEL: Record<string, string> = {
   squat: "Squat", hinge: "Hinge", lunge: "Single-leg", push: "Push", pull: "Pull", carry: "Carry", core: "Core", plyometric: "Plyo",
+  olympic: "Olympic", calves: "Calves", hips: "Hips", cardio: "Cardio", drill: "Drills", mobility: "Mobility",
 };
 const KIND_COLOR: Record<string, string> = {
   warmup: "#5c5a55", cooldown: "#5c5a55", strength: "#ff6a55", conditioning: "#ffbe55", core: "#9b8cff", mixed: "#6cc7ff",
@@ -207,7 +208,7 @@ function LabelForm({ id, initial, templates, onDone, canCancel }: {
 /** Coach section: movement patterns from named classes over the last 4 weeks. */
 export function StrengthPanel({ s }: { s: StrengthContent | null }) {
   if (!s) return <p className="text-sm text-mute">No strength sessions in the last 4 weeks.</p>;
-  const order = ["squat", "hinge", "lunge", "push", "pull", "core", "plyometric", "carry"];
+  const order = ["squat", "hinge", "lunge", "push", "pull", "core", "plyometric", "carry", "calves", "hips", "cardio", "mobility"];
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap gap-8">

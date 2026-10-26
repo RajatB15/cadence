@@ -11,6 +11,7 @@ from cadence_app.analytics import heat as W
 from cadence_app.analytics import nutrition as N
 from cadence_app.analytics import plan as training_plan
 from cadence_app.analytics import recovery as R
+from cadence_app.analytics import status as ST
 from cadence_app.analytics import strain as S
 from cadence_app.analytics import whatif as WI
 from cadence_app.analytics import wellbeing as WB
@@ -796,8 +797,9 @@ def week_progress(c: dict, plan: dict | None) -> dict:
     strength = sum(1 for a in acts if a.family == "strength")
     easy = [k for k in kinds if k["kind"] != "hard"]
     t = plan["targets"] if plan else None
+    away = bool(plan and plan["phase"]["phase"] == "away")
     items = []
-    if t:
+    if t and not away:
         load = sum(c["load"].get(d, 0) for d in A.daterange(ws, as_of))
         items.append({"key": "load", "label": "Training load", "done": round(load), "target": t["load"][1], "low": t["load"][0]})
         items.append({"key": "sessions", "label": "Sessions", "done": len(acts), "target": t["sessions"]})
@@ -819,7 +821,9 @@ def week_progress(c: dict, plan: dict | None) -> dict:
     beds = _window(s.get("bedtime", {}), ws, as_of)
     if beds:
         items.append({"key": "bed", "label": "Asleep by 23:30", "done": sum(1 for b in beds if b <= -30), "target": len(beds)})
-    return {"start": ws, "days_left": 6 - as_of.weekday(), "items": items, "hard_done": hard, "sessions_done": len(acts), "strength_done": strength}
+    return {"start": ws, "days_left": 6 - as_of.weekday(), "items": items, "hard_done": hard, "sessions_done": len(acts), "strength_done": strength,
+            "time_off": plan.get("time_off") if plan and plan.get("time_off", {}).get("scale", 1) < 0.999 else None,
+            "phase": plan["phase"]["phase"] if plan else None}
 
 
 def today_session(c: dict, r: dict | None, week: dict, plan: dict | None, now_hour: int | None = None, strain_state: str | None = None) -> dict:
@@ -995,6 +999,7 @@ def brief(c: dict) -> dict:
         "goal": plan["goal"] if plan else None,
         "recent": recent_sessions(c),
         "week": week,
+        "status": ST.report(c, 12)["current"],
         "streaks": streaks(c),
         "tonight": c.get("tonight"),
         "fix": [f for f in findings if f["severity"] in ("alert", "warn")][:3],

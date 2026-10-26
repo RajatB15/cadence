@@ -5,17 +5,19 @@ from __future__ import annotations
 import json
 import logging
 import threading
+import time
 from collections import defaultdict
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from statistics import fmean, median, pstdev
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session, sessionmaker
 
 from cadence_app import goal_store
 from cadence_app import journal as journal_store
 from cadence_app import strength as strength_store
+from cadence_app import timeoff_store
 from cadence_app import weather as weather_store
 from cadence_app import wellbeing_store
 from cadence_app.activity_types import activity_family
@@ -30,8 +32,9 @@ from cadence_app.analytics import performance as P
 from cadence_app.analytics import plan as training_plan
 from cadence_app.analytics import recovery as R
 from cadence_app.analytics import strain as S
+from cadence_app.analytics import timeoff as timeoff_mod
 from cadence_app.garmin import fit, vault
-from cadence_app.models import Activity, ActivityAnalysis, AppSetting, DailyMetric, DayHeartHistogram, RawResponse, WeightReading
+from cadence_app.models import Activity, ActivityAnalysis, AppSetting, DailyMetric, DayHeartHistogram, RawResponse, SyncRun, WeightReading
 from cadence_app.sync import utcnow
 
 log = logging.getLogger(__name__)
@@ -307,8 +310,78 @@ def load_analyses(session: Session) -> dict[int, dict]:
 # ---- assembly ---------------------------------------------------------------------
 
 
+CONTEXT_TTL_S = 300
+_ctx_cache: dict[tuple, tuple[float, dict | None]] = {}
+_ctx_lock = threading.Lock()
+
+
+def invalidate_context() -> None:
+    """Drop the cached context: called after anything you write, so the next page sees it."""
+    with _ctx_lock:
+        _ctx_cache.clear()
+
+
+def data_version(session: Session) -> tuple:
+    """Changes whenever a sync starts or finishes or background analysis lands (the vault only changes through those and your own writes)."""
+    runs = session.execute(select(func.max(SyncRun.id), func.max(SyncRun.finished_at), func.count(SyncRun.id))).one()
+    derived = (session.scalar(select(func.count(ActivityAnalysis.activity_id))), session.scalar(select(func.count(DayHeartHistogram.day))))
+    return (session.get_bind().url.render_as_string(), *runs, *derived)  # the database is part of the key: tests and apps never share
+
+
 def context(session: Session, source_id: str, today: date, now: datetime | None = None) -> dict | None:
-    """Everything the coach rules need, computed once per request and shared by every page."""
+    """The shared context, rebuilt only when a sync has landed, you wrote something or five minutes have passed.
+
+    Callers get their own shallow copy, so assigning a key never leaks into another request; the nested phase cache is shared on purpose.
+    """
+    key = (source_id, today, data_version(session))
+    with _ctx_lock:
+        hit = _ctx_cache.get(key)
+    if hit and time.monotonic() - hit[0] < CONTEXT_TTL_S:
+        return dict(hit[1]) if hit[1] is not None else None
+    c = build_context(session, source_id, today, now)
+    if c is not None:
+        c.setdefault("_phase", {})
+    with _ctx_lock:
+        _ctx_cache.clear()
+        _ctx_cache[key] = (time.monotonic(), c)
+    return dict(c) if c is not None else None
+
+
+class ContextWarmer:
+    """Keeps the context and the Home numbers built in the background so opening a page is a lookup, not a rebuild."""
+
+    def __init__(self, factory: sessionmaker, source_id, warm, every_s: float = 30.0):
+        self.factory, self.source_id, self.warm, self.every_s = factory, source_id, warm, every_s
+        self._stop = threading.Event()
+        self._thread: threading.Thread | None = None
+        self._last: tuple | None = None
+
+    def start(self) -> None:
+        self._thread = threading.Thread(target=self._run, daemon=True, name="context-warmer")
+        self._thread.start()
+
+    def stop(self) -> None:
+        self._stop.set()
+
+    def run_once(self) -> None:
+        with self.factory() as session:
+            version = (self.source_id(session), data_version(session))
+            if version == self._last:
+                return
+            self.warm(session)
+            self._last = version
+
+    def _run(self) -> None:
+        while not self._stop.is_set():
+            try:
+                self.run_once()
+            except Exception:  # pylint: disable=broad-exception-caught  # background job boundary
+                log.exception("Warming the context failed")
+            self._stop.wait(self.every_s)
+
+
+def build_context(session: Session, source_id: str, today: date, now: datetime | None = None) -> dict | None:
+    """Everything the coach rules need, computed from the vault (use `context`, which caches it)."""
     garmin = source_id == "garmin"
     weather_on = garmin and weather_store.enabled(session)
     return assemble(
@@ -323,6 +396,8 @@ def context(session: Session, source_id: str, today: date, now: datetime | None 
                  "answers": journal_store.entries(session)},
         labels=strength_store.by_activity(session, source_id),
         wellbeing=wellbeing_store.entries(session, today - timedelta(days=120)),
+        time_off=timeoff_store.entries(session),
+        plan_settings=timeoff_store.settings(session),
         training_mode=training_mode(session),
         hr_hists=load_hr_histograms(session, today) if garmin else None,
         weather=weather_store.by_activity(session, source_id) if weather_on else None,
@@ -336,6 +411,7 @@ def assemble(
     analyses: dict[int, dict] | None = None, zones: dict | None = None, goal: dict | None = None, sport_goal: dict | None = None,
     weights: list[tuple[date, float]] | None = None, strength: dict | None = None, journal: dict | None = None,
     labels: dict[int, dict] | None = None, wellbeing: dict[date, dict] | None = None, training_mode: str = "auto", hr_hists: dict[date, tuple[dict, dict]] | None = None,
+    time_off: list[dict] | None = None, plan_settings: dict | None = None,
     weather: dict[int, dict] | None = None, forecast: list[dict] | None = None, geo: dict[int, dict] | None = None,
 ) -> dict | None:
     """Pure assembly of the shared context from loaded data (tests build contexts with this directly)."""
@@ -414,6 +490,8 @@ def assemble(
     c["strain"] = strain_days(c, hr_hists or {})
     c["journal"] = journal or {"behaviours": [], "answers": {}}
     c["wellbeing"] = wellbeing or {}
+    c["time_off"] = time_off or []
+    c["plan_settings"] = timeoff_mod.clean_settings(plan_settings)
     c["today"] = today
     c["training_mode"] = training_mode if training_mode in TRAINING_MODES else "auto"
     c["labels"] = labels or {}

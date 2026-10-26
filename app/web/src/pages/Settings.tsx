@@ -48,6 +48,7 @@ export function SettingsPage() {
         )}
         <div className="lg:col-span-5">
           <WeatherCard />
+          <ReadingFeedCard />
         </div>
         <div className="lg:col-span-5">
           <BodyProfileCard />
@@ -152,6 +153,34 @@ function WeatherCard() {
           about 10 km and the dates are sent: never routes, times of day or any health data.
         </p>
         {!q.data.available && <p className="mt-2 text-xs text-dim">Weather requests are turned off for this server.</p>}
+      </div>
+      <button type="button" role="switch" aria-checked={q.data.enabled} disabled={toggle.isPending}
+        onClick={() => toggle.mutate(!q.data.enabled)} className={q.data.enabled ? "pop pop-lime" : "pop pop-ghost"}>
+        {q.data.enabled ? "On" : "Off"}
+      </button>
+    </section>
+  );
+}
+
+function ReadingFeedCard() {
+  const client = useQueryClient();
+  const q = useQuery({ queryKey: ["reading-feed-setting"], queryFn: api.readingFeedSetting });
+  const toggle = useMutation({
+    mutationFn: (on: boolean) => api.setReadingFeed(on),
+    onSuccess: () => ["reading-feed-setting", "reading"].forEach((k) => client.invalidateQueries({ queryKey: [k] })),
+  });
+  if (q.isPending) return <LoadingBlock height={160} />;
+  if (q.isError) return <ErrorBlock error={q.error} retry={() => q.refetch()} />;
+  return (
+    <section className="surface flex flex-wrap items-start justify-between gap-6 p-8">
+      <div className="max-w-2xl">
+        <h2 className="font-display text-3xl text-cream">Research feed</h2>
+        <p className="mt-3 text-sm leading-relaxed text-mute">
+          Every few days Cadence searches Europe PMC (free, no account) for recent open-access reviews, trials and guidelines on the reading
+          topics and lists them under Reading → New research. Only the search terms are sent: nothing about you, your data or your device.
+          Results aren’t reviewed by us, and only the title, journal, a short abstract excerpt and a link are kept.
+        </p>
+        {!q.data.available && <p className="mt-2 text-xs text-dim">Feed requests are turned off for this server.</p>}
       </div>
       <button type="button" role="switch" aria-checked={q.data.enabled} disabled={toggle.isPending}
         onClick={() => toggle.mutate(!q.data.enabled)} className={q.data.enabled ? "pop pop-lime" : "pop pop-ghost"}>

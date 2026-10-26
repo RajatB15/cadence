@@ -5,6 +5,7 @@ import { LoadingBlock, Shell } from "./components/Shell";
 import { ActivitiesPage } from "./pages/Activities";
 import { EventPage, EventsPage } from "./pages/Events";
 import { FoodPage } from "./pages/Food";
+import { ReadingPage } from "./pages/Reading";
 import { FoodCrawlPage } from "./pages/FoodCrawl";
 import { GoalsPage } from "./pages/Goals";
 import { OverviewPage } from "./pages/Overview";
@@ -67,6 +68,7 @@ export function App() {
             />
             <Route path="plan" element={<PlanPage />} />
             <Route path="food" element={<FoodPage />} />
+            <Route path="reading" element={<ReadingPage />} />
             <Route path="food/library" element={<FoodCrawlPage />} />
             <Route path="goals" element={<GoalsPage />} />
             <Route

@@ -261,6 +261,24 @@ class Wellbeing(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime)
 
 
+class TimeOff(Base):
+    """A stretch of travel, holiday, illness or injury entered by you. The plan scales its targets around it and eases you
+    back afterwards; settings left null fall back to your plan settings (timeoff.py). Keyed by date, never by vault rows."""
+
+    __tablename__ = "time_off"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    kind: Mapped[str] = mapped_column(String(12))  # travel | vacation | sick | injury
+    start_date: Mapped[date] = mapped_column(Date, index=True)
+    end_date: Mapped[date | None] = mapped_column(Date)  # null = still ongoing
+    activity: Mapped[str | None] = mapped_column(String(8))  # travel/vacation: none | light | full
+    severity: Mapped[int | None] = mapped_column(Integer)  # sick/injury: 1 mild, 2 moderate, 3 severe
+    return_weeks: Mapped[int | None] = mapped_column(Integer)
+    return_start_pct: Mapped[int | None] = mapped_column(Integer)
+    note: Mapped[str | None] = mapped_column(String(200))
+    created_at: Mapped[datetime] = mapped_column(DateTime)
+
+
 class FoodDish(Base):
     """A dish in your own library: nutrition for one serving unit (a roti, a katori of dal, a plate of poha)."""
 
@@ -367,6 +385,37 @@ class JournalEntry(Base):
     behaviour_key: Mapped[str] = mapped_column(ForeignKey("behaviours.key", ondelete="CASCADE"), index=True)
     value: Mapped[float] = mapped_column(Float)
     answered_at: Mapped[datetime] = mapped_column(DateTime)
+
+
+class ReadingItem(Base):
+    """What you did with a reading card. The cards live in the private reading-data folder; only this state is stored,
+    keyed by the card's id so replacing the library never loses it. `picked_day` marks the card chosen for that day."""
+
+    __tablename__ = "reading_items"
+
+    card_id: Mapped[str] = mapped_column(String(80), primary_key=True)
+    status: Mapped[str] = mapped_column(String(12), default="shown")  # shown | read | saved | skipped
+    picked_day: Mapped[date | None] = mapped_column(Date, index=True)
+    why: Mapped[str] = mapped_column(String(200), default="")
+    updated_at: Mapped[datetime] = mapped_column(DateTime)
+
+
+class ReadingFeedItem(Base):
+    """A recent open-access paper from the research feed (reading_feed.py): title, a short abstract snippet and a link.
+    Not curated by us; what you do with one is stored in reading_items under the same id."""
+
+    __tablename__ = "reading_feed"
+
+    id: Mapped[str] = mapped_column(String(80), primary_key=True)  # epmc:<source>:<id>
+    topic: Mapped[str] = mapped_column(String(24), index=True)
+    title: Mapped[str] = mapped_column(Text)
+    journal: Mapped[str] = mapped_column(String(200), default="")
+    published: Mapped[date] = mapped_column(Date, index=True)
+    evidence: Mapped[str] = mapped_column(String(16))
+    snippet: Mapped[str] = mapped_column(Text)
+    url: Mapped[str] = mapped_column(Text)
+    licence: Mapped[str] = mapped_column(String(40), default="")
+    fetched_at: Mapped[datetime] = mapped_column(DateTime)
 
 
 class SyncRun(Base):

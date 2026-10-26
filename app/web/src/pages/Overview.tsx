@@ -11,6 +11,7 @@ import {
   Dumbbell,
   Flame,
   Mountain,
+  Plane,
   Scale,
   Sun,
   TrendingUp,
@@ -22,6 +23,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { PhaseBanner } from "../components/PhaseBanner";
 import { CheckInCard } from "../components/Journal";
+import { TodayReadCard } from "../components/Reading";
 import { Ring, SEVERITY, VerdictChip, readyColor } from "../components/CoachNotes";
 import { CountUp } from "../components/CountUp";
 import { RefreshChip } from "../components/RefreshButton";
@@ -29,6 +31,8 @@ import { EmptyState } from "../components/EmptyState";
 import { WhatIfCard } from "../components/WhatIfCard";
 import { RecoveryWinsCard, WellbeingCard } from "../components/Wellbeing";
 import { Sheet } from "../components/Sheet";
+import { TimeOffPanel } from "../components/TimeOff";
+import { StatusChip, StatusPanel, TrendPanel } from "../components/Trends";
 import { DemoChip, ErrorBlock, LoadingBlock } from "../components/Shell";
 import { Sparkline } from "../components/Sparkline";
 import { api } from "../lib/api";
@@ -81,7 +85,7 @@ function Dashboard({ data }: { data: Extract<Overview, { has_data: true }> }) {
   const coach = data.coach;
   const isDemo = data.source_id === "demo";
   const wide = useWide();
-  const [sheet, setSheet] = useState<null | "readiness" | "week">(null);
+  const [sheet, setSheet] = useState<null | "readiness" | "score" | "week" | "status" | "timeoff">(null);
   const r = coach?.readiness;
   const fallback = headline(data.metrics);
   const [params] = useSearchParams();
@@ -120,7 +124,7 @@ function Dashboard({ data }: { data: Extract<Overview, { has_data: true }> }) {
               size={wide ? 190 : 128}
               title={data.score.label}
               foot={data.score.delta_7d != null ? `${data.score.delta_7d >= 0 ? "+" : "−"}${Math.abs(data.score.delta_7d)} vs last week` : "Train · Recover · Sleep · Move"}
-              to="/score"
+              onClick={() => setSheet("score")}
             />
           )}
         </motion.section>
@@ -131,6 +135,8 @@ function Dashboard({ data }: { data: Extract<Overview, { has_data: true }> }) {
           <CheckInCard day={data.journal.day} done={data.journal.done} count={data.journal.behaviours.length} autoOpen={params.get("checkin") === "1"} />
         </motion.section>
       )}
+
+      <motion.section variants={rise}><TodayReadCard /></motion.section>
 
       {coach && <motion.section variants={rise}><WellbeingCard day={data.today} block={coach.wellbeing} /></motion.section>}
 
@@ -164,6 +170,8 @@ function Dashboard({ data }: { data: Extract<Overview, { has_data: true }> }) {
 
       {coach && <WhatIfCard card={coach.what_if} />}
 
+      {coach && <StatusRow coach={coach} onStatus={() => setSheet("status")} onTimeOff={() => setSheet("timeoff")} />}
+
       {coach && coach.week.items.length > 0 && <WeekStrip coach={coach} onOpen={() => setSheet("week")} />}
 
       {data.score && data.score.top_gaps.length > 0 && <BiggestGain gap={data.score.top_gaps[0]} />}
@@ -179,6 +187,19 @@ function Dashboard({ data }: { data: Extract<Overview, { has_data: true }> }) {
           <ReadinessDetail coach={coach} />
         </Sheet>
       )}
+      {data.score && (
+        <Sheet open={sheet === "score"} onOpenChange={(o) => setSheet(o ? "score" : null)} title="Cadence score" eyebrow={`${data.score.score} today · ${data.score.label}`}>
+          <ScoreDetail score={data.score} />
+        </Sheet>
+      )}
+      {coach && (
+        <Sheet open={sheet === "status"} onOpenChange={(o) => setSheet(o ? "status" : null)} title="Training status" eyebrow="Progressing, maintaining, overloading, deloading">
+          <StatusPanel />
+        </Sheet>
+      )}
+      <Sheet open={sheet === "timeoff"} onOpenChange={(o) => setSheet(o ? "timeoff" : null)} title="Time off & ramp" eyebrow="Travel · holiday · illness · injury">
+        <TimeOffPanel />
+      </Sheet>
       {coach && (
         <Sheet open={sheet === "week"} onOpenChange={(o) => setSheet(o ? "week" : null)} title="This week vs plan" eyebrow={coach.focus ? `Focus: ${coach.focus}` : undefined}>
           <WeekTargets coach={coach} bare />
@@ -234,6 +255,23 @@ const READINESS_VALUE: Record<string, (c: ReadinessComponent) => string> = {
   battery: (c) => (c.now != null ? `${c.now} now · peak ${c.peak}` : `${c.value}`),
 };
 
+function ScoreDetail({ score }: { score: NonNullable<Extract<Overview, { has_data: true }>["score"]> }) {
+  return (
+    <div className="space-y-8">
+      <TrendPanel kind="score" title="Cadence score" />
+      <div>
+        <p className="eyebrow mb-3">Today by pillar</p>
+        <ul className="space-y-2 text-sm">
+          {score.groups.map((g) => (
+            <li key={g.key} className="flex justify-between gap-3"><span className="text-mute">{g.label}</span><span className="num" style={{ color: readyColor(g.score) }}>{g.score}</span></li>
+          ))}
+        </ul>
+      </div>
+      <Link to="/score" className="chip text-paper pointer-coarse:py-2">Full breakdown and every factor <ChevronRight size={12} /></Link>
+    </div>
+  );
+}
+
 function ReadinessDetail({ coach }: { coach: Brief }) {
   const r = coach.readiness!;
   return (
@@ -245,6 +283,7 @@ function ReadinessDetail({ coach }: { coach: Brief }) {
           <p className="mt-2 text-sm text-mute">{coach.call?.detail}</p>
         </div>
       </div>
+      <TrendPanel kind="readiness" title="Readiness" />
       {r.live && r.morning_score != null && (
         <div>
           <p className="eyebrow mb-3">Since this morning</p>
@@ -389,6 +428,26 @@ function TodayCall({ coach }: { coach: Brief }) {
 const WEEK_SHORT: Record<string, string> = {
   load: "Load", sessions: "Sessions", hard: "Quality", long: "Long run", easy: "Kept easy", sleep: "Full nights", strength: "Strength", bed: "By 23:30",
 };
+
+function StatusRow({ coach, onStatus, onTimeOff }: { coach: Brief; onStatus: () => void; onTimeOff: () => void }) {
+  const off = coach.week.time_off;
+  return (
+    <motion.section variants={rise} aria-label="Training status" className="space-y-3">
+      <div className="flex flex-wrap items-center gap-3">
+        <StatusChip status={coach.status} onClick={onStatus} />
+        <button type="button" onClick={onTimeOff} className="chip text-mute hover:text-paper pointer-coarse:py-2">
+          <Plane size={12} className="text-gold" /> Away or ill?
+        </button>
+      </div>
+      {off && (
+        <p className="text-sm text-mute">
+          {coach.week.phase === "away" ? "Time off this week: nothing is planned." : `Time off this week: targets are ${Math.round(off.scale * 100)}% of usual.`}
+          {" "}It isn't counted as a miss.
+        </p>
+      )}
+    </motion.section>
+  );
+}
 
 function MiniRing({ done, target, low }: { done: number; target: number; low?: number }) {
   const goal = low ?? target;
