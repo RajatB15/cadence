@@ -118,9 +118,9 @@ class GarminConnectLink:
         client.client.dump(str(self.token_dir))
 
     def _client(self) -> Any:
-        gc = _library()
-        if not self.status()["connected"]:
+        if not self.status()["connected"]:  # before the import: a missing optional library must not mask "not connected"
             raise NotConnected("Connect Garmin first (Settings).")
+        gc = _library()
         client = gc.Garmin()
         try:
             client.login(tokenstore=str(self.token_dir))  # saved tokens only: no password, no new sign-in
