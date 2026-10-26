@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+import { clsx } from "clsx";
 import { ArrowDownRight, ArrowRight, ArrowUpRight, HelpCircle } from "lucide-react";
 import { useMemo, useState } from "react";
 import { api } from "../lib/api";
@@ -96,13 +97,15 @@ export function TrendPanel({ kind, title, onRange }: { kind: "readiness" | "scor
             <Stat label="Days 70+" value={t.bands ? `${t.bands.high}` : "—"} sub={t.bands ? `${t.bands.mid} at 50–69 · ${t.bands.low} under 50` : null} />
           </div>
           {head && t.heading && (
-            <div className="flex gap-3 border-l-2 pl-3" style={{ borderColor: head.color }}>
-              <head.Icon size={18} style={{ color: head.color }} className="mt-0.5 shrink-0" />
-              <div>
-                <p className="text-sm font-semibold text-paper">{head.word}</p>
-                <p className="mt-1 text-xs leading-relaxed text-mute">{t.heading.text}</p>
-              </div>
+            <div className="flex items-center gap-2 text-sm">
+              <head.Icon size={18} style={{ color: head.color }} className="shrink-0" />
+              <span className="text-paper">{head.word}</span>
+              {t.slope_per_week != null && t.direction !== "steady" && <span className="num text-mute">{t.slope_per_week > 0 ? "+" : ""}{t.slope_per_week}/wk</span>}
+              {t.projection && <span className="num ml-auto text-mute">in 4 wks ≈ {t.projection.value} <span className="text-dim">({t.projection.range[0]}–{t.projection.range[1]})</span></span>}
             </div>
+          )}
+          {t.heading && (
+            <details className="text-xs text-dim"><summary className="cursor-pointer">Details</summary><p className="mt-2 leading-relaxed">{t.heading.text}</p></details>
           )}
         </div>
       )}
@@ -133,55 +136,54 @@ const MARKER_STYLE = { better: { color: "#c8f560", sign: "▲", word: "improving
   flat: { color: "#8d8a82", sign: "●", word: "unchanged" }, missing: { color: "#5c5a55", sign: "–", word: "not enough data" } } as const;
 const VERDICT_COLOR = { adapting: "#c8f560", not_adapting: "#ff9f5a", fading: "#ff6a55", mixed: "#6cc7ff", unknown: "#5c5a55" } as const;
 
-function markerChange(m: EvidenceMarker): string {
-  if (m.change == null || m.ci == null) return m.reason ?? "not enough data";
-  const sign = m.change > 0 ? "+" : m.change < 0 ? "−" : "";
-  const fmt = (v: number) => Math.abs(v).toFixed(1);
-  return `${sign}${fmt(m.change)}${m.unit} (${m.ci[0] > 0 ? "+" : "−"}${fmt(m.ci[0])} to ${m.ci[1] > 0 ? "+" : "−"}${fmt(m.ci[1])})`;
+const SHORT: Record<string, string> = { efficiency: "Efficiency", critical_speed: "Crit. speed", vo2max: "VO₂max", resting_hr: "Resting HR", hrv: "HRV", drift: "HR drift" };
+
+function markerValue(m: EvidenceMarker): string {
+  if (m.change == null) return "no data";
+  return `${m.change > 0 ? "+" : m.change < 0 ? "−" : ""}${Math.abs(m.change).toFixed(1)}${m.unit}`;
 }
 
-/** Do independent body markers agree with what load says? Each marker stands alone; nothing is blended into one score. */
+/** Six body markers as tiles: tap one for what it measures and how sure we are. Never blended into one score. */
 export function EvidencePanel({ evidence }: { evidence: FitnessEvidence }) {
+  const [open, setOpen] = useState<string | null>(null);
   const v = evidence.verdict;
   const color = VERDICT_COLOR[v.key];
   const life = evidence.life_strain;
+  const picked = evidence.markers.find((m) => m.key === open);
   return (
-    <section aria-label="Fitness evidence" className="space-y-4">
-      <p className="eyebrow">Is your body adapting?</p>
-      <div className="border-l-2 pl-3" style={{ borderColor: color }}>
-        <p className="font-display text-2xl" style={{ color }}>{v.label}</p>
-        <p className="mt-1 text-xs leading-relaxed text-mute">{v.text}</p>
-        {evidence.load && (
-          <p className="mt-1 text-xs text-dim">
-            Training load: fitness {evidence.load.then} → {evidence.load.now} over 6 weeks ({evidence.load.change_pct > 0 ? "+" : ""}{evidence.load.change_pct}%).
-          </p>
-        )}
+    <section aria-label="Fitness evidence" className="space-y-3">
+      <div className="flex items-baseline justify-between gap-3">
+        <p className="eyebrow">Is your body adapting?</p>
+        <p className="font-display text-xl" style={{ color }}>{v.label}</p>
       </div>
-      <ul className="space-y-3">
+      <div className="grid grid-cols-3 gap-2">
         {evidence.markers.map((m) => {
           const st = MARKER_STYLE[m.state];
           return (
-            <li key={m.key} className="flex gap-3">
-              <span className="num mt-0.5 w-4 shrink-0 text-center" style={{ color: st.color }} aria-hidden>{st.sign}</span>
-              <div className="min-w-0">
-                <p className="text-sm text-paper">{m.label} <span className="text-xs" style={{ color: st.color }}>{st.word}</span></p>
-                <p className="num text-xs text-mute">{markerChange(m)}{m.change != null ? ` · ${m.n} readings, last ${m.window_days} days` : ""}</p>
-                <p className="text-[11px] text-dim">{m.note}</p>
-              </div>
-            </li>
+            <button key={m.key} type="button" onClick={() => setOpen(open === m.key ? null : m.key)} aria-pressed={open === m.key}
+              className={clsx("border p-2.5 text-left transition-colors", open === m.key ? "border-gold bg-gold/10" : "border-line hover:border-line-strong")}>
+              <p className="text-[10px] tracking-wide text-mute uppercase">{SHORT[m.key] ?? m.label}</p>
+              <p className="num mt-1 text-lg leading-none" style={{ color: st.color }}>{st.sign} <span className="text-sm">{markerValue(m)}</span></p>
+            </button>
           );
         })}
-      </ul>
-      {life && (
-        <p className="text-xs leading-relaxed text-mute">
-          {life.state === "missing"
-            ? `Everyday strain: ${life.reason}.`
-            : `Everyday strain (outside workouts) is ${life.state === "heavy" ? "heavier" : life.state === "light" ? "lighter" : "about the same"} than usual this week: ${life.week} vs ${life.usual} typical (${life.weeks} weeks). ${life.note}`}
-        </p>
+      </div>
+      {picked && (
+        <div className="border-l-2 border-gold pl-3 text-xs leading-relaxed text-mute">
+          <p className="text-paper">{picked.label}: {MARKER_STYLE[picked.state].word}</p>
+          <p>{picked.note}</p>
+          <p className="num text-dim">{picked.change != null && picked.ci ? `${picked.n} readings, last ${picked.window_days} days · 95% range ${picked.ci[0].toFixed(1)} to ${picked.ci[1].toFixed(1)}${picked.unit}` : picked.reason}</p>
+        </div>
       )}
-      <p className="text-xs leading-relaxed text-dim">
-        A marker counts as improving or worsening only when its 95% range excludes zero and the change is bigger than everyday noise. Associations over weeks, not proof training caused them.
+      <p className="num text-xs text-mute">
+        {v.counts.better ?? 0} ▲ · {v.counts.worse ?? 0} ▼ · {v.counts.flat ?? 0} ● · {v.counts.missing ?? 0} no data
+        {evidence.load ? ` · fitness ${evidence.load.change_pct > 0 ? "+" : ""}${evidence.load.change_pct}% in 6 wks` : ""}
+        {life && life.state !== "missing" && life.state !== "usual" ? ` · everyday strain ${life.state === "heavy" ? "high" : "low"}` : ""}
       </p>
+      <details className="text-xs text-dim">
+        <summary className="cursor-pointer">How to read this</summary>
+        <p className="mt-2 leading-relaxed">{v.text} A marker counts only when its 95% range excludes zero and the change beats everyday noise. Associations over weeks, not proof training caused them.</p>
+      </details>
     </section>
   );
 }
@@ -207,8 +209,7 @@ export function StatusPanel() {
         <div className="space-y-5">
           <div className="border-l-2 pl-3" style={{ borderColor: color }}>
             <p className="font-display text-3xl" style={{ color }}>{now.label}</p>
-            <p className="mt-1 text-sm text-mute">{now.blurb}</p>
-            <p className="mt-1 text-xs text-dim">{now.why}</p>
+            <p className="mt-1 text-sm text-mute">{now.why}</p>
           </div>
           {t.evidence && <EvidencePanel evidence={t.evidence} />}
           {t.n >= 2 && <Chart option={option} height={200} label="Weekly training load coloured by status" />}
@@ -224,9 +225,7 @@ export function StatusPanel() {
             <Stat label="Fitness, last 8 weeks" value={t.slope_8w != null ? `${t.slope_8w > 0 ? "+" : ""}${t.slope_8w}%/wk` : "—"} sub={t.slope_8w == null ? "needs 8 weeks" : null} />
           </div>
           {t.projection && (
-            <p className="text-xs leading-relaxed text-mute">
-              Fitness {t.projection.from} now, about {t.projection.to[0]}–{t.projection.to[1]} in {t.projection.weeks} weeks if the recent pace simply continues. {t.projection.note}
-            </p>
+            <p className="num text-xs text-mute">Fitness {t.projection.from} → {t.projection.to[0]}–{t.projection.to[1]} in {t.projection.weeks} wks <span className="text-dim">if the pace continues</span></p>
           )}
           <details className="text-sm">
             <summary className="eyebrow cursor-pointer">Week by week</summary>
@@ -239,9 +238,10 @@ export function StatusPanel() {
               ))}
             </ul>
           </details>
-          <p className="text-xs leading-relaxed text-dim">
-            Each week is judged from fitness change, load against 7 × the fitness it started with, and acute:chronic load (0.8–1.3 productive, Gabbett 2016). Rules of thumb for labelling, not medical advice or proof of cause.
-          </p>
+          <details className="text-xs text-dim">
+            <summary className="cursor-pointer">How weeks are judged</summary>
+            <p className="mt-2 leading-relaxed">From fitness change, load against 7 × the fitness the week started with, and acute:chronic load (0.8–1.3 productive, Gabbett 2016). Rules of thumb for labelling, not medical advice or proof of cause.</p>
+          </details>
         </div>
       )}
     </section>

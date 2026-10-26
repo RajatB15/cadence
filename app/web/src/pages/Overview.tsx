@@ -33,7 +33,7 @@ import { RecoveryWinsCard, WellbeingCard } from "../components/Wellbeing";
 import { Sheet } from "../components/Sheet";
 import { TimeOffPanel } from "../components/TimeOff";
 import { StatusPanel, TrendPanel } from "../components/Trends";
-import { KIND_LABEL, STATUS_STYLE, usesText } from "../lib/trends";
+import { KIND_LABEL, STATUS_STYLE } from "../lib/trends";
 import { DemoChip, ErrorBlock, LoadingBlock } from "../components/Shell";
 import { Sparkline } from "../components/Sparkline";
 import { api } from "../lib/api";
@@ -443,33 +443,24 @@ function StatusCard({ coach, onStatus, onTimeOff }: { coach: Brief; onStatus: ()
   return (
     <motion.section variants={rise} aria-label="Training status" className="surface p-5 sm:p-6" style={{ borderLeft: `3px solid ${color}` }}>
       <button type="button" onClick={onStatus} className="group block w-full text-left" aria-label={`Training status: ${st.label}. Show the weekly history`}>
-        <p className="eyebrow mb-2 flex items-center justify-between">Training status <ChevronRight size={11} className="opacity-60 group-hover:opacity-100" /></p>
-        <p className="font-display text-3xl leading-tight sm:text-4xl" style={{ color }}>{st.label}</p>
-        <p className="mt-1 text-sm text-mute">{st.blurb}</p>
-        <p className="mt-1 text-xs text-dim">{st.why}</p>
-        {st.evidence && st.evidence.key !== "unknown" && <p className="mt-2 text-xs text-mute">Body markers: {st.evidence.summary}</p>}
-      </button>
-      {(entries.length > 0 || off) && (
-        <div className="mt-4 space-y-2 border-t border-line pt-4">
-          {entries.map((i) => (
-            <button key={i.id} type="button" onClick={onTimeOff} className="flex w-full items-start gap-2 text-left text-sm text-paper hover:text-cream">
-              <Plane size={13} className="mt-1 shrink-0 text-gold" />
-              <span>
-                {KIND_LABEL[i.kind]} · {i.ongoing ? `since ${formatShortDate(i.start)}, ongoing` : i.start > today ? `${formatShortDate(i.start)}${i.end && i.end !== i.start ? ` → ${formatShortDate(i.end)}` : ""}` : `until ${formatShortDate(i.end!)}`}
-                <span className="block text-xs text-mute">{usesText(i)}</span>
-              </span>
-            </button>
-          ))}
-          {off && (
-            <p className="text-xs text-mute">
-              {coach.week.phase === "away" ? "This week is time off: nothing is planned." : `This week's targets are ${Math.round(off.scale * 100)}% of usual.`} It isn't counted as a miss.
-            </p>
-          )}
+        <div className="flex items-center justify-between gap-3">
+          <p className="font-display text-3xl leading-tight sm:text-4xl" style={{ color }}>{st.label}</p>
+          <ChevronRight size={16} className="shrink-0 text-dim group-hover:text-paper" />
         </div>
-      )}
-      <button type="button" onClick={onTimeOff} className="chip mt-4 text-mute hover:text-paper pointer-coarse:py-2">
-        <Plane size={12} className="text-gold" /> Away or ill?
+        <p className="mt-1 text-sm text-mute">{st.why}</p>
       </button>
+      <div className="mt-4 flex flex-wrap items-center gap-2">
+        {entries.map((i) => (
+          <button key={i.id} type="button" onClick={onTimeOff} className="chip text-paper pointer-coarse:py-2">
+            <Plane size={12} className="text-gold" />
+            {KIND_LABEL[i.kind]} · {i.ongoing ? "ongoing" : i.start > today ? formatShortDate(i.start) : `to ${formatShortDate(i.end!)}`}
+          </button>
+        ))}
+        {off && <span className="num text-xs text-mute">{Math.round(off.scale * 100)}% targets · no miss</span>}
+        <button type="button" onClick={onTimeOff} className="chip text-mute hover:text-paper pointer-coarse:py-2">
+          <Plane size={12} className="text-gold" /> Away or ill?
+        </button>
+      </div>
     </motion.section>
   );
 }
