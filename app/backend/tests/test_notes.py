@@ -140,3 +140,26 @@ def test_after_a_session_today_explains_what_is_still_open():
     assert out["title"] != "Done for today" and out["next"]
     late = notes.today_session(c, r, week, plan, now_hour=21)
     assert late["second"] is None
+
+
+def test_open_work_moves_to_tomorrow_once_the_strain_budget_is_used():
+    acts, i = [], 0
+    for w in range(8):
+        for dd in (0, 2, 4):
+            i += 1
+            acts.append(act(i, D0 + timedelta(days=7 * w + dd), HARD if dd == 2 else EASY))
+    days = [D0 + timedelta(days=k) for k in range(60)]
+    series = {"hrv": {x: 55.0 for x in days}, "resting_hr": {x: 50.0 for x in days}, "sleep_score": {x: 85.0 for x in days},
+              "sleep_hours": {x: 7.8 for x in days}, "body_battery": {x: 92.0 for x in days}}
+    today = D0 + timedelta(days=59)
+    gym = act(999, today, (3000, 600, 0, 0, 0), family="strength", load=60, distance_m=None)
+    c = ctx(acts + [gym], series, days=60)
+    plan = insights_weekly_plan(c)
+    week = notes.week_progress(c, plan)
+    r = notes.readiness_on(c, today)
+    open_ = notes.today_session(c, r, week, plan, now_hour=10)
+    assert open_["status"] == "open"
+    used = notes.today_session(c, r, week, plan, now_hour=10, strain_state="above")
+    assert used["status"] == "open" and "not done today" in used["title"] and used["second"] is None
+    assert "budget is already used" in used["detail"] + used["next"]
+    assert "not done today" not in notes.today_session(c, r, week, plan, now_hour=10, strain_state="below")["title"]
