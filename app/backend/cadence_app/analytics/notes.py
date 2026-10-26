@@ -822,7 +822,8 @@ def week_progress(c: dict, plan: dict | None) -> dict:
     return {"start": ws, "days_left": 6 - as_of.weekday(), "items": items, "hard_done": hard, "sessions_done": len(acts), "strength_done": strength}
 
 
-def today_session(c: dict, r: dict | None, week: dict, plan: dict | None, now_hour: int | None = None) -> dict:
+def today_session(c: dict, r: dict | None, week: dict, plan: dict | None, now_hour: int | None = None, strain_state: str | None = None) -> dict:
+    """`strain_state` is today's strain status (below / in / above); once the day's budget is used, open work moves to tomorrow."""
     as_of = c["as_of"]
     done_today = [a for a in c["acts"] if a.day == as_of and A.is_training(a)]
     if not done_today:
@@ -845,6 +846,7 @@ def today_session(c: dict, r: dict | None, week: dict, plan: dict | None, now_ho
            "sessions": [{"id": a.id, "name": a.name, "verdict": verdict(a, hard)} for a in done_today], "second": None}
 
     kind = planned["kind"] if planned else None
+    budget_used = strain_state in ("in", "above")
     if kind is None or (kind == "key" and hard_today) or (kind == "long" and long_today) or (kind == "easy" and cardio_today and not hard_today):
         status, title = "matched", "Today's work is done"
         detail = f"You did {did}." + (f" That covers what today called for ({planned['title'].lower()})." if planned else "")
@@ -853,6 +855,9 @@ def today_session(c: dict, r: dict | None, week: dict, plan: dict | None, now_ho
         status = "open"
         title = "Key session still open" if kind == "key" else "Long run still open"
         detail = f"You did {did}, which doesn't replace the {'quality session' if kind == 'key' else 'long run'} today called for."
+        if budget_used:
+            title = "Key session not done today" if kind == "key" else "Long run not done today"
+            detail = f"You did {did}, which doesn't replace the {'quality session' if kind == 'key' else 'long run'} today called for, and today's strain budget is already used."
         nxt = (f"Move it to {tomorrow} rather than stacking it on today's session." if days_left > 0
                else "Skip it this week rather than doubling up; next week's plan accounts for it.")
     elif kind == "easy" and hard_today:
@@ -863,6 +868,9 @@ def today_session(c: dict, r: dict | None, week: dict, plan: dict | None, now_ho
         status, title = "open", "Aerobic work still open"
         detail = f"You did {did}. Useful, but it doesn't build the aerobic base today called for ({planned['title'].lower()})."
         nxt = "Fit it in later today if you feel fresh, or make it tomorrow's session."
+        if budget_used:
+            title = "Aerobic work not done today"
+            nxt = f"Today's strain budget is already used; make it {tomorrow}'s session."
     else:
         status, title = "extra", "Bonus session on a recovery day"
         detail = f"Today was earmarked for rest; you did {did}."
@@ -870,7 +878,7 @@ def today_session(c: dict, r: dict | None, week: dict, plan: dict | None, now_ho
 
     hour = now_hour if now_hour is not None else datetime.now().hour
     room = typical == 0 or load < 0.7 * typical
-    if status == "open" and r and r["score"] >= 70 and hour < 19 and room and not hard_today:
+    if status == "open" and r and r["score"] >= 70 and hour < 19 and room and not hard_today and not budget_used:
         cap = t.get("easy_cap") or easy_cap(c)
         out["second"] = {"title": "Optional: easy 30–40 min this evening",
                          "detail": f"Conversational aerobic work{f' under {cap} bpm' if cap else ''}. Never a second hard session on the same day."}
@@ -968,7 +976,9 @@ def brief(c: dict) -> dict:
     week = week_progress(c, plan)
     findings = sorted(coach(c), key=lambda f: SEVERITY_ORDER[f["severity"]])
     trend = [{"day": d, "score": x["score"]} for d in A.daterange(as_of - 13 * DAY, as_of) if (x := readiness_on(c, d))]
-    today = today_session(c, morning, week, plan)
+    # Strain only depends on the plan kind through "done", so its status can steer the done-card before it exists.
+    done_strain = strain_today(c, morning, {"kind": "done"})
+    today = today_session(c, morning, week, plan, strain_state=done_strain["status"] if done_strain else None)
     return {
         "as_of": as_of,
         "readiness": {k: r[k] for k in ("score", "label", "components", "morning_score", "changes", "live") if k in r} if r else None,
