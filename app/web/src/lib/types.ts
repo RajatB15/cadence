@@ -1913,13 +1913,38 @@ export interface WeekTimeOff {
   days_off: number;
 }
 
-export type TrainingStatusKey = "progressing" | "maintaining" | "overloading" | "deloading" | "returning" | "off" | "detraining" | "unknown";
+export type TrainingStatusKey = "progressing" | "not_adapting" | "maintaining" | "overloading" | "deloading" | "returning" | "off" | "detraining" | "unknown";
 
 export interface TrainingStatusNow {
   status: TrainingStatusKey;
   label: string;
   why: string;
   blurb: string;
+  evidence?: { key: EvidenceVerdictKey; label: string; summary: string };
+}
+
+export type EvidenceVerdictKey = "adapting" | "not_adapting" | "fading" | "mixed" | "unknown";
+
+export interface EvidenceMarker {
+  key: string;
+  label: string;
+  note: string;
+  window_days: number;
+  n: number;
+  state: "better" | "worse" | "flat" | "missing";
+  change: number | null;
+  ci: [number, number] | null;
+  unit: string;
+  now: number | null;
+  before: number | null;
+  reason: string | null;
+}
+
+export interface FitnessEvidence {
+  markers: EvidenceMarker[];
+  load: { change_pct: number; state: "up" | "steady" | "down"; now: number; then: number } | null;
+  life_strain: { state: "heavy" | "usual" | "light"; ratio: number; week: number; usual: number; weeks: number; note: string } | { state: "missing"; reason: string } | null;
+  verdict: { key: EvidenceVerdictKey; label: string; text: string; summary: string; judged: number; counts: Record<string, number> };
 }
 
 export interface TrainingStatusWeek {
@@ -1947,6 +1972,7 @@ export type TrainingTrend =
       n: number;
       counts: Partial<Record<TrainingStatusKey, number>>;
       current: TrainingStatusNow;
+      evidence: FitnessEvidence | null;
       slope_4w: number | null;
       slope_8w: number | null;
       projection: { weeks: number; from: number; to: [number, number]; note: string } | null;

@@ -7,7 +7,9 @@ Each complete week is judged from three numbers, all from your own history:
 Order of the rules: time off, easing back, overloading, deloading (or a planned recovery/taper week), detraining, progressing,
 maintaining. The thresholds are rules of thumb for labelling, not medical or causal claims. The headline looks at the last
 three complete weeks (the middle one decides ties) and is overridden only by time off now or an acute overload signal.
-Fewer than MIN_WEEKS weeks of history, or fitness under MIN_FITNESS, gives "not enough data" rather than a guess.
+The load-based label is then checked against evidence.py: if load says progressing or maintaining but most independent body
+markers (efficiency, critical speed, VO₂max, resting HR, HRV, heart-rate drift) are moving the wrong way, the headline reads
+"Not adapting yet". Fewer than MIN_WEEKS weeks of history, or fitness under MIN_FITNESS, gives "not enough data" rather than a guess.
 """
 
 from __future__ import annotations
@@ -15,6 +17,7 @@ from __future__ import annotations
 from datetime import date, timedelta
 
 from cadence_app.analytics import athlete as A
+from cadence_app.analytics import evidence as EV
 from cadence_app.analytics import plan as training_plan
 from cadence_app.analytics import timeoff as T
 
@@ -33,6 +36,7 @@ STATUSES = {
     "overloading": ("Overloading", "Load or fatigue is running ahead of what you've built up."),
     "deloading": ("Deloading", "A lighter stretch so the work can turn into fitness."),
     "returning": ("Easing back", "Rebuilding after time off, on a ramp."),
+    "not_adapting": ("Not adapting yet", "Load is fine, but your body markers aren't improving."),
     "off": ("Time off", "Travel, holiday, illness or injury took the week."),
     "detraining": ("Slipping", "Load has stayed low and fitness is falling."),
     "unknown": ("Not enough data", "Needs a few more weeks of training history."),
@@ -105,7 +109,7 @@ def report(c: dict, weeks: int = 12) -> dict:
         prev_light = r["ratio"] is not None and r["ratio"] < LIGHT_RATIO
         rows.append({**r, "status": status, "label": STATUSES[status][0], "why": why})
     rows = rows[-weeks:]
-    out = {"weeks": rows, "n": len(rows), "counts": {}, "current": None, "slope_4w": None, "slope_8w": None, "projection": None}
+    out = {"weeks": rows, "n": len(rows), "counts": {}, "current": None, "evidence": None, "slope_4w": None, "slope_8w": None, "projection": None}
     for r in rows:
         out["counts"][r["status"]] = out["counts"].get(r["status"], 0) + 1
     if len(rows) < MIN_WEEKS:
@@ -126,7 +130,12 @@ def report(c: dict, weeks: int = 12) -> dict:
         status, why = "overloading", f"Acute:chronic load is {latest['acwr']:.2f}, past the 1.5 spike line."
     elif status != "overloading":
         why = f"Last {len(recent)} weeks: " + ", ".join(STATUSES[s][0].lower() for s in recent) + "."
-    out["current"] = {"status": status, "label": STATUSES[status][0], "why": why, "blurb": STATUSES[status][1]}
+    ev = EV.report(c)
+    if ev["verdict"]["key"] == "not_adapting" and status in ("progressing", "maintaining"):
+        status, why = "not_adapting", f"Load says {STATUSES[pick][0].lower()}, but " + ev["verdict"]["text"][0].lower() + ev["verdict"]["text"][1:]
+    out["evidence"] = ev
+    out["current"] = {"status": status, "label": STATUSES[status][0], "why": why, "blurb": STATUSES[status][1],
+                      "evidence": {"key": ev["verdict"]["key"], "label": ev["verdict"]["label"], "summary": ev["verdict"]["summary"]}}
 
     series = [(r["week"], r["fitness_end"]) for r in rows if r["fitness_end"] is not None]
     for key, n in (("slope_4w", 4), ("slope_8w", 8)):
