@@ -81,7 +81,7 @@ export function TodayReadCard() {
   const set = useSetReading();
   const [open, setOpen] = useState(false);
   if (query.isPending) return <div className="surface h-40 animate-pulse" aria-busy="true" aria-label="Loading today’s read" />;
-  if (query.isError) return null;
+  if (query.isError) return <div className="surface p-6 text-sm text-mute">Today’s read couldn’t load. <button type="button" className="text-gold underline" onClick={() => query.refetch()}>Retry</button></div>;
   const view = query.data;
   if (!view.available) return null;
   const card = view.today;

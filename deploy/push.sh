@@ -16,6 +16,11 @@ if [[ -f "$ROOT/food-data/library/catalogue.json" ]]; then
   ssh "$HOST" 'mkdir -p /opt/cadence/food-data/library'
   rsync -az "$ROOT/food-data/library/catalogue.json" "$HOST:/opt/cadence/food-data/library/"
 fi
+# The reading cards from the private reading-data folder, when it exists (the app hides reading without them).
+if [[ -d "$ROOT/reading-data/cards" ]]; then
+  ssh "$HOST" 'mkdir -p /opt/cadence/reading-data'
+  rsync -az --delete "$ROOT/reading-data/cards/" "$HOST:/opt/cadence/reading-data/cards/"
+fi
 
 ssh "$HOST" 'bash -s' <<'REMOTE'
 set -euo pipefail
