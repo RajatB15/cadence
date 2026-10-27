@@ -5,6 +5,7 @@ import {
   BedDouble,
   CalendarCheck,
   CheckCircle2,
+  BookOpen,
   ChevronDown,
   ChevronRight,
   Compass,
@@ -131,6 +132,8 @@ function Dashboard({ data }: { data: Extract<Overview, { has_data: true }> }) {
         </motion.section>
       )}
 
+      <motion.section variants={rise}><TodayReadCard /></motion.section>
+
       {coach && <StatusCard coach={coach} onStatus={() => setSheet("status")} onTimeOff={() => setSheet("timeoff")} />}
 
       {data.journal && (
@@ -138,8 +141,6 @@ function Dashboard({ data }: { data: Extract<Overview, { has_data: true }> }) {
           <CheckInCard day={data.journal.day} done={data.journal.done} count={data.journal.behaviours.length} autoOpen={params.get("checkin") === "1"} />
         </motion.section>
       )}
-
-      <motion.section variants={rise}><TodayReadCard /></motion.section>
 
       {coach && <motion.section variants={rise}><WellbeingCard day={data.today} block={coach.wellbeing} /></motion.section>}
 
@@ -153,6 +154,9 @@ function Dashboard({ data }: { data: Extract<Overview, { has_data: true }> }) {
         )}
         <Link to="/food" className="chip text-mute hover:text-paper pointer-coarse:py-2">
           <Utensils size={12} className="text-gold" /> Log food
+        </Link>
+        <Link to="/reading" className="chip text-mute hover:text-paper pointer-coarse:py-2">
+          <BookOpen size={12} className="text-gold" /> Reading
         </Link>
         <Link to="/phases" className="chip text-mute hover:text-paper pointer-coarse:py-2">
           <Flame size={12} className="text-gold" /> Phases
