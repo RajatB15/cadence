@@ -36,6 +36,7 @@ export const chartBase = {
   grid: { left: 8, right: 16, top: 24, bottom: 8, containLabel: true },
   tooltip: {
     trigger: "axis",
+    confine: true,
     backgroundColor: "#121213",
     borderColor: "#34343a",
     borderWidth: 1,
@@ -47,16 +48,27 @@ export const chartBase = {
     type: "time",
     axisLine: { lineStyle: { color: "#262629" } },
     axisTick: { show: false },
-    axisLabel: { color: "#5c5a55", fontSize: 11, hideOverlap: true },
+    axisLabel: { color: "#8d8a82", fontSize: 11, hideOverlap: true },
     splitLine: { show: false },
   },
   yAxis: {
     type: "value",
     scale: true,
-    axisLabel: { color: "#5c5a55", fontSize: 11 },
+    axisLabel: { color: "#8d8a82", fontSize: 11 },
     splitLine: { lineStyle: { color: "#1c1c1f" } },
   },
 };
+
+const groupCounts = new Map<string, number>();
+
+/** Identity of an option by content (functions by source), so re-renders that rebuild an identical option don't re-animate the chart. */
+export function optionKey(option: ChartOption): string {
+  try {
+    return JSON.stringify(option, (_k, v) => (typeof v === "function" ? String(v) : v));
+  } catch {
+    return String(Math.random());
+  }
+}
 
 export function Chart({
   option,
@@ -88,6 +100,7 @@ export function Chart({
     });
     if (group) {
       instance.group = group;
+      groupCounts.set(group, (groupCounts.get(group) ?? 0) + 1);
       echarts.connect(group);
     }
     const observer = new ResizeObserver(() => instance.resize());
@@ -95,6 +108,13 @@ export function Chart({
     return () => {
       observer.disconnect();
       instance.dispose();
+      if (group) {
+        const left = (groupCounts.get(group) ?? 1) - 1;
+        if (left <= 0) {
+          groupCounts.delete(group);
+          echarts.disconnect(group);
+        } else groupCounts.set(group, left);
+      }
       chart.current = null;
     };
   }, [group]);
@@ -108,11 +128,19 @@ export function Chart({
     return () => io.disconnect();
   }, [visible]);
 
+  const latest = useRef(option);
+  latest.current = option;
+  const key = optionKey(option);
   useEffect(() => {
     if (!visible) return;
+    const o = latest.current;
     const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    chart.current?.setOption({ ...option, animation: option.animation === false ? false : !reduce, animationDuration: 1100, animationEasing: "cubicOut" }, { notMerge: true });
-  }, [option, visible]);
+    // Keep tooltips inside the chart box so they never spill off a phone screen.
+    chart.current?.setOption(
+      { ...o, tooltip: Array.isArray(o.tooltip) ? o.tooltip : { confine: true, ...(o.tooltip ?? {}) }, animation: o.animation === false ? false : !reduce, animationDuration: 1100, animationEasing: "cubicOut" },
+      { notMerge: true },
+    );
+  }, [key, visible, group]);
 
   return <div ref={ref} role="img" aria-label={label} style={{ height, width: "100%" }} />;
 }

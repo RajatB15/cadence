@@ -237,7 +237,7 @@ function Dial({ label, score, ring, size, title, foot, onClick, to }: {
       <Ring score={score} size={size} label={ring} />
       <p className="mt-3 font-display text-xl leading-tight text-cream sm:mt-5 sm:text-3xl">{title}</p>
       <p className="mt-1 text-[11px] text-mute sm:text-xs">{foot}</p>
-      <span className="eyebrow mt-3 flex items-center gap-1 !text-[10px] opacity-60 transition-opacity group-hover:opacity-100">
+      <span className="eyebrow mt-3 flex items-center gap-1 !text-[11px] opacity-60 transition-opacity group-hover:opacity-100">
         Why <ChevronRight size={10} />
       </span>
     </div>
@@ -317,7 +317,7 @@ function ReadinessDetail({ coach }: { coach: Brief }) {
           {Object.entries(r.components).map(([key, c], i) => (
             <li key={key}>
               <div className="flex items-baseline justify-between gap-3 text-sm">
-                <span className="text-paper">{COMPONENT_LABEL[key] ?? key} <span className="text-[10px] text-dim">· {Math.round(c.weight * 100)}%</span></span>
+                <span className="text-paper">{COMPONENT_LABEL[key] ?? key} <span className="text-[11px] text-dim">· {Math.round(c.weight * 100)}%</span></span>
                 <span className="num text-mute">{READINESS_VALUE[key]?.(c)}</span>
               </div>
               <div className="mt-1.5 flex items-center gap-3">
@@ -508,7 +508,7 @@ function WeekStrip({ coach, onOpen }: { coach: Brief; onOpen: () => void }) {
           {w.items.map((item) => (
             <div key={item.key} className="flex flex-col items-center text-center sm:w-16 sm:shrink-0">
               <MiniRing done={item.done} target={item.target} low={item.low} />
-              <p className="mt-2 text-[10px] leading-tight tracking-wide text-mute uppercase">{WEEK_SHORT[item.key] ?? item.label}</p>
+              <p className="mt-2 text-[11px] leading-tight tracking-wide text-mute uppercase">{WEEK_SHORT[item.key] ?? item.label}</p>
               <p className="num text-[11px] text-dim">{item.done}/{item.low ?? item.target}</p>
             </div>
           ))}
@@ -669,7 +669,7 @@ function VitalsStrip({ data }: { data: Extract<Overview, { has_data: true }> }) 
         ))}
         {w.latest_trend_kg != null && (
           <Link to="/weight" className="surface surface-hover flex w-40 shrink-0 snap-start flex-col p-4 sm:w-auto">
-            <span className="eyebrow flex items-center gap-1.5 !text-[10px]"><Scale size={12} className="text-gold" /> Weight</span>
+            <span className="eyebrow flex items-center gap-1.5 !text-[11px]"><Scale size={12} className="text-gold" /> Weight</span>
             <span className="num mt-3 text-2xl text-paper">{(w.latest_reading?.weight_kg ?? w.latest_trend_kg).toFixed(1)}<span className="ml-1 text-xs text-mute">kg</span></span>
             {w.latest_reading && <span className="mt-0.5 text-[11px] text-dim">last weigh-in · trend {w.latest_trend_kg.toFixed(1)}</span>}
             <Sparkline values={w.spark.map((s) => s.value)} color="#d9b26a" height={28} className="mt-auto pt-2" />
@@ -687,7 +687,7 @@ function VitalTile({ m }: { m: MetricSummary }) {
   const fmt = useCallback((v: number) => formatMetric(v, m.metric), [m.metric]);
   return (
     <Link to={`/metrics/${m.metric}`} className="surface surface-hover flex w-40 shrink-0 snap-start flex-col p-4 sm:w-auto">
-      <span className="eyebrow flex items-center justify-between gap-1.5 !text-[10px]">
+      <span className="eyebrow flex items-center justify-between gap-1.5 !text-[11px]">
         <span className="flex items-center gap-1.5 truncate"><Icon size={12} style={{ color: style.color }} /> {m.label}</span>
         {m.delta_pct != null && (
           <span className={clsx("num shrink-0 normal-case", tone === "good" ? "text-lime" : tone === "bad" ? "text-amber" : "text-dim")}>
@@ -791,7 +791,7 @@ function RecentSessions({ recent }: { recent: Brief["recent"] }) {
                 ].filter((x): x is { k: string; v: string } => x !== null).map((x) => (
                   <div key={x.k}>
                     <dd className="num text-lg text-paper">{x.v}</dd>
-                    <dt className="text-[10px] tracking-widest text-dim uppercase">{x.k}</dt>
+                    <dt className="text-[11px] tracking-widest text-dim uppercase">{x.k}</dt>
                   </div>
                 ))}
               </dl>

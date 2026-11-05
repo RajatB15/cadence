@@ -1,4 +1,5 @@
 import * as Dialog from "@radix-ui/react-dialog";
+import { hasFinePointer } from "../lib/pointer";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Plus, Trash2, X } from "lucide-react";
 import { useState, type FormEvent } from "react";
@@ -55,7 +56,7 @@ export function LogWeightDialog({ hintKg, defaultOpen = false, label = "Log weig
             <input
               id="log-kg"
               inputMode="decimal"
-              autoFocus
+              autoFocus={hasFinePointer()}
               value={value}
               onChange={(e) => setValue(e.target.value)}
               className="num mt-2 w-full border-b-2 border-line-strong bg-transparent py-2 text-5xl text-paper outline-none focus:border-gold"

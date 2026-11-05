@@ -1,5 +1,5 @@
 import { useQueryClient } from "@tanstack/react-query";
-import { useEffect } from "react";
+import { useEffect, useSyncExternalStore } from "react";
 import { api } from "./api";
 
 /** Minimum gap between automatic Garmin syncs, so reopening the app repeatedly never hammers Garmin. */
@@ -22,22 +22,56 @@ function loadedBundle(): string | null {
   return src ?? null;
 }
 
+/** True when reloading now would lose work: an open sheet/dialog, or text being typed into a field. */
+export function hasUnsavedWork(doc: Document = document): boolean {
+  if (doc.querySelector('[role="dialog"][data-state="open"], dialog[open]')) return true;
+  const el = doc.activeElement as (HTMLElement & { value?: string }) | null;
+  if (!el) return false;
+  const editable = el.tagName === "TEXTAREA" || el.tagName === "INPUT" || el.isContentEditable === true;
+  return editable && ((el.value ?? el.textContent ?? "").length > 0);
+}
+
+// "A new version is ready" flag, shared with the banner through useSyncExternalStore.
+let updateReady = false;
+const listeners = new Set<() => void>();
+function setUpdateReady(v: boolean) {
+  if (updateReady === v) return;
+  updateReady = v;
+  listeners.forEach((l) => l());
+}
+export function useUpdateReady(): boolean {
+  return useSyncExternalStore(
+    (cb) => {
+      listeners.add(cb);
+      return () => void listeners.delete(cb);
+    },
+    () => updateReady,
+    () => false,
+  );
+}
+
+export const VERSION_CHECK_TIMEOUT_MS = 5000;
+
 /** Index.html is served no-cache with hashed assets, so a changed entry bundle means a new deploy. */
 async function newVersionAvailable(): Promise<boolean> {
   const current = loadedBundle();
   if (!current) return false; // dev server or unhashed build
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), VERSION_CHECK_TIMEOUT_MS);
   try {
-    const res = await fetch("/", { cache: "no-store" });
+    const res = await fetch("/", { cache: "no-store", signal: ctrl.signal });
     if (!res.ok) return false;
     const latest = entryBundle(await res.text());
     return latest !== null && latest !== current;
   } catch {
-    return false; // offline: keep running what we have
+    return false; // offline or slow: keep running what we have
+  } finally {
+    clearTimeout(timer);
   }
 }
 
 /**
- * Every time the app opens or returns to the foreground: reload if a newer build was deployed, otherwise
+ * Every time the app opens or returns to the foreground: reload if a newer build was deployed (or offer it when there is unsaved work), otherwise
  * start a quick Garmin sync when the last one is older than the cooldown. Quick syncs are idempotent,
  * rate-limited and fetch only unsettled days, so this is cheap; failures are left to the refresh chip.
  */
@@ -50,7 +84,9 @@ export function useAppLifecycle() {
       running = true;
       try {
         if (await newVersionAvailable()) {
-          window.location.reload();
+          // Never reload under an open sheet or half-typed field: offer the update instead.
+          if (hasUnsavedWork()) setUpdateReady(true);
+          else window.location.reload();
           return;
         }
         const status = await client.fetchQuery({ queryKey: ["garmin-status"], queryFn: api.garminStatus, staleTime: 0 });

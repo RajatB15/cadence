@@ -6,6 +6,7 @@ import type { ReactNode } from "react";
 import { NavLink, Outlet, useLocation, useMatch } from "react-router-dom";
 import { RefreshRailButton } from "./RefreshButton";
 import { ReminderBanner } from "./ReminderBanner";
+import { StatusBanners } from "./StatusBanners";
 
 const NAV = [
   { to: "/", label: "Overview", icon: LayoutGrid },
@@ -103,6 +104,7 @@ export function Shell() {
         </aside>
 
         <main className="mx-auto max-w-[1280px] px-5 pt-8 pb-32 sm:px-8 md:pt-12 lg:px-12">
+          <StatusBanners />
           <ReminderBanner />
           <motion.div
             key={location.pathname}
@@ -116,7 +118,7 @@ export function Shell() {
 
         <nav
           aria-label="Primary"
-          className="fixed inset-x-0 bottom-0 z-40 grid grid-cols-6 border-t border-line bg-ink/90 pb-[env(safe-area-inset-bottom)] backdrop-blur md:hidden"
+          className="fixed inset-x-0 bottom-0 z-40 grid grid-cols-6 border-t border-line bg-ink/90 pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)] backdrop-blur md:hidden"
         >
           {NAV.filter((item) => !("desktopOnly" in item)).map(({ to, label, icon: Icon }) => (
             <NavLink

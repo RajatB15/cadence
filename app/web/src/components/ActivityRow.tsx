@@ -70,7 +70,7 @@ export function ActivityRow({
       <Wrap>
       <div className="w-12 shrink-0 text-center">
         <p className="font-display text-3xl leading-none text-cream">{day.getDate()}</p>
-        <p className="eyebrow mt-1 !text-[10px]">
+        <p className="eyebrow mt-1 !text-[11px]">
           {compact ? weekdayFmt.format(day) : monthFmt.format(day)}
         </p>
       </div>
@@ -93,7 +93,7 @@ export function ActivityRow({
         {stats.map((s, i) => (
           <div key={s.label} className={clsx(i >= 1 && "hidden sm:block", i >= 2 && "sm:hidden md:block")}>
             <dd className="num text-base text-paper sm:text-lg">{s.value}</dd>
-            <dt className="text-[10px] tracking-widest text-dim uppercase">{s.label}</dt>
+            <dt className="text-[11px] tracking-widest text-dim uppercase">{s.label}</dt>
           </div>
         ))}
       </dl>

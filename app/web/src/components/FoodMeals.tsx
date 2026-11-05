@@ -1,4 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { ConfirmDialog } from "./ConfirmDialog";
+import { hasFinePointer } from "../lib/pointer";
 import { BookmarkPlus, Check, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { api } from "../lib/api";
@@ -38,7 +40,7 @@ export function SaveMealSheet({ entries, label, open, onClose }: { entries: Food
           id="meal-name"
           value={name}
           maxLength={80}
-          autoFocus
+          autoFocus={hasFinePointer()}
           onChange={(e) => setName(e.target.value)}
           placeholder="Usual breakfast, Post-run bowl…"
           className="num mt-2 w-full border-b-2 border-line-strong bg-transparent py-2 text-xl text-paper outline-none focus:border-gold"
@@ -83,6 +85,7 @@ export function SavedMeals({ meal, day, onLogged }: { meal: Meal; day: string; o
   const meals = useSavedMeals();
   const [scale, setScale] = useState(1);
   const [done, setDone] = useState<number | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<FoodSavedMeal | null>(null);
   const log = useMutation({
     mutationFn: (m: FoodSavedMeal) => api.logFoodMeal(m.id, { day, meal, scale }).then(() => m),
     onSuccess: (m) => {
@@ -104,6 +107,13 @@ export function SavedMeals({ meal, day, onLogged }: { meal: Meal; day: string; o
   }
   return (
     <div>
+      <ConfirmDialog
+        open={confirmDelete != null}
+        title={`Delete “${confirmDelete?.name ?? ""}”?`}
+        body="Logged days keep their entries."
+        onCancel={() => setConfirmDelete(null)}
+        onConfirm={() => { if (confirmDelete) remove.mutate(confirmDelete.id); setConfirmDelete(null); }}
+      />
       <div role="radiogroup" aria-label="Portion size" className="flex flex-wrap items-center gap-2">
         <span className="eyebrow mr-1">Portions</span>
         {SCALES.map((s) => (
@@ -131,7 +141,7 @@ export function SavedMeals({ meal, day, onLogged }: { meal: Meal; day: string; o
                 aria-label={`Delete meal ${m.name}`}
                 className="p-1 text-dim hover:text-coral pointer-coarse:p-2"
                 disabled={remove.isPending}
-                onClick={() => window.confirm(`Delete the saved meal “${m.name}”? Logged days keep their entries.`) && remove.mutate(m.id)}
+                onClick={() => setConfirmDelete(m)}
               >
                 <Trash2 size={15} />
               </button>

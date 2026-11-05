@@ -321,11 +321,11 @@ function GroupSection({ r, groupKey }: { r: Report; groupKey: string }) {
             </div>
             <dl className="mt-4 grid grid-cols-2 gap-3 text-sm">
               <div>
-                <dt className="text-[10px] tracking-widest text-dim uppercase">You</dt>
+                <dt className="text-[11px] tracking-widest text-dim uppercase">You</dt>
                 <dd className="num text-paper">{f.value}</dd>
               </div>
               <div>
-                <dt className="text-[10px] tracking-widest text-dim uppercase">Target</dt>
+                <dt className="text-[11px] tracking-widest text-dim uppercase">Target</dt>
                 <dd className="text-paper">{f.target}</dd>
               </div>
             </dl>

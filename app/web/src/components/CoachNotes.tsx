@@ -57,7 +57,7 @@ export function NoteCard({ f, index = 0, compact = false }: { f: Finding; index?
         <div className="mt-4 flex flex-wrap gap-x-6 gap-y-2">
           {f.evidence.map((e) => (
             <div key={e.label}>
-              <p className="text-[10px] tracking-widest text-dim uppercase">{e.label}</p>
+              <p className="text-[11px] tracking-widest text-dim uppercase">{e.label}</p>
               <p className="num text-paper">{e.value}</p>
             </div>
           ))}
@@ -142,7 +142,7 @@ export function Ring({ score, size = 160, label = "readiness" }: { score: number
           <p className="num leading-none" style={{ color, fontSize: size * 0.3 }}>
             <CountUp value={score} format={round} duration={1.5} immediate />
           </p>
-          <p className="eyebrow mt-1 !text-[10px]">{label}</p>
+          <p className="eyebrow mt-1 !text-[11px]">{label}</p>
         </div>
       </div>
     </motion.div>

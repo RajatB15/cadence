@@ -230,11 +230,11 @@ function Heatmap({ log }: { log: Log }) {
         >
           <span />
           {months.map((m, c) => (
-            <span key={c} className="overflow-visible text-[9px] leading-[14px] whitespace-nowrap text-dim">{m}</span>
+            <span key={c} className="overflow-visible text-[11px] leading-[14px] whitespace-nowrap text-dim">{m}</span>
           ))}
           {["Mon", "", "Wed", "", "Fri", "", "Sun"].map((label, r) => (
             <Fragment key={r}>
-              <span className="self-center text-[9px] text-dim">{label}</span>
+              <span className="self-center text-[11px] text-dim">{label}</span>
               {columns.map((col, c) => {
                 const d = col[r];
                 if (!d) return <span key={c} />;
@@ -376,7 +376,7 @@ function Weeks({ items, log, selection }: { items: ActivityItem[]; log: Log | nu
                     ].map((s) => (
                       <div key={s.k}>
                         <dd className="num text-paper">{s.v}</dd>
-                        <dt className="text-[10px] tracking-widest text-dim uppercase">{s.k}</dt>
+                        <dt className="text-[11px] tracking-widest text-dim uppercase">{s.k}</dt>
                       </div>
                     ))}
                   </dl>

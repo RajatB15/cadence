@@ -162,7 +162,7 @@ function TabBar({ tab, onChange, counts }: { tab: TabId; onChange: (t: TabId) =>
             )}
           >
             {t.label}
-            {counts[t.id] ? <span className="ml-1.5 rounded-full bg-gold/20 px-1.5 py-0.5 text-[10px] text-gold">{counts[t.id]}</span> : null}
+            {counts[t.id] ? <span className="ml-1.5 rounded-full bg-gold/20 px-1.5 py-0.5 text-[11px] text-gold">{counts[t.id]}</span> : null}
             {active && <span className="absolute inset-x-2 bottom-0 h-0.5 bg-gold" />}
           </button>
         );
@@ -274,7 +274,7 @@ function Readiness({ d }: { d: Data }) {
                   transition={{ duration: 0.9 }}
                 />
               </div>
-              <p className="mt-1 text-[10px] tracking-widest text-dim uppercase">weight {Math.round(c.weight * 100)}%</p>
+              <p className="mt-1 text-[11px] tracking-widest text-dim uppercase">weight {Math.round(c.weight * 100)}%</p>
             </div>
           ))}
         </div>

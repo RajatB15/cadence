@@ -158,6 +158,7 @@ export function FoodCrawlPage() {
 
           <details className="surface p-6">
             <summary className="cursor-pointer text-sm text-mute">Show as a table</summary>
+            <div className="overflow-x-auto">
             <table className="num mt-4 w-full text-sm">
               <thead><tr className="text-left text-mute"><th className="py-1 font-normal">Time</th><th className="py-1 text-right font-normal">Parsed in 10 min</th><th className="py-1 text-right font-normal">Total parsed</th></tr></thead>
               <tbody>
@@ -166,6 +167,7 @@ export function FoodCrawlPage() {
                 ))}
               </tbody>
             </table>
+            </div>
           </details>
         </div>
       )}

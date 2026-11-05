@@ -375,7 +375,7 @@ function ReminderTimeline({ status }: { status: CredentialStatus }) {
         </div>
         {!outOfWindow && (
           <div className="absolute -top-6 -translate-x-1/2" style={{ left: `${todayPos}%` }}>
-            <span className="bg-cream px-1.5 py-0.5 text-[10px] font-bold tracking-widest text-ink uppercase">
+            <span className="bg-cream px-1.5 py-0.5 text-[11px] font-bold tracking-widest text-ink uppercase">
               Today
             </span>
           </div>
@@ -694,6 +694,7 @@ function SourcesCard() {
 
       <h3 className="eyebrow mt-10 mb-3">Recent imports</h3>
       {runs.data?.length ? (
+        <div className="overflow-x-auto">
         <table className="w-full text-left text-sm">
           <thead className="text-xs text-dim">
             <tr>
@@ -717,6 +718,7 @@ function SourcesCard() {
             ))}
           </tbody>
         </table>
+        </div>
       ) : (
         <p className="text-sm text-dim">No imports yet.</p>
       )}

@@ -58,7 +58,7 @@ function LabelView({ label }: { label: StrengthLabel }) {
           <div className="flex h-9 w-full overflow-hidden border border-line">
             {seg.segments.map((s) => (
               <div key={s.name + s.start_s} title={`${s.name} · ${mins(s.end_s - s.start_s)} · avg ${s.avg_hr} bpm`}
-                className="flex items-center justify-center overflow-hidden border-r border-ink/60 px-1 text-[10px] font-semibold text-ink uppercase"
+                className="flex items-center justify-center overflow-hidden border-r border-ink/60 px-1 text-[11px] font-semibold text-ink uppercase"
                 style={{ width: `${((s.end_s - s.start_s) / total) * 100}%`, background: KIND_COLOR[s.kind] ?? "#8d8a82" }}>
                 <span className="truncate">{s.name}</span>
               </div>
@@ -100,7 +100,7 @@ function Blocks({ blocks }: { blocks: StrengthBlock[] }) {
             {b.exercises.map((e, j) => (
               <li key={e.name + j} className="flex items-baseline justify-between gap-2">
                 <span className={clsx("truncate", e.pattern ? "text-mute" : "text-amber")}>{e.name}</span>
-                <span className="shrink-0 text-[10px] tracking-widest text-dim uppercase">{e.pattern ? PATTERN_LABEL[e.pattern] : "unknown"}</span>
+                <span className="shrink-0 text-[11px] tracking-widest text-dim uppercase">{e.pattern ? PATTERN_LABEL[e.pattern] : "unknown"}</span>
               </li>
             ))}
           </ul>

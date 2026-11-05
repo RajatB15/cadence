@@ -1,4 +1,5 @@
 import * as Dialog from "@radix-ui/react-dialog";
+import { hasFinePointer } from "../lib/pointer";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Info, Scale, Target, X } from "lucide-react";
 import { useCallback, useMemo, useState, type FormEvent } from "react";
@@ -295,7 +296,7 @@ function GoalDialog({ current }: { current: number | null }) {
             <input
               id="goal"
               inputMode="decimal"
-              autoFocus
+              autoFocus={hasFinePointer()}
               value={value}
               onChange={(e) => setValue(e.target.value)}
               className="num mt-2 w-full border-b-2 border-line-strong bg-transparent py-2 text-5xl text-paper outline-none focus:border-gold"

@@ -1,4 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { ConfirmDialog } from "../components/ConfirmDialog";
+import { hasFinePointer } from "../lib/pointer";
 import { ArrowLeft, Link2Off } from "lucide-react";
 import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
@@ -17,7 +19,7 @@ function Stats({ stats }: { stats: { label: string; value: string }[] }) {
       {stats.map((s) => (
         <div key={s.label}>
           <dd className="num text-2xl text-paper sm:text-3xl">{s.value}</dd>
-          <dt className="text-[10px] tracking-widest text-dim uppercase">{s.label}</dt>
+          <dt className="text-[11px] tracking-widest text-dim uppercase">{s.label}</dt>
         </div>
       ))}
     </dl>
@@ -115,10 +117,19 @@ function Detail({ e }: { e: EventDetail }) {
     onSuccess: (r) => { refresh(); if (!r.event) navigate("/events"); },
   });
   const dissolve = useMutation({ mutationFn: () => api.deleteEvent(e.id), onSuccess: () => { refresh(); navigate("/events"); } });
+  const [confirmDissolve, setConfirmDissolve] = useState(false);
   const error = rename.error ?? unlink.error ?? dissolve.error;
 
   return (
     <div className="space-y-10">
+      <ConfirmDialog
+        open={confirmDissolve}
+        title="Dissolve this event?"
+        body="The activities stay; only the grouping is removed."
+        confirmLabel="Dissolve"
+        onCancel={() => setConfirmDissolve(false)}
+        onConfirm={() => { setConfirmDissolve(false); dissolve.mutate(); }}
+      />
       <Link to="/events" className="eyebrow inline-flex items-center gap-2 hover:text-paper">
         <ArrowLeft size={12} /> All events
       </Link>
@@ -137,7 +148,7 @@ function Detail({ e }: { e: EventDetail }) {
                   {
                     label: "Dissolve event",
                     hint: "The activities stay; only the grouping is removed.",
-                    onSelect: () => { if (window.confirm("Dissolve this event? The activities stay; only the grouping is removed.")) dissolve.mutate(); },
+                    onSelect: () => setConfirmDissolve(true),
                   },
                 ]}
               />
@@ -146,7 +157,7 @@ function Detail({ e }: { e: EventDetail }) {
         </div>
         {renaming ? (
           <form onSubmit={(ev) => { ev.preventDefault(); rename.mutate(); }} className="flex flex-wrap gap-3">
-            <input aria-label="Event name" className="min-w-0 flex-1 border-b-2 border-line-strong bg-transparent py-2 text-paper outline-none focus:border-gold text-2xl" maxLength={120} value={name} onChange={(ev) => setName(ev.target.value)} autoFocus />
+            <input aria-label="Event name" className="min-w-0 flex-1 border-b-2 border-line-strong bg-transparent py-2 text-paper outline-none focus:border-gold text-2xl" maxLength={120} value={name} onChange={(ev) => setName(ev.target.value)} autoFocus={hasFinePointer()} />
             <button type="submit" className="pop pop-lime" disabled={!name.trim() || rename.isPending}>Save</button>
             <button type="button" className="pop pop-ghost" onClick={() => { setRenaming(false); setName(e.name); }}>Cancel</button>
           </form>

@@ -4,12 +4,11 @@ import {
   Map as MapLibreMap,
   Marker,
   NavigationControl,
-  setWorkerUrl,
   type ExpressionSpecification,
   type LngLatBoundsLike,
 } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
-import workerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url";
+import "../lib/maplibreWorker";
 import { Pause, Play, Scan } from "lucide-react";
 import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
 import { formatPace } from "../lib/format";
@@ -42,7 +41,6 @@ const PACED = new Set(["run", "walk", "hike"]);
 const PITCH_3D = 58;
 
 let webgl: boolean | null = null;
-setWorkerUrl(workerUrl);
 function hasWebGL(): boolean {
   if (webgl == null) {
     try {
@@ -435,7 +433,7 @@ function MapView({ track, paced, onFail }: { track: Track; paced: boolean; onFai
             />
           )}
           {g && (
-            <div className="flex items-center gap-2 rounded-full border border-white/10 bg-ink/70 px-3 py-1 font-mono text-[10px] text-paper/80 backdrop-blur-md">
+            <div className="flex items-center gap-2 rounded-full border border-white/10 bg-ink/70 px-3 py-1 font-mono text-[11px] text-paper/80 backdrop-blur-md">
               <span>{legend(g.lo)}</span>
               <span
                 className="h-1.5 w-20 rounded-full"
