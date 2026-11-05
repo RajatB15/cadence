@@ -873,6 +873,10 @@ export interface ShareStatus {
   pair_url: string | null;
   qr: number[][] | null;
   secure: boolean;
+  host: string;
+  insecure_lan: boolean;
+  pair_expires_in_s: number | null;
+  sessions: { id: string; label: string; created_at: string; last_seen_at: string | null }[];
 }
 
 export interface PushStatus {

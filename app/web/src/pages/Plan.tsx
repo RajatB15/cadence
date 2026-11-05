@@ -5,7 +5,7 @@ import { motion } from "motion/react";
 import { useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { ErrorBlock, LoadingBlock, PageHeader, Segmented } from "../components/Shell";
-import { api } from "../lib/api";
+import { READ_ONLY, api } from "../lib/api";
 import { hourLabel, toSpec, UNITS, type CustomFields, type CustomSpec } from "../lib/customSession";
 import { formatDate } from "../lib/format";
 import type { PlanOption, PlannedSessionView, Prediction, Sport } from "../lib/types";
@@ -98,7 +98,9 @@ function DayPlans({ day, plans, today }: { day: string; plans: PlannedSessionVie
               </p>
               {(p.sport === "run" || p.sport === "ride") && p.status !== "done" && garmin.data?.available && (
                 <div className="mt-3 flex flex-wrap items-center gap-3">
-                  {garmin.data.connected ? (
+                  {READ_ONLY ? (
+                    <span className="text-xs text-dim">Sending to Garmin is done on your Mac.</span>
+                  ) : garmin.data.connected ? (
                     <button type="button" disabled={send.isPending} onClick={() => send.mutate(p)}
                       className={clsx("pop !px-3 !py-1.5 text-xs", p.garmin ? "pop-lime" : "pop-ghost")}>
                       <Watch size={13} /> {p.garmin ? "On your Garmin calendar · remove" : "Send to Garmin"}

@@ -115,24 +115,63 @@ def load(session: Session, request_key: str) -> tuple[RawResponse | None, Any]:
     return raw, (decode(raw.body) if raw is not None else None)
 
 
+# The few Garmin list-item fields the analytics read; the other ~200 stay in the vault only.
+SUMMARY_FIELDS = frozenset(
+    {
+        "activityId", "startTimeLocal", "avgGradeAdjustedSpeed", "anaerobicTrainingEffect", "summarizedExerciseSets",
+        "startLatitude", "startLongitude", "endLatitude", "endLongitude", "minLatitude", "maxLatitude",
+        "minLongitude", "maxLongitude", "elevationGain",
+        *(f"hrTimeInZone_{i}" for i in range(1, 6)),
+    }
+)
+
 _summary_cache: dict[str, Any] = {"key": None, "index": {}}
 
 
+def _activities_key(session: Session):
+    return tuple(
+        session.execute(
+            select(func.count(RawResponse.id), func.max(RawResponse.id), func.max(RawResponse.fetched_at)).where(
+                RawResponse.source_id == SOURCE_ID, RawResponse.dataset == "activities"
+            )
+        ).one()
+    )
+
+
 def activity_summaries(session: Session) -> dict[str, dict]:
-    """activityId -> full Garmin list item (all ~200 fields), cached until the vault changes."""
-    key = session.execute(
-        select(func.count(RawResponse.id), func.max(RawResponse.fetched_at)).where(
-            RawResponse.source_id == SOURCE_ID, RawResponse.dataset == "activities"
-        )
-    ).one()
-    if _summary_cache["key"] != tuple(key):
+    """activityId -> the slim set of Garmin list-item fields analytics use, cached until the vault changes.
+
+    Use `activity_summary` for the full item of one activity.
+    """
+    key = _activities_key(session)
+    if _summary_cache["key"] != key:
         index: dict[str, dict] = {}
         for stored in iter_stored(session, {"activities"}):
             for item in stored.payload if isinstance(stored.payload, list) else []:
                 if isinstance(item, dict) and item.get("activityId") is not None:
-                    index[str(item["activityId"])] = item
-        _summary_cache.update(key=tuple(key), index=index)
+                    index[str(item["activityId"])] = {k: v for k, v in item.items() if k in SUMMARY_FIELDS}
+        _summary_cache.update(key=key, index=index)
     return _summary_cache["index"]
+
+
+def activity_summary(session: Session, activity_id: str, day: date | None = None) -> dict | None:
+    """The full Garmin list item for one activity (all fields), read from the vault without caching it."""
+    found = None
+    conditions = [RawResponse.source_id == SOURCE_ID, RawResponse.dataset == "activities",
+                  RawResponse.status_code == 200, RawResponse.body.is_not(None)]
+    for narrow in ((True, False) if day else (False,)):
+        query = select(RawResponse).where(*conditions).order_by(RawResponse.fetched_at, RawResponse.id)
+        if narrow:
+            query = query.where(RawResponse.window_start <= day, RawResponse.window_end >= day)
+        for raw in session.scalars(query):
+            payload = decode(raw.body)
+            for item in payload if isinstance(payload, list) else []:
+                if isinstance(item, dict) and str(item.get("activityId")) == activity_id:
+                    found = item  # newest fetch wins
+            session.expunge(raw)
+        if found is not None:
+            break
+    return found
 
 
 def iter_stored(session: Session, datasets: set[str]):

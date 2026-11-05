@@ -9,8 +9,12 @@ found by an exhaustive grid search rather than a local optimiser (no bad startin
 
 Few data points, strong autocorrelation and many free parameters make this fit fragile (Hellard et al. 2006; Hayes &
 Quinn 2009), so nothing is trusted on in-sample fit alone:
-- the personal τ pair is only adopted if, on blocked time-ordered cross-validation, it predicts held-out weeks at least
-  5 % better than both the fixed 42/7-day constants and simply predicting the average;
+- the personal τ pair is only adopted if, on blocked time-ordered cross-validation (>= 8 weekly points per held-out
+  block, and a one-week gap between each block and the training weeks, after Bergmeir & Benítez 2012 and Roberts et al.
+  2017 on blocked CV for dependent data), it predicts held-out weeks at least 5 % better than both the fixed 42/7-day
+  constants and simply predicting the average; at least 30 weekly points are required;
+- the diminishing-returns exponent is chosen by nested CV (picked on the inner training weeks only, scored on the outer
+  held-out block), so choosing the best of six curves cannot flatter itself;
 - the 95 % region for (τ1, τ2) comes from an F-test on the sum of squares with the sample size shrunk for residual
   autocorrelation, so it is wide when the data are thin;
 - the series is a weekly median of aerobic efficiency (heat-adjusted when possible), not a race or test result: it is
@@ -32,10 +36,12 @@ from cadence_app.analytics import athlete as A
 TAU1_GRID = tuple(range(20, 91, 2))
 TAU2_GRID = tuple(range(3, 25))
 DEFAULT_TAUS = (A.CTL_DAYS, A.ATL_DAYS)
-MIN_OBS = 16
+MIN_OBS = 30
 MIN_SPAN_DAYS = 150
 MIN_ACTIVE_DAYS = 60
 CV_FOLDS = 5
+MIN_PER_FOLD = 8  # a held-out block of fewer weekly points than this is mostly noise
+CV_GAP_DAYS = 7  # training weeks within a week of a held-out block are dropped: neighbouring weeks are not independent
 CV_GAIN = 0.95  # personal CV error must be ≤ 95 % of both baselines
 HORIZON = 35
 
@@ -52,6 +58,21 @@ def effective(load: A.Series, alpha: float) -> A.Series:
         return dict(load)
     m = float(np.mean(positive))
     return {d: (v ** alpha) * (m ** (1 - alpha)) if v > 0 else 0.0 for d, v in load.items()}
+
+
+def _splits(idx: np.ndarray) -> list[tuple[np.ndarray, np.ndarray]]:
+    """Blocked (train, test) index pairs: >= MIN_PER_FOLD points per test block, training weeks within CV_GAP_DAYS of the block dropped."""
+    n = len(idx)
+    k = min(CV_FOLDS, n // MIN_PER_FOLD)
+    if k < 2:
+        return []
+    out = []
+    for test in np.array_split(np.arange(n), k):
+        near = (idx >= idx[test].min() - CV_GAP_DAYS) & (idx <= idx[test].max() + CV_GAP_DAYS)
+        train = np.flatnonzero(~near)
+        if len(train) >= MIN_PER_FOLD:
+            out.append((train, test))
+    return out
 
 
 def saturation(load: A.Series, obs: list[tuple[date, float]], as_of: date) -> dict:
@@ -71,25 +92,44 @@ def saturation(load: A.Series, obs: list[tuple[date, float]], as_of: date) -> di
     days = (as_of - start).days + 1
     idx = np.array([(d - start).days for d, _ in obs])
     y = np.array([v for _, v in obs])
-    scores = {}
+    E = {}
     for a in ALPHAS:
         eff = effective(load, a)
         w = np.zeros(days)
         for d, x in eff.items():
             if start <= d <= as_of:
                 w[(d - start).days] = x
-        e1, e2 = _impulse(w, DEFAULT_TAUS[0])[idx], _impulse(w, DEFAULT_TAUS[1])[idx]
-        sq = 0.0
-        for test in np.array_split(np.arange(len(y)), CV_FOLDS):
-            train = np.setdiff1d(np.arange(len(y)), test)
-            p0, k1, k2, _ = _linear(e1[train], e2[train], y[train])
-            sq += float(np.sum((y[test] - (p0 + k1 * e1[test] - k2 * e2[test])) ** 2))
-        scores[a] = math.sqrt(sq / len(y))
-    best = min(scores, key=scores.get)
-    gain = 1 - scores[best] / scores[1.0] if scores[1.0] > 0 else 0.0
+        E[a] = (_impulse(w, DEFAULT_TAUS[0])[idx], _impulse(w, DEFAULT_TAUS[1])[idx])
+
+    def sq_error(a: float, train: np.ndarray, test: np.ndarray) -> float:
+        e1, e2 = E[a]
+        p0, k1, k2, _ = _linear(e1[train], e2[train], y[train])
+        return float(np.sum((y[test] - (p0 + k1 * e1[test] - k2 * e2[test])) ** 2))
+
+    outer = _splits(idx)
+    if not outer:
+        out["missing"] = f"at least {MIN_PER_FOLD * 2} weekly points"
+        return out
+    nested = linear = 0.0
+    m = 0
+    picks = []
+    for train, test in outer:
+        inner = [(train[i], train[j]) for i, j in _splits(idx[train])]
+        if inner:
+            inner_scores = {a: sum(sq_error(a, tr, te) for tr, te in inner) for a in ALPHAS}
+            pick = min(inner_scores, key=inner_scores.get)
+        else:
+            pick = 1.0
+        picks.append(pick)
+        nested += sq_error(pick, train, test)
+        linear += sq_error(1.0, train, test)
+        m += len(test)
+    scores = {1.0: math.sqrt(linear / m), "nested": math.sqrt(nested / m)}
+    gain = 1 - scores["nested"] / scores[1.0] if scores[1.0] > 0 else 0.0
+    best = float(max(set(picks), key=picks.count))  # the exponent chosen most often across the outer folds
     adopted = best < 1.0 and gain >= 1 - CV_GAIN
     out.update(valid=True, adopted=bool(adopted), alpha=best if adopted else 1.0, best_alpha=best, gain_pct=round(gain * 100, 1),
-               cv={f"{a:g}": round(v, 5) for a, v in scores.items()})
+               cv={"linear": round(scores[1.0], 5), "nested": round(scores["nested"], 5)})
     return out
 
 
@@ -137,17 +177,19 @@ class _Grid:
         return p0 + k1 * self.e1[t1][rows] - k2 * self.e2[t2][rows]
 
 
-def _cross_validate(g: _Grid, y: np.ndarray) -> dict:
-    n = len(y)
-    folds = np.array_split(np.arange(n), CV_FOLDS)
+def _cross_validate(g: _Grid, y: np.ndarray, idx: np.ndarray) -> dict | None:
+    splits = _splits(idx)
+    if not splits:
+        return None
     sq = {"personal": 0.0, "default": 0.0, "mean": 0.0}
-    for test in folds:
-        train = np.setdiff1d(np.arange(n), test)
+    n = 0
+    for train, test in splits:
         sse, t1, t2, p0, k1, k2 = min(g.search(y, train))
         sq["personal"] += float(np.sum((y[test] - g.predict(t1, t2, p0, k1, k2, test)) ** 2))
         d0, dk1, dk2, _ = _linear(g.e1[DEFAULT_TAUS[0]][train], g.e2[DEFAULT_TAUS[1]][train], y[train])
         sq["default"] += float(np.sum((y[test] - g.predict(*DEFAULT_TAUS, d0, dk1, dk2, test)) ** 2))
         sq["mean"] += float(np.sum((y[test] - y[train].mean()) ** 2))
+        n += len(test)
     return {k: math.sqrt(v / n) for k, v in sq.items()}
 
 
@@ -189,7 +231,10 @@ def fit(load: A.Series, obs: list[tuple[date, float]], as_of: date) -> dict:
     df = max(n_eff - 5, 1.0)
     limit = sse * (1 + 2 / df * stats.f.ppf(0.95, 2, df))
     region = [f for f in fits if f[0] <= limit]
-    cv = _cross_validate(g, y)
+    cv = _cross_validate(g, y, idx)
+    if cv is None:
+        out["missing"] = f"at least {MIN_PER_FOLD * 2} weekly points to cross-validate"
+        return out
     gain_default = 1 - cv["personal"] / cv["default"] if cv["default"] > 0 else 0.0
     gain_mean = 1 - cv["personal"] / cv["mean"] if cv["mean"] > 0 else 0.0
     nondegenerate = k1 > 0 and k2 > 0

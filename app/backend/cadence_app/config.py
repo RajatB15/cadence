@@ -24,6 +24,7 @@ class Settings:
     garmin_min_interval_s: float = 1.0
     web_dist: Path = REPO_ROOT / "app" / "web" / "dist"
     share_port: int = 8766
+    share_host: str = "0.0.0.0"  # phone share server bind address; CADENCE_SHARE_HOST (e.g. 127.0.0.1 behind `tailscale serve`)
     scheduler: bool = False
     sync_every_h: float = 3.0
     push_contact: str = "mailto:cadence@example.com"
@@ -56,6 +57,7 @@ def load_settings() -> Settings:
         garmin_min_interval_s=float(os.environ.get("CADENCE_GARMIN_MIN_INTERVAL_S", "1.0")),
         web_dist=Path(os.environ.get("CADENCE_WEB_DIST", REPO_ROOT / "app" / "web" / "dist")),
         share_port=int(os.environ.get("CADENCE_SHARE_PORT", "8766")),
+        share_host=os.environ.get("CADENCE_SHARE_HOST", "0.0.0.0"),
         scheduler=os.environ.get("CADENCE_SCHEDULER", "1") != "0",
         sync_every_h=float(os.environ.get("CADENCE_SYNC_EVERY_HOURS", "3")),
         push_contact=os.environ.get("CADENCE_PUSH_CONTACT", "mailto:cadence@example.com"),

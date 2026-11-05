@@ -3,7 +3,8 @@
 - The direction comes from a straight-line fit with Newey-West standard errors (daily scores are autocorrelated, so plain
   errors would call every wobble a trend; Newey & West 1987). It is called "up" or "down" only when the 95% interval of
   the slope excludes zero and at least MIN_DAYS days exist; otherwise "steady" or "too early to say".
-- "Heading" is the same line carried forward 4 weeks with its 95% interval. It is an extrapolation of the recent past,
+- "Heading" is the same line carried forward 4 weeks with a 95% prediction interval (line uncertainty plus the
+  day-to-day scatter, so it is the range a single day could land in). It is an extrapolation of the recent past,
   not a forecast: it assumes nothing about sleep, training or illness changes.
 - A window is compared with the equal window just before it; fewer than HALF of the days with data on either side gives no change.
 """
@@ -74,7 +75,8 @@ def summarise(history: list[dict], as_of: date, days: int, key: str = "score") -
     x0 = fit["x_last"] + HORIZON_DAYS
     mid = fit["intercept"] + fit["slope"] * x0
     se_fit = fit["resid_sd"] * (1 / fit["n"] + (x0 - fit["x_mean"]) ** 2 / fit["sxx"]) ** 0.5 if fit["sxx"] > 0 else 0.0
-    se = max(se_fit, fit["se"] * abs(x0 - fit["x_mean"]))  # the larger of the textbook and the autocorrelation-robust width
+    se_line = max(se_fit, fit["se"] * abs(x0 - fit["x_mean"]))  # the larger of the textbook and the autocorrelation-robust width
+    se = (se_line**2 + fit["resid_sd"] ** 2) ** 0.5  # prediction interval: a single day also scatters around the line
     clamp = lambda v: round(max(0.0, min(100.0, v)))  # noqa: E731
     out["projection"] = {"days": HORIZON_DAYS, "value": clamp(mid), "range": [clamp(mid - 1.96 * se), clamp(mid + 1.96 * se)]}
     text = {"up": f"Rising about {abs(weekly):.1f} points a week (95% range {lo * 7:+.1f} to {hi * 7:+.1f}).",

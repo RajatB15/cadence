@@ -1,4 +1,5 @@
 import type { CustomSpec } from "./customSession";
+import { phoneMayWrite } from "./phoneWrites";
 import type {
   ActivityDetail,
   PlanSettings,
@@ -132,11 +133,10 @@ async function failure(res: Response): Promise<ApiError> {
 export const READ_ONLY =
   typeof document !== "undefined" &&
   document.querySelector('meta[name="cadence-mode"]')?.getAttribute("content") === "read-only";
-const PHONE_WRITES = ["/api/push/", "/api/garmin/sync", "/api/journal/", "/api/wellbeing", "/api/strength/", "/api/planner", "/api/reading", "/api/phases", "/api/weight/entries", "/api/food/", "/api/settings/weather", "/api/settings/profile", "/api/time-off", "/api/settings/plan"];
 
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const method = init.method ?? "GET";
-  if (READ_ONLY && method !== "GET" && !PHONE_WRITES.some((p) => path.startsWith(p))) {
+  if (READ_ONLY && method !== "GET" && !phoneMayWrite(method, path)) {
     throw new ApiError(405, "Read-only on this device. Make changes on your Mac.");
   }
   const headers = new Headers(init.headers);
@@ -166,6 +166,7 @@ export const api = {
   share: () => request<ShareStatus>("/api/share"),
   shareStart: () => request<ShareStatus>("/api/share/start", { method: "POST" }),
   shareStop: () => request<ShareStatus>("/api/share/stop", { method: "POST" }),
+  shareRevoke: (id: string) => request<ShareStatus>(`/api/share/sessions/${encodeURIComponent(id)}`, { method: "DELETE" }),
   shareReset: () => request<ShareStatus>("/api/share/reset", { method: "POST" }),
   credentialStatus: () => request<CredentialStatus>("/api/credentials/status"),
   dismissReminder: (key: string) =>

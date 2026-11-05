@@ -5,7 +5,8 @@ Methods:
   60-day normal range of ± 0.5 SD (the smallest worthwhile change). Inside or above it, hard training is supported;
   below it, keep it easy. A rising day-to-day variation (CV) alongside a falling mean signals poor coping.
 - Recovery cost: how many days your HRV takes to return to baseline after isolated sessions, by session type.
-- Sleep need: the duration beyond which more sleep stops lifting your overnight HRV (broken-stick regression).
+- Sleep need: the duration beyond which more sleep stops lifting your overnight HRV (broken-stick regression, Newey–West
+  errors for autocorrelated nights; a knot at the edge of the 7–9 h search range is rejected as 'no plateau found').
 - Sleep Regularity Index (Phillips et al. 2017), approximated from sleep onset and wake times: the chance of being
   in the same state (asleep/awake) at the same clock time on consecutive days, scaled -100…100.
 """
@@ -21,6 +22,8 @@ import numpy as np
 from scipy import stats
 
 from cadence_app.analytics import athlete as A
+from cadence_app.analytics import regress
+from cadence_app.analytics import weight as weight_trend
 
 DAY = timedelta(days=1)
 DEFAULT_SLEEP_NEED = 8.0
@@ -146,7 +149,7 @@ def sleep_need(hours: A.Series, hrv: A.Series) -> dict:
     default = {"hours": DEFAULT_SLEEP_NEED, "personal": False, "n": 0,
                "detail": "8 h, the common recommendation for athletes, until your data shows your own plateau."}
     pairs = []
-    for d, h in hours.items():
+    for d, h in sorted(hours.items()):  # in date order for the lagged (Newey-West) errors
         z = A.baseline_z(hrv, d)
         if z is not None and 4 <= h <= 11:
             pairs.append((h, z[0]))
@@ -156,19 +159,27 @@ def sleep_need(hours: A.Series, hrv: A.Series) -> dict:
     h = np.array([p[0] for p in pairs])
     z = np.array([p[1] for p in pairs])
     best = None
-    for k in np.arange(7.0, 9.01, 0.25):
+    grid = np.arange(7.0, 9.01, 0.25)
+    for k in grid:
         if (h >= k).sum() < 10 or (h < k).sum() < 10:
             continue
         x = np.minimum(h, k)
-        res = stats.linregress(x, z)
-        sse = float(np.sum((z - (res.intercept + res.slope * x)) ** 2))
+        fit = regress.ols(np.column_stack([np.ones_like(x), x]), z, lags=7)  # Newey-West: nights are autocorrelated
+        if fit is None:
+            continue
+        sse = float(np.sum((z - np.column_stack([np.ones_like(x), x]) @ fit["coef"]) ** 2))
         if best is None or sse < best[1]:
-            best = (float(k), sse, res)
-    if best is None or best[2].slope <= 0 or best[2].pvalue >= 0.05:
+            best = (float(k), sse, fit)
+    if best is None:
         return default
-    k, _, res = best
+    k, _, fit = best
+    slope, t_stat = float(fit["coef"][1]), float(fit["t"][1])
+    p_value = float(2 * stats.t.sf(abs(t_stat), len(z) - 2))
+    # A knot at either end of the grid means the data found no plateau inside it: a straight line, not a ceiling.
+    if slope <= 0 or p_value >= 0.05 or k in (float(grid[0]), float(grid[-1])):
+        return default
     return {"hours": k, "personal": True, "n": len(pairs),
-            "detail": f"Your overnight HRV rises by {res.slope:.2f} SD per extra hour up to about {k:g} h, then levels off "
+            "detail": f"Your overnight HRV rises by {slope:.2f} SD per extra hour up to about {k:g} h, then levels off "
                       f"({len(pairs)} nights)."}
 
 
@@ -232,25 +243,42 @@ def warning_signals(series: dict[str, A.Series], d: date) -> dict | None:
             "level": "alert" if len(today) >= 3 or persisting else "warn"}
 
 
+UNDERFUEL_MIN_WEIGHINS = 8
+UNDERFUEL_MIN_SPAN_DAYS = 14
+
+
 def underfuelling(weights: list[tuple[date, float]], hrv: A.Series, eff_trend: dict | None, as_of: date) -> dict | None:
-    """Possible low energy availability (RED-S pattern): weight falling fast while HRV sags and efficiency stalls."""
-    recent = [(d, w) for d, w in weights if (as_of - d).days < 28]
-    if len(recent) < 4:
+    """Possible under-fuelling pattern: weight falling steadily while HRV sags and efficiency is not improving.
+
+    A prompt to look at intake, not a diagnosis or a measure of energy availability (Mountjoy et al. 2018, IOC consensus
+    on relative energy deficiency in sport, is the background). Needs >= 8 weigh-ins over >= 14 of the last 28 days; the
+    weight slope is the OLS fit of weight.rate_per_day and must be falling at >= 0.5 %/week with the upper end of its 95%
+    interval below zero. Efficiency that is missing is unknown, so it never fires the flag on its own.
+    """
+    recent = [(d, w) for d, w in weights if 0 <= (as_of - d).days < 28]
+    if len(recent) < UNDERFUEL_MIN_WEIGHINS or (max(d for d, _ in recent) - min(d for d, _ in recent)).days < UNDERFUEL_MIN_SPAN_DAYS:
         return None
-    x = np.array([(d - as_of).days for d, _ in recent], dtype=float)
-    y = np.array([w for _, w in recent])
-    if np.ptp(x) < 10:
+    fit = weight_trend.rate_per_day(recent, as_of)
+    if fit is None:
         return None
-    slope = float(np.polyfit(x, y, 1)[0]) * 7
-    pct = slope / float(np.mean(y)) * 100
+    slope_day, se_day = fit
+    mean = float(np.mean([w for _, w in recent]))
+    if mean <= 0:
+        return None
+    t = stats.t.ppf(0.975, len(recent) - 2)
+    pct = slope_day * 7 / mean * 100
+    upper_pct = (slope_day + t * se_day) * 7 / mean * 100
     week = _window(hrv, as_of - 6 * DAY, as_of)
     base = _window(hrv, as_of - 67 * DAY, as_of - 8 * DAY)
     if len(week) < 4 or len(base) < A.MIN_BASELINE:
         return None
     hrv_z = (fmean(week) - fmean(base)) / (pstdev(base) or 1)
-    stalled = eff_trend is None or (eff_trend.get("change_pct_90d") or 0) <= 0
-    if pct <= -0.5 and hrv_z <= -0.5 and stalled:
-        return {"rate_pct_week": round(pct, 2), "rate_kg_week": round(slope, 2), "hrv_z": round(hrv_z, 2)}
+    change = (eff_trend or {}).get("change_pct_90d")
+    if change is None:
+        return None  # efficiency unknown: not evidence of a stall
+    if pct <= -0.5 and upper_pct < 0 and hrv_z <= -0.5 and change <= 0:
+        return {"rate_pct_week": round(pct, 2), "rate_kg_week": round(slope_day * 7, 2), "hrv_z": round(hrv_z, 2),
+                "n": len(recent), "rate_pct_week_upper": round(upper_pct, 2)}
     return None
 
 
@@ -261,7 +289,8 @@ def readiness_validation(c: dict, readiness_fn, days: int = 365) -> dict | None:
     """Spearman correlation between morning readiness and that day's run efficiency vs your recent norm.
 
     Efficiency is the cleanest same-day performance signal we have: if readiness can't predict it, its weights deserve
-    a second look. Suggested weights are shown, never applied automatically.
+    a second look. Suggested weights are shown, never applied automatically. Component p-values are Benjamini-Hochberg adjusted
+    (`q`) across the components and the overall test; only components with q < 0.05 earn suggested weight.
     """
     as_of = c["as_of"]
     eff = [p for p in c["eff"] if p["day"] > as_of - timedelta(days=days)]
@@ -282,10 +311,20 @@ def readiness_validation(c: dict, readiness_fn, days: int = 365) -> dict | None:
         pairs = [(r[2][key], r[1]) for r in rows if key in r[2]]
         if len(pairs) >= 20 and len({p[0] for p in pairs}) > 2:
             cr, cp = stats.spearmanr([p[0] for p in pairs], [p[1] for p in pairs])
-            components[key] = {"rho": round(float(cr), 2), "p": round(float(cp), 3), "n": len(pairs)}
+            components[key] = {"rho": round(float(cr), 2), "p": float(cp), "n": len(pairs)}
+    # Benjamini-Hochberg across the components (and the overall test): six weights tested at once would otherwise
+    # throw up a "useful" one by chance about a quarter of the time.
+    tests = sorted([(v["p"], k) for k, v in components.items()] + [(float(pval), "_overall")])
+    m, running, q = len(tests), 1.0, {}
+    for i in range(m - 1, -1, -1):
+        running = min(running, tests[i][0] * m / (i + 1))
+        q[tests[i][1]] = running
+    for k, v in components.items():
+        v["q"] = round(q[k], 3)
+        v["p"] = round(v["p"], 3)
     suggested = None
     # Only components that clearly track performance earn weight; noise shouldn't reshape the score.
-    useful = {k: v["rho"] for k, v in components.items() if v["rho"] > 0 and v["p"] < 0.05}
+    useful = {k: v["rho"] for k, v in components.items() if v["rho"] > 0 and v["q"] < 0.05}
     if len(rows) >= 40 and useful:
         total = sum(useful.values())
         # Half evidence, half prior: a year of runs is still a small sample for six weights.
@@ -352,4 +391,4 @@ def sleep_target_check(series: dict[str, A.Series], load: A.Series, need: float,
             continue
         (met if h >= t["tonight_h"] - 0.25 else missed).add(d)
     return A.compare("sleep_target", "Sleep target", "Overnight HRV", "Nights at target", "Nights short of it", met, missed, hrv, 1, "ms", True,
-                     {"training load": load})
+                     {"training load": {d: load.get(d, 0.0) for d in A.daterange(end - timedelta(days=days), end)}})  # no activity that day is zero load

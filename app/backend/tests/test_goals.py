@@ -17,7 +17,7 @@ from tests.test_notes import D0, EASY, act
 TODAY = date(2026, 10, 24)
 
 
-def run_ctx(cs=4.0, d_prime=200.0, slope_per_month=0.0, months=8, extra_acts=()):
+def run_ctx(cs=4.0, d_prime=200.0, slope_per_month=0.0, months=13, extra_acts=()):
     hist = [{"day": TODAY - timedelta(days=30 * m), "cs_mps": cs - slope_per_month * m + (0.01 if m % 2 else -0.01)} for m in range(months - 1, -1, -1)]
     hist = [{**h, "cs_mps": round(cs - slope_per_month * (TODAY - h["day"]).days / 30 + (0.012 if i % 2 else -0.012), 3)} for i, h in enumerate(hist)]
     return {"as_of": TODAY, "acts": list(extra_acts), "performance": {

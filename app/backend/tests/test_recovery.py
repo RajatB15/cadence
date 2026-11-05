@@ -92,10 +92,36 @@ def test_warning_signals_need_two_markers():
 def test_underfuelling_needs_all_three_signs():
     ds = days(90)
     hrv = {d: 60.0 + (i % 3) for i, d in enumerate(ds)} | {d: 52.0 for d in ds[-7:]}
-    weights = [(ds[-28 + i * 4], 70 - i * 0.25) for i in range(7)]
-    assert R.underfuelling(weights, hrv, {"change_pct_90d": -1.0}, ds[-1])["rate_pct_week"] < -0.5
+    weights = [(ds[-28 + i * 3], 70 - i * 0.22) for i in range(10)]
+    hit = R.underfuelling(weights, hrv, {"change_pct_90d": -1.0}, ds[-1])
+    assert hit["rate_pct_week"] < -0.5 and hit["n"] == 10
     assert R.underfuelling(weights, hrv, {"change_pct_90d": 3.0}, ds[-1]) is None
-    assert R.underfuelling([(d, 70.0) for d, _ in weights], hrv, None, ds[-1]) is None
+    assert R.underfuelling([(d, 70.0) for d, _ in weights], hrv, {"change_pct_90d": -1.0}, ds[-1]) is None
+
+
+def test_underfuelling_does_not_fire_on_thin_or_unknown_data():
+    ds = days(90)
+    hrv = {d: 60.0 + (i % 3) for i, d in enumerate(ds)} | {d: 52.0 for d in ds[-7:]}
+    eff = {"change_pct_90d": -1.0}
+    thin = [(ds[-28 + i * 4], 70 - i * 0.25) for i in range(7)]  # old rule fired on 7 weigh-ins
+    assert R.underfuelling(thin, hrv, eff, ds[-1]) is None
+    short_span = [(ds[-10 + i], 70 - i * 0.3) for i in range(9)]
+    assert R.underfuelling(short_span, hrv, eff, ds[-1]) is None
+    ok = [(ds[-28 + i * 3], 70 - i * 0.22) for i in range(10)]
+    assert R.underfuelling(ok, hrv, None, ds[-1]) is None  # missing efficiency is unknown, not a stall
+    noisy = [(ds[-28 + i * 3], 70 + (2.0 if i % 2 else -2.0) - i * 0.05) for i in range(10)]
+    assert R.underfuelling(noisy, hrv, eff, ds[-1]) is None  # CI includes zero
+
+
+def test_compare_leaves_out_days_with_a_missing_covariate():
+    rng = random.Random(3)
+    ds = days(120)
+    exposed = {d for d in ds if rng.random() < 0.5}
+    reference = set(ds) - exposed
+    outcome = {d + timedelta(days=1): 60 + rng.gauss(0, 1) for d in ds}
+    cov = {d: rng.random() for d in ds[:60]}  # second half unknown
+    e = A.compare("x", "c", "o", "a", "b", exposed, reference, outcome, 1, "ms", True, {"cov": cov})
+    assert e.n_exposed + e.n_reference <= 60  # the old code imputed 0.0 for the other 60 days
 
 
 def test_fdr_keeps_the_real_effect_and_drops_chance_findings():

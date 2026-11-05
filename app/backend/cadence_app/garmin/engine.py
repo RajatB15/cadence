@@ -146,12 +146,18 @@ class SyncEngine:
         return fetched
 
     def rebuild(self) -> int:
-        """Re-derive every normalized Garmin row from the vault. Makes zero API calls."""
+        """Re-derive every normalized Garmin row from the vault. Makes zero API calls.
+
+        Replays by upsert and only afterwards prunes rows no stored response produces, so a failure
+        part-way leaves the previous data in place, and activities (with their analyses and
+        user labels) are never deleted just to be re-created.
+        """
         with self.factory() as session, session.begin():
             ensure_source(session, SOURCE_ID, "Garmin Connect", "garmin")
-            for model in (DailyMetric, Activity, WeightReading):
-                session.execute(delete(model).where(model.source_id == SOURCE_ID))
         replayed = 0
+        seen_metrics: set[tuple[date, str]] = set()
+        seen_activities: set[str] = set()
+        seen_weights: set[str] = set()
         with self.factory() as reader:
             for stored in vault.iter_stored(reader, {d.key for d in DATASETS}):
                 self._check()
@@ -159,13 +165,36 @@ class SyncEngine:
                 batch = normalize(stored.dataset, stored.payload, day)
                 with self.factory() as session, session.begin():
                     self.records += write_batch(session, SOURCE_ID, batch, self.now())
+                seen_metrics.update((m.day, m.metric) for m in batch.metrics)
+                seen_activities.update(a.source_record_id for a in batch.activities)
+                seen_weights.update(w.source_record_id for w in batch.weights)
                 replayed += 1
                 if replayed % 50 == 0:
                     self._progress(f"Rebuilding from vault · {replayed} responses replayed")
-        self._refresh_derived()
+        seen_metrics |= self._refresh_derived()
+        self._prune_unseen(seen_metrics, seen_activities, seen_weights)
         self._mark_synced()
         self._progress(f"Rebuilt from {replayed} stored responses with zero API calls")
         return replayed
+
+    def _prune_unseen(self, metrics: set, activities: set, weights: set) -> None:
+        """Remove normalized rows that no stored response reproduces (one transaction)."""
+        with self.factory() as session, session.begin():
+            stale = [
+                i for i, d, m in session.execute(
+                    select(DailyMetric.id, DailyMetric.day, DailyMetric.metric).where(DailyMetric.source_id == SOURCE_ID)
+                ) if (d, m) not in metrics
+            ]
+            for model, seen in ((Activity, activities), (WeightReading, weights)):
+                ids = [
+                    i for i, rid in session.execute(
+                        select(model.id, model.source_record_id).where(model.source_id == SOURCE_ID)
+                    ) if rid not in seen
+                ]
+                for k in range(0, len(ids), 500):
+                    session.execute(delete(model).where(model.id.in_(ids[k : k + 500])))
+            for k in range(0, len(stale), 500):
+                session.execute(delete(DailyMetric).where(DailyMetric.id.in_(stale[k : k + 500])))
 
     # ---- dataset strategies --------------------------------------------------
 
@@ -415,7 +444,8 @@ class SyncEngine:
             vault.store(
                 session, dataset=ds.key, request_key=key[:160], path=path, params=params,
                 status=fetched.status, content_type=fetched.content_type, body=fetched.body,
-                fetched_at=now, final=final, item_count=count, window=window, file_path=file_path,
+                fetched_at=now, final=final and error is None, item_count=count, window=window,
+                file_path=file_path,
             )
             self.records += write_batch(session, SOURCE_ID, batch, now)
             state = self._state_in(session, ds.key)
@@ -425,6 +455,10 @@ class SyncEngine:
             if useful and window[1] is not None:
                 state.newest_with_data = max(filter(None, (state.newest_with_data, window[1])))
         self._stored_keys.append(key[:160])
+        if error is not None:
+            # A 200 that is not the expected format is kept for inspection but never final, and
+            # the checkpoint must not advance past it, so it is retried on the next run.
+            raise GarminError(f"{ds.label}: {error}")
         self._progress(self.message)
         return Got(count, useful, earliest)
 
@@ -440,7 +474,7 @@ class SyncEngine:
             self.failures.append(ds.label)
             self._update(ds.key, last_error=str(exc))
 
-    def _refresh_derived(self) -> None:
+    def _refresh_derived(self) -> set[tuple[date, str]]:
         with self.factory() as session, session.begin():
             rows = session.execute(
                 select(Activity.local_date, func.sum(Activity.training_load), func.max(Activity.vo2max))
@@ -454,6 +488,7 @@ class SyncEngine:
                 if vo2 is not None:
                     batch.metrics.append(MetricRecord(day, "vo2max", vo2, "ml/kg/min"))
             write_batch(session, SOURCE_ID, batch, self.now())
+            return {(m.day, m.metric) for m in batch.metrics}
 
     def _mark_synced(self) -> None:
         with self.factory() as session, session.begin():

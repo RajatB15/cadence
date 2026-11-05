@@ -1,3 +1,4 @@
+import re
 import socket
 from datetime import date
 
@@ -7,7 +8,7 @@ from fastapi.testclient import TestClient
 
 from cadence_app.config import Settings
 from cadence_app.main import create_app
-from cadence_app.share import COOKIE, ShareGate, ShareServer
+from cadence_app.share import COOKIE, PHONE_WRITES, SECURE_COOKIE, TOKEN_KEY, ShareAuth, ShareGate, ShareServer, phone_may_write
 from tests.test_api import MUTATE, FixedClock
 
 
@@ -32,8 +33,32 @@ def api(tmp_path, web):
         yield app
 
 
-def phone(app, web, token="tok"):
-    return TestClient(ShareGate(app, lambda: token, web), base_url="http://192.168.1.20:8766")
+class Clock:
+    def __init__(self):
+        self.t = 1_000_000.0
+
+    def __call__(self):
+        return self.t
+
+
+def make_auth(clock=None):
+    store: dict[str, str] = {}
+    auth = ShareAuth(store.get, lambda k, v: store.pop(k, None) if v is None else store.__setitem__(k, v), clock or Clock())
+    auth.store = store
+    return auth
+
+
+def phone(app, web, auth=None, base="http://192.168.1.20:8766"):
+    """A client for the share gate; `pair()` below pairs it with a fresh single-use key."""
+    auth = auth or make_auth()
+    client = TestClient(ShareGate(app, auth, web), base_url=base)
+    client.share_auth = auth
+    return client
+
+
+def pair(c, **kw):
+    key, _ = c.share_auth.pairing_key()
+    return c.get(f"/pair?key={key}", follow_redirects=False, **kw)
 
 
 def test_unpaired_devices_see_nothing(api, web):
@@ -41,15 +66,18 @@ def test_unpaired_devices_see_nothing(api, web):
     assert c.get("/").status_code == 401
     assert c.get("/api/overview").status_code == 401
     assert c.get("/pair?key=wrong").status_code == 403
-    assert phone(api, web, token=None).get("/api/overview").status_code == 503
+    off = TestClient(ShareGate(api, make_auth(), web, lambda: False), base_url="http://192.168.1.20:8766")
+    assert off.get("/api/overview").status_code == 503
 
 
 def test_pairing_sets_cookie_and_allows_reads_only(api, web):
     c = phone(api, web)
-    r = c.get("/pair?key=tok", follow_redirects=False)
+    r = pair(c)
     assert r.status_code == 303 and r.headers["location"] == "/"
-    assert "httponly" in r.headers["set-cookie"].lower()
-    assert c.cookies.get(COOKIE) == "tok"
+    cookie = r.headers["set-cookie"].lower()
+    assert "httponly" in cookie and "secure" not in cookie and "__host-" not in cookie
+    token = c.cookies.get(COOKIE)
+    assert token and token not in c.share_auth.store.values() and token not in "".join(c.share_auth.store.values())  # only a hash is stored
 
     overview = c.get("/api/overview")
     assert overview.status_code == 200 and overview.json()["has_data"]
@@ -64,12 +92,70 @@ def test_pairing_sets_cookie_and_allows_reads_only(api, web):
     assert "nope" not in c.get("/%2e%2e/secret.txt").text
 
 
-def test_rotating_the_key_unpairs_phones(api, web):
-    token = {"v": "old"}
-    c = TestClient(ShareGate(api, lambda: token["v"], web), base_url="http://192.168.1.20:8766")
-    c.get("/pair?key=old")
+def test_pairing_key_is_single_use_and_expires(api, web):
+    clock = Clock()
+    auth = make_auth(clock)
+    key, _ = auth.pairing_key()
+    a, b = phone(api, web, auth), phone(api, web, auth)
+    assert a.get(f"/pair?key={key}", follow_redirects=False).status_code == 303
+    assert b.get(f"/pair?key={key}", follow_redirects=False).status_code == 403
+    key2, _ = auth.pairing_key()
+    assert key2 != key
+    clock.t += 11 * 60
+    assert b.get(f"/pair?key={key2}", follow_redirects=False).status_code == 403
+
+
+def test_https_pairing_uses_secure_host_cookie(api, web):
+    c = phone(api, web, base="https://cadence.example.ts.net")
+    r = pair(c)
+    set_cookie = r.headers["set-cookie"].lower()
+    assert "__host-cadence_share=" in set_cookie and "secure" in set_cookie and "path=/" in set_cookie
+    assert c.get("/api/health").json() == {"ok": True}
+    # Through a TLS-terminating proxy (tailscale serve) the scheme arrives in X-Forwarded-Proto.
+    p = phone(api, web)
+    r = pair(p, headers={"x-forwarded-proto": "https"})
+    assert SECURE_COOKIE.lower() in r.headers["set-cookie"].lower()
+
+
+def test_each_phone_has_its_own_revocable_session(api, web):
+    auth = make_auth()
+    a, b = phone(api, web, auth), phone(api, web, auth)
+    pair(a, headers={"user-agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 17) Safari/604"})
+    pair(b)
+    sessions = auth.list()
+    assert len(sessions) == 2 and sessions[0]["label"].startswith("iPhone")
+    assert a.get("/api/health").status_code == 200 and b.get("/api/health").status_code == 200
+    assert auth.revoke(sessions[0]["id"])
+    assert a.get("/api/health").status_code == 401 and b.get("/api/health").status_code == 200
+    auth.revoke_all()
+    assert b.get("/api/health").status_code == 401
+
+
+def test_failed_pairing_is_throttled_and_logged_without_keys(api, web, caplog):
+    c = phone(api, web)
+    with caplog.at_level("WARNING"):
+        codes = [c.get("/pair?key=guess-secret").status_code for _ in range(7)]
+    assert codes[:5] == [403] * 5 and codes[5] == 403 and codes[6] == 429
+    assert "Failed phone pairing attempt" in caplog.text and "guess-secret" not in caplog.text
+    real, _ = c.share_auth.pairing_key()
+    blocked = c.get(f"/pair?key={real}", follow_redirects=False)
+    assert blocked.status_code == 429 and int(blocked.headers["retry-after"]) > 0
+    c.share_auth.pairing_key()  # the real key was not consumed by a blocked attempt
+    assert c.share_auth.pairing_key()[0] == real
+
+
+def test_old_shared_key_cookie_is_upgraded_in_place(api, web):
+    auth = make_auth()
+    auth.store[TOKEN_KEY] = "legacy-token"
+    c = phone(api, web, auth)
+    c.cookies.set(COOKIE, "legacy-token", domain="192.168.1.20")
     assert c.get("/api/health").status_code == 200
-    token["v"] = "new"
+    r = c.get("/")
+    assert r.status_code == 200 and "set-cookie" in r.headers and len(auth.list()) == 1
+    assert c.cookies.get(COOKIE) != "legacy-token"
+    assert c.get("/api/health").status_code == 200
+    auth.revoke_all()
+    c.cookies.set(COOKIE, "legacy-token", domain="192.168.1.20")
     assert c.get("/api/health").status_code == 401
 
 
@@ -81,18 +167,19 @@ def test_share_server_listens_and_persists_token(tmp_path, api, web):
     server.start()
     try:
         assert server.running
-        token = server.token()
+        status = server.status()
+        assert status["running"] and status["qr"] and status["insecure_lan"] is not status["secure"]
+        key = status["pair_url"].rsplit("key=", 1)[1]
         with httpx.Client(base_url=f"http://127.0.0.1:{port}") as http:
             assert http.get("/api/health").status_code == 401
-            http.get(f"/pair?key={token}")
+            http.get(f"/pair?key={key}")
             assert http.get("/api/health").json() == {"ok": True}
-        status = server.status()
-        assert status["running"] and status["qr"] and status["pair_url"].endswith(token)
+            assert len(server.status()["sessions"]) == 1
+            server.reset()
+            assert http.get("/api/health").status_code == 401
     finally:
         server.stop()
-    assert not server.running and server.token() == token
-    server.reset()
-    assert server.token() != token
+    assert not server.running
 
 
 def test_share_endpoints_on_loopback(tmp_path):
@@ -108,7 +195,7 @@ def test_share_endpoints_on_loopback(tmp_path):
 
 def test_paired_phone_can_write_the_journal_but_nothing_else(api, web):
     c = phone(api, web)
-    c.get("/pair?key=tok", follow_redirects=False)
+    pair(c)
     assert c.get("/api/journal").status_code == 200
     r = c.put("/api/journal/2026-10-21", json={"answers": {"alcohol": 2}}, headers=MUTATE)
     assert r.status_code == 200 and r.json()["answers"]["alcohol"] == 2
@@ -118,9 +205,48 @@ def test_paired_phone_can_write_the_journal_but_nothing_else(api, web):
 
 def test_paired_phone_can_name_a_strength_class(api, web):
     c = phone(api, web)
-    c.get("/pair?key=tok", follow_redirects=False)
+    pair(c)
     text = "Get Stronger\nBarbell Front Squats\nGlute Bridges\nCore\nBeast Hold drag"
     assert c.post("/api/strength/parse", json={"text": text}, headers=MUTATE).json()["summary"]["heavy_lower"]
     aid = c.get("/api/activities?family=strength&limit=1").json()["items"][0]["id"]
     r = c.put(f"/api/strength/{aid}", json={"text": text}, headers=MUTATE)
     assert r.status_code == 200 and len(r.json()["blocks"]) == 2
+
+
+def test_phone_write_allowlist_is_anchored():
+    assert phone_may_write("PUT", "/api/journal/2026-10-21")
+    assert phone_may_write("POST", "/api/food/meals/3/log")
+    assert not phone_may_write("POST", "/api/planner/3/garmin")
+    assert not phone_may_write("DELETE", "/api/planner/3/garmin")
+    assert not phone_may_write("POST", "/api/reading/feed/refresh")
+    assert not phone_may_write("PUT", "/api/settings/reading-feed")
+    assert not phone_may_write("POST", "/api/garmin/rebuild")
+    assert not phone_may_write("POST", "/api/push/subscribe/extra")
+    assert not phone_may_write("POST", "/api/journalx/behaviours")
+    assert not phone_may_write("DELETE", "/api/push/test")  # method matters
+    assert not phone_may_write("POST", "/api/settings/plan")
+
+
+def test_every_write_route_is_either_allowlisted_or_blocked_from_the_phone(api, web):
+    """Fails when someone adds a mutating route that a paired phone can reach without it being on the allowlist."""
+    from fastapi.routing import APIRoute
+
+    c = phone(api, web)
+    pair(c)
+    write_routes = [(m, r.path) for r in api.routes if isinstance(r, APIRoute) for m in r.methods if m not in ("GET", "HEAD", "OPTIONS")]
+    assert len(write_routes) > 40
+    for method, template in write_routes:
+        path = re.sub(r"\{[^}]+\}", "1", template)
+        allowed = phone_may_write(method, path)
+        if not allowed:  # blocked requests never reach a handler, so this is safe to send
+            response = c.request(method, path, headers=MUTATE)
+            assert response.status_code in (404, 405), f"{method} {template} reachable from a paired phone but not on PHONE_WRITES"
+            assert response.status_code == 405 or template.startswith("/api/share"), (method, template)
+    allowed_routes = {(m, t) for m, t in write_routes if phone_may_write(m, re.sub(r"\{[^}]+\}", "1", t))}
+    never = ["/api/planner/{plan_id}/garmin", "/api/reading/feed/refresh", "/api/garmin/rebuild", "/api/garmin/stop", "/api/garmin-connect", "/api/garmin-connect/login",
+             "/api/settings/goal", "/api/settings/reading-feed", "/api/settings/training-mode", "/api/settings/weight-goal", "/api/goals", "/api/events", "/api/sync/demo",
+             "/api/sources/demo/data", "/api/credentials/reminders/dismiss", "/api/share/reset", "/api/activities/{activity_id}/fetch", "/api/days/{day}/fetch"]
+    assert not [(m, t) for m, t in allowed_routes if t in never]
+    # Every allowlist entry must still match a real route, so renames don't leave dead (or accidentally broad) rules.
+    for method, rx in PHONE_WRITES:
+        assert any(m == method and rx.fullmatch(re.sub(r"\{[^}]+\}", "1", t)) for m, t in write_routes), (method, rx.pattern)

@@ -28,7 +28,10 @@ def ols(x: np.ndarray, y: np.ndarray, lags: int = 0) -> dict | None:
         s += (1 - lag / (lags + 1)) * (g + g.T)
     cov = inv @ s @ inv * n / max(n - k, 1)
     se = np.sqrt(np.maximum(np.diag(cov), 0))
-    crit = stats.t.ppf(0.975, n - k)
+    # With HAC errors the t reference distribution has far fewer degrees of freedom than n - k (roughly the number of
+    # independent stretches, n / (1 + lags/2)); using n - k would be anti-conservative (cf. Kiefer & Vogelsang 2005).
+    df = max(n / (1 + lags / 2) - k, 2.0) if lags else n - k
+    crit = stats.t.ppf(0.975, df)
     total = float(np.sum((y - y.mean()) ** 2))
     return {
         "coef": beta, "se": se, "ci": np.column_stack([beta - crit * se, beta + crit * se]),

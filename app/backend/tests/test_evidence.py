@@ -34,16 +34,28 @@ def test_too_little_or_too_narrow_data_is_missing_not_zero():
     assert bunched["state"] == "missing" and "cover only" in bunched["reason"]
 
 
+def mk(key, state, change=None):
+    return {"key": key, "state": state, "change": change}
+
+
 def test_the_verdict_counts_agreement_and_never_blends():
-    def m(state):
-        return {"state": state}
     up, steady, down = {"state": "up"}, {"state": "steady"}, {"state": "down"}
-    assert EV.verdict([m("better"), m("better"), m("flat"), m("missing")], steady)["key"] == "adapting"
-    bad = EV.verdict([m("worse"), m("worse"), m("better"), m("flat")], up)
-    assert bad["key"] == "not_adapting" and "1 improving · 2 worsening" in bad["summary"]
-    assert EV.verdict([m("worse"), m("worse"), m("flat")], down)["key"] == "fading"
-    assert EV.verdict([m("better"), m("worse"), m("flat")], steady)["key"] == "mixed"
-    assert EV.verdict([m("better"), m("missing"), m("missing")], up)["key"] == "unknown"
+    assert EV.verdict([mk("efficiency", "better"), mk("critical_speed", "better"), mk("vo2max", "flat"), mk("drift", "missing")], steady)["key"] == "adapting"
+    bad = EV.verdict([mk("efficiency", "worse"), mk("critical_speed", "worse"), mk("drift", "worse"), mk("vo2max", "better"), mk("hrv", "flat")], up)
+    assert bad["key"] == "not_adapting" and "1 improving · 3 worsening" in bad["summary"]
+    assert EV.verdict([mk("efficiency", "worse"), mk("critical_speed", "worse"), mk("drift", "worse"), mk("vo2max", "flat")], down)["key"] == "fading"
+    assert EV.verdict([mk("efficiency", "better"), mk("critical_speed", "worse"), mk("vo2max", "flat")], steady)["key"] == "mixed"
+    assert EV.verdict([mk("efficiency", "better"), mk("vo2max", "missing"), mk("drift", "missing")], up)["key"] == "unknown"
+
+
+def test_hrv_and_resting_hr_count_as_one_marker():
+    # old rule: two worsening markers was enough; HRV + RHR are one autonomic signal, so this is only 1 worsening vote
+    v = EV.verdict([mk("hrv", "worse", -4.0), mk("resting_hr", "worse", 2.0), mk("efficiency", "flat"), mk("vo2max", "flat")], {"state": "steady"})
+    assert v["counts"]["worse"] == 1 and v["key"] != "not_adapting"
+    two = EV.verdict([mk("hrv", "worse", -4.0), mk("resting_hr", "worse", 2.0), mk("efficiency", "worse", -2.0), mk("vo2max", "flat")], {"state": "steady"})
+    assert two["counts"]["worse"] == 2 and two["key"] != "not_adapting"  # 2 votes, none large: not enough
+    large = EV.verdict([mk("hrv", "worse", -4.0), mk("efficiency", "worse", -6.0), mk("vo2max", "flat")], {"state": "steady"})
+    assert large["key"] == "not_adapting"  # 2 votes with one change >= 3x its floor
 
 
 def test_load_side_and_life_strain():

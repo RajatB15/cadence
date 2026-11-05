@@ -5,7 +5,7 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import { ReadingSheet, useReading, useSetReading } from "../components/Reading";
 import { ErrorBlock, LoadingBlock, PageHeader } from "../components/Shell";
-import { api } from "../lib/api";
+import { READ_ONLY, api } from "../lib/api";
 import { formatDate } from "../lib/format";
 import { EVIDENCE, checkedAgo, filterCards, filterFeed, readTime, type ReadingFilter } from "../lib/reading";
 import type { ReadingView } from "../lib/types";
@@ -131,9 +131,10 @@ function ResearchFeed({ view, topic }: { view: ReadingView; topic: string | null
         </p>
         <div className="flex flex-wrap items-center gap-3">
           <Chip active={savedOnly} onClick={() => setSavedOnly((v) => !v)}>Saved only</Chip>
-          <button type="button" className="pop pop-ghost" disabled={refresh.isPending} onClick={() => refresh.mutate()}>
+          <button type="button" className="pop pop-ghost" disabled={refresh.isPending || READ_ONLY} title={READ_ONLY ? "Refresh the feed on your Mac" : undefined} onClick={() => refresh.mutate()}>
             <RefreshCw size={14} /> {refresh.isPending ? "Checking…" : "Check now"}
           </button>
+          {READ_ONLY && <span className="text-xs text-dim">Checking for new research is done on your Mac.</span>}
         </div>
       </div>
       {(refresh.data?.reason || checkedAgo(feed.fetched_at)) && <p className="mb-4 text-xs text-dim">{refresh.data?.reason ?? checkedAgo(feed.fetched_at)}</p>}

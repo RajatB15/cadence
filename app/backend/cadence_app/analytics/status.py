@@ -6,9 +6,9 @@ Each complete week is judged from three numbers, all from your own history:
 - acute:chronic load at the week's end, with 0.8-1.3 as the productive range and above 1.5 as a spike (Gabbett 2016, BJSM).
 Order of the rules: time off, easing back, overloading, deloading (or a planned recovery/taper week), detraining, progressing,
 maintaining. The thresholds are rules of thumb for labelling, not medical or causal claims. The headline looks at the last
-three complete weeks (the middle one decides ties) and is overridden only by time off now or an acute overload signal.
-The load-based label is then checked against evidence.py: if load says progressing or maintaining but most independent body
-markers (efficiency, critical speed, VO₂max, resting HR, HRV, heart-rate drift) are moving the wrong way, the headline reads
+three complete weeks (the most common status wins; on a tie the most recent week's status decides) and is overridden only by time off now or an acute overload signal.
+The load-based label is then checked against evidence.py: if load says progressing or maintaining but several independent body
+markers (efficiency, critical speed, VO₂max, resting HR/HRV as one, heart-rate drift) have moved the wrong way, the headline reads
 "Not adapting yet". Fewer than MIN_WEEKS weeks of history, or fitness under MIN_FITNESS, gives "not enough data" rather than a guess.
 """
 

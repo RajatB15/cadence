@@ -60,6 +60,7 @@ from cadence_app.models import (
 from cadence_app.models import RawResponse as vault_model
 from cadence_app.secrets import read_env_file
 from cadence_app.share import ShareServer
+from cadence_app import localtime
 from cadence_app.sync import latest_runs, run_demo_sync, utcnow
 
 SAFE_METHODS = {"GET", "HEAD", "OPTIONS"}
@@ -99,11 +100,20 @@ OVERVIEW_METRICS = [
 
 
 class Clock:
+    tz_name: str | None = None  # IANA name from Settings; None = this machine's local zone
+
+    def tz(self):
+        return localtime.zone(self.tz_name)
+
     def today(self) -> date:
-        return date.today()
+        return localtime.today_in(self.tz_name)
 
     def now(self) -> datetime:
         return utcnow()
+
+
+class TimezoneRequest(BaseModel):
+    timezone: str | None = Field(default=None, max_length=64)
 
 
 class DismissRequest(BaseModel):
@@ -375,6 +385,8 @@ def create_app(
     upgrade_database(settings.database_url)
     engine = make_engine(settings.database_url)
     factory = make_session_factory(engine)
+    with factory() as _s:
+        clock.tz_name = localtime.load(_s)
     make_client = garmin_client_factory or (
         lambda key: GarminClient(key, min_interval_s=settings.garmin_min_interval_s)
     )
@@ -432,7 +444,7 @@ def create_app(
         engine.dispose()
 
     app = FastAPI(title="Cadence", lifespan=lifespan, docs_url=None, redoc_url=None)
-    share = ShareServer(app, factory, settings.web_dist, settings.share_port)
+    share = ShareServer(app, factory, settings.web_dist, settings.share_port, settings.share_host)
     app.state.share = share
     app.state.notifier, app.state.scheduler = notifier, scheduler
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=ALLOWED_HOSTS)
@@ -512,6 +524,12 @@ def create_app(
     @app.post("/api/share/reset")
     def share_reset() -> dict:
         share.reset()
+        return share.status()
+
+    @app.delete("/api/share/sessions/{session_id}")
+    def share_revoke(session_id: str) -> dict:
+        if not share.revoke(session_id):
+            raise HTTPException(404, "No such paired device")
         return share.status()
 
     @app.get("/api/credentials/status")
@@ -864,7 +882,7 @@ def create_app(
         }
         if a.source_id == "garmin":
             rid = a.source_record_id
-            out["garmin_summary"] = vault.activity_summaries(session).get(rid)
+            out["garmin_summary"] = vault.activity_summary(session, rid, a.local_date)
             for key, field in (("activity_detail", "detail"), ("activity_workouts", "workouts"), ("activity_fit", None)):
                 raw, payload = vault.load(session, f"{key}:{rid}")
                 if raw is None:
@@ -1097,13 +1115,16 @@ def create_app(
         """Reads a class screenshot with Tesseract on this machine; returns the text and its parsed blocks, unsaved."""
         if not request.headers.get("content-type", "").startswith("image/"):
             raise HTTPException(415, "Send the screenshot as an image")
-        data = await request.body()
-        if not data or len(data) > ocr.MAX_IMAGE_BYTES:
-            raise HTTPException(413, "Image is empty or larger than 15 MB")
+        try:
+            data = await ocr.read_upload(request.stream(), request.headers.get("content-length"))
+        except ocr.UploadError as exc:
+            raise HTTPException(exc.status, exc.detail) from None
         if not ocr.available():
             raise HTTPException(501, "Text recognition isn't available on this computer")
         try:
             text = await run_in_threadpool(ocr.image_text, data)
+        except ocr.Busy as exc:
+            raise HTTPException(503, str(exc)) from None
         except ValueError as exc:
             raise HTTPException(400, str(exc)) from None
         return strength.view(text, exercises.parse(text))
@@ -1446,6 +1467,20 @@ def create_app(
             raise HTTPException(404, "Unknown habit")
         return journal.behaviour_dict(b)
 
+    @app.get("/api/settings/timezone")
+    def get_timezone(session: Session = Depends(get_session)) -> dict:
+        name = localtime.load(session)
+        return {"timezone": name, "effective": name or str(clock.tz()), "today": clock.today()}
+
+    @app.put("/api/settings/timezone")
+    def set_timezone(body: TimezoneRequest, session: Session = Depends(get_session)) -> dict:
+        try:
+            name = localtime.save(session, body.timezone)
+        except ValueError as exc:
+            raise HTTPException(400, str(exc)) from None
+        clock.tz_name = name
+        return {"timezone": name, "effective": name or str(clock.tz()), "today": clock.today()}
+
     @app.get("/api/settings/profile")
     def get_profile(session: Session = Depends(get_session)) -> dict:
         return {"profile": profile_store.load(session)}
@@ -1505,7 +1540,7 @@ def create_app(
     @app.get("/api/food/crawl")
     def food_crawl_progress() -> dict:
         """How far the food library build has got: parsed / failed / not tried pages, pace, and what the pages became."""
-        now = datetime.now().astimezone()
+        now = datetime.now(clock.tz())
         return {"progress": food_crawl.progress(settings.food_data_dir, now, food_crawl.workers())}
 
     @app.get("/api/food/dishes")
@@ -1555,13 +1590,16 @@ def create_app(
         """Reads a photo of a nutrition table with Tesseract on this machine; returns the text and what was found, for review. Saves nothing."""
         if not request.headers.get("content-type", "").startswith("image/"):
             raise HTTPException(415, "Send the label as an image")
-        data = await request.body()
-        if not data or len(data) > ocr.MAX_IMAGE_BYTES:
-            raise HTTPException(413, "Image is empty or larger than 15 MB")
+        try:
+            data = await ocr.read_upload(request.stream(), request.headers.get("content-length"))
+        except ocr.UploadError as exc:
+            raise HTTPException(exc.status, exc.detail) from None
         if not ocr.available():
             raise HTTPException(501, "Text recognition isn't available here. Type the numbers in instead.")
         try:
             text = await run_in_threadpool(ocr.image_text, data)
+        except ocr.Busy as exc:
+            raise HTTPException(503, str(exc)) from None
         except ValueError as exc:
             raise HTTPException(400, str(exc)) from None
         return {"text": text, **food_label.parse(text)}

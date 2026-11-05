@@ -5,8 +5,12 @@ Methods, so every number can be checked:
   savings are halved because few runners can exploit Minetti's full downhill benefit outside a treadmill.
 - Best efforts: highest average grade-adjusted speed over each duration (mean-maximal speed curve).
 - Critical speed (CS) and D′: linear distance–time model (Hill 1993) fitted to the best 3–20 minute efforts. Only
-  trusted when the efforts look maximal (D′ in a physiological range, near-linear fit).
-- Race times: CS model where it is valid (≤ ~30 min), Riegel (1981) extrapolation with exponent 1.06 beyond.
+  trusted when the efforts look maximal: >= 4 efforts (>= 2 of 10+ min), D′ in a physiological range, small speed-space
+  residuals and a small standard error (Jones et al. 2010 stress that CS needs several maximal, well-spread efforts).
+  Reports SE and a 95% interval (t, n - 2 df).
+- Race times: CS model where it is valid (≤ ~30 min), Riegel (1981) extrapolation with exponent 1.06 beyond; the CS
+  estimate blends toward Riegel from the longest fitted effort when it extrapolates past 1.5 × that effort's duration.
+  Ranges come from the fit's covariance (delta method).
 - Threshold heart rate: Friel's 20-minute test — average HR of a hard 20-minute effort × 0.95.
 """
 
@@ -16,6 +20,7 @@ from datetime import date, timedelta
 from statistics import fmean, median, pstdev
 
 import numpy as np
+from scipy import stats
 
 BEST_DURATIONS = (60, 180, 300, 420, 600, 720, 900, 1200, 1800)
 CS_DURATIONS = (180, 300, 420, 600, 720, 900, 1200)
@@ -203,11 +208,22 @@ def analyse_run(streams: dict[str, list]) -> dict:
 # ---- critical speed & race times ------------------------------------------------------
 
 
+CS_MIN_POINTS = 4
+CS_MAX_RESID = 0.04  # worst relative speed residual allowed (4 %): maximal efforts sit on the hyperbola v = CS + D'/t
+CS_MAX_RMSE = 0.025
+CS_MAX_REL_SE = 0.04  # standard error of CS above 4 % of CS means the efforts don't pin it down
+
+
 def critical_speed(runs: list[dict], end: date, days: int = CS_WINDOW_DAYS) -> dict:
     """CS and D′ from the best 3–20 min efforts of the trailing window.
 
     `runs` items: {"id", "day", "name", "best": {"180": m/s, ...}}. Always returns a dict; `valid` says whether the
     efforts were hard enough to trust, and `missing` names the efforts that would fix it.
+
+    Validity needs >= 4 efforts (>= 2 of them 10 minutes or longer, >= 1 of 5 minutes or less) and speed-space residuals
+    from v = CS + D′/t within CS_MAX_RESID (worst) and CS_MAX_RMSE (RMS), because a distance-time R² is near 1 for any
+    set of points (distance is dominated by time). The standard errors come from the OLS covariance (n - 2 df); the fit
+    is rejected when SE(CS) exceeds CS_MAX_REL_SE of CS.
     """
     window = [r for r in runs if end - timedelta(days=days) < r["day"] <= end and r.get("best")]
     points = []
@@ -217,41 +233,77 @@ def critical_speed(runs: list[dict], end: date, days: int = CS_WINDOW_DAYS) -> d
             points.append({"seconds": dur, "speed": top["best"][str(dur)], "id": top["id"], "day": top["day"], "name": top["name"]})
     out: dict = {"valid": False, "points": points, "window_days": days}
     short = [p for p in points if p["seconds"] <= 300]
-    long_ = [p for p in points if p["seconds"] >= 720]
-    if len(points) < 3 or not short or not long_:
-        out["missing"] = "a hard 3-minute and a hard 12-minute effort"
+    long_ = [p for p in points if p["seconds"] >= 600]
+    if len(points) < CS_MIN_POINTS or not short or len(long_) < 2:
+        out["missing"] = "a hard 3-minute effort and two hard efforts of 10+ minutes"
         return out
     x = np.array([p["seconds"] for p in points], dtype=float)
     y = np.array([p["speed"] * p["seconds"] for p in points])
     cs, d_prime = np.polyfit(x, y, 1)
     pred = cs * x + d_prime
-    r2 = 1 - float(np.sum((y - pred) ** 2) / np.sum((y - y.mean()) ** 2))
-    out.update(cs_mps=round(float(cs), 3), d_prime_m=round(float(d_prime)), r2=round(r2, 4))
+    sse = float(np.sum((y - pred) ** 2))
+    r2 = 1 - sse / float(np.sum((y - y.mean()) ** 2))
+    n = len(points)
+    X = np.column_stack([x, np.ones(n)])
+    cov = sse / (n - 2) * np.linalg.inv(X.T @ X)
+    cs_se, d_se = float(np.sqrt(cov[0, 0])), float(np.sqrt(cov[1, 1]))
+    tcrit = float(stats.t.ppf(0.975, n - 2))
+    v = y / x
+    rel = np.abs(v - pred / x) / v  # residuals in speed space
+    out.update(cs_mps=round(float(cs), 3), d_prime_m=round(float(d_prime)), r2=round(r2, 4), n_points=n,
+               cs_se=round(cs_se, 4), cs_ci=[round(float(cs) - tcrit * cs_se, 3), round(float(cs) + tcrit * cs_se, 3)],
+               d_prime_se=round(d_se), resid_max_pct=round(float(rel.max()) * 100, 1), resid_rmse_pct=round(float(np.sqrt(np.mean(rel**2))) * 100, 1))
     # Steady easy runs give a flat curve (tiny D′); a real all-out curve has D′ of roughly 50–400 m.
-    if not (1.5 < cs < 7.5) or not (40 <= d_prime <= 450) or r2 < 0.98:
-        out["missing"] = ("a hard 3-minute and a hard 12-minute effort" if d_prime < 40
+    if not (1.5 < cs < 7.5) or not (40 <= d_prime <= 450) or rel.max() > CS_MAX_RESID or float(np.sqrt(np.mean(rel**2))) > CS_MAX_RMSE \
+            or cs_se > CS_MAX_REL_SE * cs:
+        out["missing"] = ("a hard 3-minute effort and two hard efforts of 10+ minutes" if d_prime < 40
                           else "cleaner maximal efforts (the current ones don't fit the model)")
         return out
+    longest = max(points, key=lambda p: p["seconds"])
+    anchor = {"seconds": longest["seconds"], "distance_m": longest["speed"] * longest["seconds"]}
     out["valid"] = True
     out["pace_s"] = round(1000 / cs)
-    out["predictions"] = predictions(float(cs), float(d_prime))
+    out["anchor"] = anchor
+    out["predictions"] = predictions(float(cs), float(d_prime), anchor, cov, tcrit)
     out["paces"] = training_paces(float(cs))
     return out
 
 
-def race_time(distance_m: float, cs: float, d_prime: float) -> float:
-    t5 = (5000 - d_prime) / cs
+def race_time(distance_m: float, cs: float, d_prime: float, anchor: dict | None = None):
+    """CS-model race time; beyond 5 km Riegel from the 5 km time. Works on numpy arrays of cs/d_prime too.
+
+    The CS hyperbola is only trusted near the fitted efforts (<= 20 min). When the predicted time runs beyond 1.5 × the
+    longest fitted effort the estimate blends toward Riegel from that effort, fully Riegel at 4 ×.
+    """
+    def cs_time(dist):
+        return (dist - d_prime) / cs
+
+    def blend(dist, tcs):
+        if not anchor:
+            return tcs
+        rieg = anchor["seconds"] * (dist / anchor["distance_m"]) ** RIEGEL
+        w = np.clip((4.0 - tcs / anchor["seconds"]) / 2.5, 0.0, 1.0)  # 1 up to 1.5 ×, 0 at 4 ×
+        return w * tcs + (1 - w) * rieg
+
     if distance_m <= 5000:
-        return (distance_m - d_prime) / cs
-    return t5 * (distance_m / 5000) ** RIEGEL
+        return blend(distance_m, cs_time(distance_m))
+    return blend(5000.0, cs_time(5000.0)) * (distance_m / 5000) ** RIEGEL
 
 
-def predictions(cs: float, d_prime: float) -> list[dict]:
+def predictions(cs: float, d_prime: float, anchor: dict | None = None, cov=None, tcrit: float = 0.0) -> list[dict]:
     out = []
     for key, label, dist in RACES:
-        seconds = race_time(dist, cs, d_prime)
-        out.append({"key": key, "label": label, "distance_m": dist, "seconds": round(seconds), "pace_s": round(seconds / dist * 1000),
-                    "caveat": "Assumes long runs of 90+ minutes in training." if dist > 20000 else None})
+        seconds = float(race_time(dist, cs, d_prime, anchor))
+        row = {"key": key, "label": label, "distance_m": dist, "seconds": round(seconds), "pace_s": round(seconds / dist * 1000),
+               "caveat": "Assumes long runs of 90+ minutes in training." if dist > 20000 else None}
+        if cov is not None and tcrit:
+            d5 = min(dist, 5000.0)
+            scale = 1.0 if dist <= 5000 else (dist / 5000) ** RIEGEL
+            # delta method for t = (d - D′)/CS, scaled by the Riegel factor beyond 5 km
+            g = np.array([-(d5 - d_prime) / cs**2, -1.0 / cs]) * scale
+            se_t = float(np.sqrt(max(g @ cov @ g, 0.0)))
+            row.update(low_s=round(seconds - tcrit * se_t), high_s=round(seconds + tcrit * se_t))
+        out.append(row)
     return out
 
 
