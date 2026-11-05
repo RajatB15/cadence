@@ -595,7 +595,14 @@ export interface CriticalSpeed {
   d_prime_m?: number;
   r2?: number;
   pace_s?: number;
-  predictions?: { key: string; label: string; distance_m: number; seconds: number; pace_s: number; caveat: string | null }[];
+  n_points?: number;
+  cs_se?: number;
+  cs_ci?: [number, number];
+  d_prime_se?: number;
+  resid_max_pct?: number;
+  resid_rmse_pct?: number;
+  anchor?: { seconds: number; distance_m: number };
+  predictions?: { key: string; label: string; distance_m: number; seconds: number; pace_s: number; caveat: string | null; low_s?: number; high_s?: number }[];
   paces?: { key: string; label: string; slow_s: number; fast_s: number }[];
 }
 

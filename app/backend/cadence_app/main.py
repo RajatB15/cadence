@@ -290,6 +290,7 @@ class FoodEntryRequest(BaseModel):
     carbs_g: float | None = Field(default=None, ge=0, le=1000)
     fat_g: float | None = Field(default=None, ge=0, le=500)
     save_dish: bool = True  # a quick entry is also remembered as one of your dishes
+    client_key: str | None = Field(default=None, min_length=1, max_length=64)  # idempotency key (or the Idempotency-Key header): a retry returns the same entry
 
 
 class LabelText(BaseModel):
@@ -415,7 +416,7 @@ def create_app(
     notifier = push.Notifier(factory, sender, active_source, current_credential)
     scheduler = push.Scheduler(
         factory, notifier, garmin_jobs.start, lambda: garmin_jobs.busy,
-        lambda: current_credential().configured, clock.now, settings.sync_every_h,
+        lambda: current_credential().configured, clock.now, settings.sync_every_h, tz=clock.tz,
     )
 
     feed_worker = reading_feed.FeedWorker(lambda: reading_feed.refresh(factory, clock.today(), clock.now(), force=True))
@@ -1488,7 +1489,7 @@ def create_app(
     @app.put("/api/settings/profile")
     def set_profile(body: ProfileRequest, session: Session = Depends(get_session)) -> dict:
         try:
-            p = profile_store.save(session, body.height_cm, body.birth_date, body.sex)
+            p = profile_store.save(session, body.height_cm, body.birth_date, body.sex, clock.today())
         except ValueError as exc:
             raise HTTPException(400, str(exc)) from None
         return {"profile": p}
@@ -1567,14 +1568,17 @@ def create_app(
         return dish
 
     @app.post("/api/food/entries")
-    def food_entry_add(body: FoodEntryRequest, session: Session = Depends(get_session)) -> dict:
+    def food_entry_add(body: FoodEntryRequest, request: Request, session: Session = Depends(get_session)) -> dict:
+        key = (body.client_key or request.headers.get("idempotency-key") or "").strip()[:64] or None
+        if (done := foodlog.entry_for_key(session, key)) is not None:
+            return done
         try:
             if body.dish_id is not None:
                 return foodlog.log_dish(session, body.day, body.meal, body.dish_id, body.servings, body.eating_out,
-                                        clock.today(), clock.now(), body.grams)
+                                        clock.today(), clock.now(), body.grams, key)
             if body.name and body.kcal:
                 return foodlog.log_quick(session, body.day, body.meal, body.name, body.kcal, body.protein_g,
-                                         clock.today(), clock.now(), body.carbs_g, body.fat_g, body.save_dish)
+                                         clock.today(), clock.now(), body.carbs_g, body.fat_g, body.save_dish, key)
             raise foodlog.FoodError("Pick a dish, or give a name and calories")
         except foodlog.FoodError as exc:
             raise HTTPException(400, str(exc)) from None

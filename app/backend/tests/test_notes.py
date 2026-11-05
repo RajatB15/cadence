@@ -163,3 +163,15 @@ def test_open_work_moves_to_tomorrow_once_the_strain_budget_is_used():
     assert used["status"] == "open" and "not done today" in used["title"] and used["second"] is None
     assert "budget is already used" in used["detail"] + used["next"]
     assert "not done today" not in notes.today_session(c, r, week, plan, now_hour=10, strain_state="below")["title"]
+
+
+def test_streaks_do_not_count_todays_partial_week_as_a_miss():
+    # four Mon-Sun weeks ending today (a Sunday): three weeks with 3 sessions, then a live week with only 2 so far
+    acts, i = [], 0
+    for w in range(4):
+        for dd in ((0, 2, 4) if w < 3 else (0, 2)):
+            i += 1
+            acts.append(act(i, D0 + timedelta(days=7 * w + dd), EASY))
+    c = ctx(acts, days=28)
+    weekly = {s["key"]: s for s in notes.streaks(c)}["weeks"]
+    assert weekly["current"] == 3 and weekly["best"] == 3

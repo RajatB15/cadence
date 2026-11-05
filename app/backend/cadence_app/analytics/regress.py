@@ -35,7 +35,7 @@ def ols(x: np.ndarray, y: np.ndarray, lags: int = 0) -> dict | None:
     total = float(np.sum((y - y.mean()) ** 2))
     return {
         "coef": beta, "se": se, "ci": np.column_stack([beta - crit * se, beta + crit * se]),
-        "t": np.divide(beta, se, out=np.zeros_like(beta), where=se > 0), "r2": 1 - float(resid @ resid) / total if total > 0 else 0.0, "n": n,
+        "t": np.divide(beta, se, out=np.zeros_like(beta), where=se > 0), "df": float(df), "r2": 1 - float(resid @ resid) / total if total > 0 else 0.0, "n": n,
     }
 
 

@@ -80,6 +80,31 @@ export class ApiError extends Error {
 export const REQUEST_TIMEOUT_MS = 30_000;
 export const UPLOAD_TIMEOUT_MS = 90_000;
 
+/** After a write, GETs ask the service worker for the network so a refetch never shows pre-write cached data. */
+export const FRESH_WINDOW_MS = 30_000;
+let lastWriteAt = -Infinity;
+export const markWrite = (now = Date.now()) => {
+  lastWriteAt = now;
+};
+export const wantsFresh = (now = Date.now()) => now - lastWriteAt < FRESH_WINDOW_MS;
+
+/** Message shown when a write timed out: the server may still have committed it. */
+export const MIGHT_HAVE_SAVED = "Might have saved — check before retrying.";
+export const NOT_PAIRED = "Not paired — scan a fresh QR code from Settings on your Mac.";
+
+export function newIdempotencyKey(): string {
+  const c = typeof crypto !== "undefined" ? crypto : undefined;
+  if (c && "randomUUID" in c) return c.randomUUID();
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`;
+}
+
+/** Same key for the same payload until it succeeds (a retry after a timeout dedupes); a changed payload gets a new key. */
+export function keyFor(slot: { current: { sig: string; key: string } | null }, payload: unknown): string {
+  const sig = JSON.stringify(payload);
+  if (!slot.current || slot.current.sig !== sig) slot.current = { sig, key: newIdempotencyKey() };
+  return slot.current.key;
+}
+
 /** React Query retry rule: never retry client errors (4xx) or deliberate aborts; retry once otherwise. */
 export function shouldRetry(failureCount: number, error: unknown): boolean {
   if (error instanceof ApiError && (error.kind === "aborted" || (error.status >= 400 && error.status < 500))) return false;
@@ -103,7 +128,10 @@ export async function apiFetch(path: string, init: RequestInit = {}, timeoutMs =
   try {
     return await fetch(path, { ...init, signal: ctrl.signal });
   } catch (e) {
-    if (timedOut) throw new ApiError(0, "The request timed out. Check your connection and try again.", "timeout");
+    if (timedOut) {
+      const write = (init.method ?? "GET").toUpperCase() !== "GET";
+      throw new ApiError(0, write ? MIGHT_HAVE_SAVED : "The request timed out. Check your connection and try again.", "timeout");
+    }
     if (outer?.aborted || (e instanceof DOMException && e.name === "AbortError")) throw new ApiError(0, "Request cancelled.", "aborted");
     const offline = typeof navigator !== "undefined" && navigator.onLine === false;
     throw new ApiError(0, offline ? "You're offline. Reconnect and try again." : "Couldn't reach the Cadence server. Is it running?", "offline");
@@ -126,6 +154,15 @@ async function readJson<T>(res: Response): Promise<T> {
 
 async function failure(res: Response): Promise<ApiError> {
   const body = await res.json().catch(() => null);
+  if (res.status === 401 || res.status === 403) {
+    // A revoked or unpaired phone must not keep showing cached health data.
+    try {
+      navigator.serviceWorker?.controller?.postMessage({ type: "clear-cache" });
+    } catch {
+      /* no service worker */
+    }
+    if (res.status === 401) return new ApiError(401, NOT_PAIRED);
+  }
   return new ApiError(res.status, typeof body?.detail === "string" ? body.detail : res.statusText || `Request failed (${res.status})`);
 }
 
@@ -141,9 +178,12 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   }
   const headers = new Headers(init.headers);
   if (method !== "GET") headers.set("X-Cadence-Request", "1");
+  else if (wantsFresh()) headers.set("X-Cadence-Fresh", "1");
   // Only JSON string bodies get a JSON type; FormData/Blob set their own (multipart boundary etc.).
   if (typeof init.body === "string" && !headers.has("Content-Type")) headers.set("Content-Type", "application/json");
+  if (method !== "GET") markWrite();
   const res = await apiFetch(path, { ...init, headers });
+  if (method !== "GET") markWrite();
   if (!res.ok) throw await failure(res);
   return readJson<T>(res);
 }
@@ -278,7 +318,12 @@ export const api = {
   foodCrawl: () => request<{ progress: FoodCrawlProgress | null }>("/api/food/crawl"),
   foodDishes: () => request<{ dishes: FoodDish[] }>("/api/food/dishes"),
   addFoodDish: (dish: FoodDishInput) => request<FoodDish>("/api/food/dishes", { method: "POST", body: JSON.stringify(dish) }),
-  addFoodEntry: (entry: FoodEntryInput) => request<unknown>("/api/food/entries", { method: "POST", body: JSON.stringify(entry) }),
+  addFoodEntry: (entry: FoodEntryInput, idempotencyKey?: string) =>
+    request<unknown>("/api/food/entries", {
+      method: "POST",
+      body: JSON.stringify(entry),
+      headers: idempotencyKey ? { "Idempotency-Key": idempotencyKey } : undefined,
+    }),
   deleteFoodEntry: (id: number) => request<{ deleted: number }>(`/api/food/entries/${id}`, { method: "DELETE" }),
   setFoodEntryAmount: (id: number, servings: number) =>
     request<unknown>(`/api/food/entries/${id}`, { method: "PATCH", body: JSON.stringify({ servings }) }),

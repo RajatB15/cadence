@@ -242,7 +242,7 @@ class Notifier:
                 continue
             with self.factory() as session:
                 planned = planner_store.reconcile(session, self.source(), planner_store.listing(session, start - timedelta(days=62), today),
-                                                  today, datetime.now())
+                                                  today, now_local)
             r = reviews.build(c, kind, start, planned, insights.readiness_on)
             out.append({"key": key, "kind": "review", "url": f"/review?kind={kind}&start={start}",
                         "title": f"{label}: {r['verdict']}", "body": reviews.headline(r)})
@@ -288,9 +288,11 @@ class Scheduler:
     """Background loop: keeps Garmin data fresh and sends due notifications."""
 
     def __init__(self, factory: sessionmaker, notifier: Notifier, sync: Callable[[str], object], sync_busy: Callable[[], bool],
-                 can_sync: Callable[[], bool], now_utc: Callable[[], datetime], sync_every_h: float, interval_s: float = 300):
+                 can_sync: Callable[[], bool], now_utc: Callable[[], datetime], sync_every_h: float, interval_s: float = 300,
+                 tz: Callable[[], object] | None = None):
         self.factory, self.notifier, self.sync, self.sync_busy, self.can_sync = factory, notifier, sync, sync_busy, can_sync
         self.now_utc, self.sync_every_h, self.interval_s = now_utc, sync_every_h, interval_s
+        self.tz = tz  # the user's zone (Settings), not the server's
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
 
@@ -302,11 +304,15 @@ class Scheduler:
     def stop(self) -> None:
         self._stop.set()
 
+    def local_now(self) -> datetime:
+        """Wall-clock time in the user's zone, naive."""
+        return datetime.now(self.tz() if self.tz else None).replace(tzinfo=None)
+
     def _loop(self) -> None:
         self._stop.wait(20)  # let startup settle
         while not self._stop.is_set():
             try:
-                self.run_once(datetime.now(), self.now_utc())
+                self.run_once(self.local_now(), self.now_utc())
             except Exception:  # pylint: disable=broad-exception-caught  # background job boundary
                 log.exception("Scheduler tick failed")
             self._stop.wait(self.interval_s)

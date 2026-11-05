@@ -69,10 +69,30 @@ def band(p: float) -> str:
     return next(label for floor, label in BANDS if p >= floor)
 
 
-def cs_needed(distance_m: float, target_s: float, d_prime: float) -> float:
-    if distance_m <= 5000:
-        return (distance_m - d_prime) / target_s
-    return (5000 - d_prime) * (distance_m / 5000) ** RIEGEL / target_s
+def cs_needed(distance_m: float, target_s: float, d_prime: float, anchor: dict | None = None) -> float:
+    """The critical speed whose `performance.race_time` (same Riegel blend as the predictions) equals `target_s`.
+
+    Solved by bisection because the blend toward Riegel from the longest fitted effort has no closed-form inverse. Falls
+    back to the plain CS-hyperbola inverse when the target lies outside the searched range.
+    """
+    def plain() -> float:
+        if distance_m <= 5000:
+            return (distance_m - d_prime) / target_s
+        return (5000 - d_prime) * (distance_m / 5000) ** RIEGEL / target_s
+
+    if not anchor:
+        return plain()
+    lo, hi = 0.2, 15.0
+    f_lo, f_hi = float(P.race_time(distance_m, lo, d_prime, anchor)) - target_s, float(P.race_time(distance_m, hi, d_prime, anchor)) - target_s
+    if not (f_lo > 0 > f_hi):
+        return plain()
+    for _ in range(80):
+        mid = (lo + hi) / 2
+        if float(P.race_time(distance_m, mid, d_prime, anchor)) > target_s:
+            lo = mid
+        else:
+            hi = mid
+    return (lo + hi) / 2
 
 
 # ---- run: critical-speed model ----------------------------------------------------------------
@@ -229,7 +249,7 @@ def assess_performance(goal: dict, c: dict, today: date) -> dict:
         if distance > 20000:
             out["caveats"].append("Marathon-and-longer times assume long runs of 90+ minutes in training.")
         if target:
-            need = cs_needed(distance, target, model["d_prime"])
+            need = cs_needed(distance, target, model["d_prime"], model.get("anchor"))
             p = proj["probability"]
             out.update(required_s=target, cs_needed_mps=round(need, 3), cs_gain_pct=round((need / model["cs"] - 1) * 100, 1),
                        outlook={"band": band(p), "probability": p, "heuristic": False})

@@ -172,7 +172,7 @@ class DayHeartHistogram(Base):
     outside: Mapped[str] = mapped_column(Text)  # JSON {bpm: minutes}
     inside: Mapped[str] = mapped_column(Text)
     samples: Mapped[int] = mapped_column(Integer)
-    computed_at: Mapped[datetime] = mapped_column(DateTime)
+    computed_at: Mapped[datetime] = mapped_column(DateTime, index=True)
 
 
 class PlannedSession(Base):
@@ -333,6 +333,8 @@ class FoodEntry(Base):
     grams: Mapped[float | None] = mapped_column(Float)  # amount eaten in grams, when the dish has a weight
     micros: Mapped[str | None] = mapped_column(Text)  # micronutrients in what was eaten, JSON {key: amount}; None = unknown
     logged_at: Mapped[datetime] = mapped_column(DateTime)
+    # Optional idempotency key supplied by the client: a retried POST with the same key returns this entry instead of logging again.
+    client_key: Mapped[str | None] = mapped_column(String(64), unique=True)
 
 
 class FoodMeal(Base):
@@ -472,7 +474,7 @@ class ActivityAnalysis(Base):
 
     activity_id: Mapped[int] = mapped_column(ForeignKey("activities.id", ondelete="CASCADE"), primary_key=True)
     version: Mapped[int] = mapped_column(Integer)
-    computed_at: Mapped[datetime] = mapped_column(DateTime)
+    computed_at: Mapped[datetime] = mapped_column(DateTime, index=True)
     data: Mapped[str] = mapped_column(Text)
 
 
@@ -494,6 +496,8 @@ class DatasetState(Base):
     calls: Mapped[int] = mapped_column(Integer, default=0)
     last_fetched_at: Mapped[datetime | None] = mapped_column(DateTime)
     last_error: Mapped[str | None] = mapped_column(Text)
+    # JSON {request_key: {"n": attempts, "error": str, "gave_up": bool}} for responses whose body was not the expected format
+    item_failures: Mapped[str | None] = mapped_column(Text)
 
 
 class AppSetting(Base):

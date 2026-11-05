@@ -782,7 +782,7 @@ function LoadChart({ d }: { d: Data }) {
         <Big label="Fitness" value={last?.fitness} color="#6cc7ff" hint="42-day load" />
         <Big label="Fatigue" value={last?.fatigue} color="#ff6a55" hint="7-day load" />
         <Big label="Form" value={last?.form} color="#c8f560" hint="fitness − fatigue" signed />
-        <Big label="Acute:chronic" value={last?.acwr} color="#f2e8cf" hint="sweet spot 0.8–1.3" digits={2} />
+        <Big label="Acute:chronic" value={last?.acwr} color="#f2e8cf" hint={last?.acwr == null ? "Shown after 28 days of data" : "sweet spot 0.8–1.3"} digits={2} />
       </div>
       <Chart option={option} height={380} label="Fitness, fatigue and form chart" />
     </Card>
@@ -1128,7 +1128,7 @@ function Methods() {
         <li><b className="text-paper">Readiness and score history</b> (recomputed from today's data, not point-in-time): the direction is a straight-line fit with Newey–West errors (daily scores are autocorrelated), called up or down only when its 95% interval excludes zero with 10+ days of data; "heading" extends the line 4 weeks with its range. It assumes nothing changes, so treat it as the recent past carried forward.</li>
         <li><b className="text-paper">Critical speed</b>: linear distance–time model on your best grade-adjusted 3–20 minute efforts (last 90 days), needs at least 4 efforts (two of 10+ minutes) whose fit residuals stay within a few percent, and shows a 95% range. Race times use the CS model and blend toward Riegel (1.06) once they extrapolate past 1.5× your longest fitted effort.</li>
         <li><b className="text-paper">Fitness / fatigue / form</b>: 42- and 7-day exponentially weighted Garmin training load (Banister). Form is yesterday's fitness minus fatigue.</li>
-        <li><b className="text-paper">Acute:chronic ratio</b>: 7-day vs 28-day EWMA load, shown after 28 days of data. A weak injury predictor alone, so it only alerts when running volume spikes too; recovery weeks have their own band.</li>
+        <li><b className="text-paper">Acute:chronic ratio</b>: 7-day vs 28-day EWMA load (smoothing of 1/N a day rather than the 2/(N+1) in Williams et al. 2017, so it reacts slightly slower and the 0.8–1.3 band applies only approximately), shown after 28 days of data. A weak injury predictor alone, so it only alerts when running volume spikes too; recovery weeks have their own band.</li>
         <li><b className="text-paper">Intensity balance</b>: heart-rate zone time on runs, rides and swims (walks excluded), plus the share of hard sessions; sprint sessions count as hard by anaerobic training effect.</li>
         <li><b className="text-paper">Aerobic efficiency</b>: grade-adjusted speed per beat above resting HR on non-interval runs ≥ 3 km (running VO₂ is linear in speed, and %VO₂ reserve tracks %HR reserve), shown as pace at your median running HR; Theil–Sen trend.</li>
         <li><b className="text-paper">Heart-rate drift and durability</b>: Pa:HR decoupling on grade-adjusted pace (Minetti), first vs second half after a 10-minute warm-up; late-run fade compares the last 20 minutes of 75-minute-plus runs with minutes 10–30.</li>

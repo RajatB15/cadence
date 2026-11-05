@@ -59,6 +59,26 @@ def zone(name: str | None):
     """tzinfo for a stored name, or the system local zone (aware) when unset."""
     if name:
         return ZoneInfo(name)
+    return system_zone()
+
+
+def system_zone():
+    """The machine's zone as a real tzinfo (so past instants get the offset that applied then, DST included); fixed offset only as a last resort."""
+    import os
+
+    candidates = [os.environ.get("TZ", "").lstrip(":")]
+    try:
+        target = os.path.realpath("/etc/localtime")
+        if "zoneinfo/" in target:
+            candidates.append(target.split("zoneinfo/", 1)[1])
+    except OSError:
+        pass
+    for cand in candidates:
+        if cand:
+            try:
+                return ZoneInfo(cand)
+            except (ZoneInfoNotFoundError, ValueError, OSError):
+                continue
     return datetime.now().astimezone().tzinfo
 
 

@@ -138,10 +138,49 @@ def test_failed_pairing_is_throttled_and_logged_without_keys(api, web, caplog):
     assert codes[:5] == [403] * 5 and codes[5] == 403 and codes[6] == 429
     assert "Failed phone pairing attempt" in caplog.text and "guess-secret" not in caplog.text
     real, _ = c.share_auth.pairing_key()
-    blocked = c.get(f"/pair?key={real}", follow_redirects=False)
-    assert blocked.status_code == 429 and int(blocked.headers["retry-after"]) > 0
-    c.share_auth.pairing_key()  # the real key was not consumed by a blocked attempt
-    assert c.share_auth.pairing_key()[0] == real
+    assert c.get("/pair?key=another-guess").status_code == 429  # a wrong guess while blocked is refused
+    assert c.share_auth.pairing_key()[0] == real  # and does not consume the real key
+    ok = c.get(f"/pair?key={real}", follow_redirects=False)
+    assert ok.status_code == 303  # a valid key always succeeds, even from a blocked client (a stranger cannot lock the owner out)
+
+
+def test_shared_loopback_bucket_block_is_short_and_global_cap_applies():
+    clock = Clock()
+    auth = make_auth(clock)
+    for _ in range(20):
+        auth.try_pair("wrong", "127.0.0.1")
+    assert 0 < auth.blocked_for("127.0.0.1") <= 60  # not 15 minutes for everyone behind the proxy
+    key, _ = auth.pairing_key()
+    token, wait = auth.try_pair(key, "127.0.0.1")
+    assert token and wait == 0
+    spread = make_auth(Clock())
+    for i in range(70):
+        spread.try_pair("wrong", f"10.0.0.{i}")
+    assert spread.global_blocked()
+    assert spread.try_pair("wrong", "10.9.9.9")[1] > 0  # spread-out guessing is throttled as a whole
+    key, _ = spread.pairing_key()
+    assert spread.try_pair(key, "10.9.9.9")[0]  # but a valid key still pairs
+
+
+def test_unauthenticated_clients_do_not_learn_the_write_allowlist(api, web):
+    c = phone(api, web)
+    assert c.post("/api/sync/demo", headers=MUTATE).status_code == 401  # not 405
+    assert c.post("/api/journal/behaviours", json={}, headers=MUTATE).status_code == 401
+    page = c.get("/")
+    assert page.status_code == 401 and "fresh QR" in page.text
+
+
+def test_legacy_upgrade_only_on_navigation_and_once_per_cookie(api, web):
+    auth = make_auth()
+    auth.store[TOKEN_KEY] = "legacy-token"
+    c = phone(api, web, auth)
+    c.cookies.set(COOKIE, "legacy-token", domain="192.168.1.20")
+    assert c.get("/assets/app.js").status_code == 200 and len(auth.list()) == 0  # assets do not mint sessions
+    assert c.get("/some/page").status_code == 200 and len(auth.list()) == 0
+    for _ in range(3):  # parallel tabs/requests still carrying the old cookie
+        c.cookies.set(COOKIE, "legacy-token", domain="192.168.1.20")
+        assert c.get("/").status_code == 200
+    assert len(auth.list()) == 1
 
 
 def test_old_shared_key_cookie_is_upgraded_in_place(api, web):

@@ -34,7 +34,9 @@ trap 'write_status "$prev_success" "$prev_snap" "Backup failed - see: journalctl
 
 # Refuse to upload anything unless the remote is an rclone crypt remote: a plain Drive remote would store health data unencrypted.
 remote_name="${REMOTE%%:*}"
-if [[ "$REMOTE" != *:* ]] || ! rclone config show "$remote_name" 2>/dev/null | grep -Eq '^type *= *crypt *$'; then
+# Capture first: with `set -o pipefail`, `grep -q` closing the pipe early can SIGPIPE rclone and make a valid crypt remote look invalid.
+cfg=$(rclone config show "$remote_name" 2>/dev/null) || true
+if [[ "$REMOTE" != *:* ]] || ! grep -Eq '^type *= *crypt *$' <<<"$cfg"; then
   echo "CADENCE_BACKUP_REMOTE ($REMOTE) is not an rclone crypt remote; refusing to upload." >&2
   write_status "$prev_success" "$prev_snap" "Backup refused: remote is not an rclone crypt remote"
   trap - ERR

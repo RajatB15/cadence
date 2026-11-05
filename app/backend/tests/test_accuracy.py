@@ -118,3 +118,10 @@ def test_plain_language_explainers_follow_the_numbers():
     assert "so it is used" in text and "faster" in text
     thin = notes.model_explain(B.fit(load, obs[:5], end))
     assert len(thin) == 2 and "needs" in thin[1]["a"]
+
+
+def test_followed_counts_done_plans_even_when_they_cannot_be_scored():
+    unscored = plan(20, 1.0)
+    unscored["activity"] = {"load": 0}
+    scored = AC.score_plans([plan(i, 1.0) for i in range(6)] + [unscored, plan(10, 1.0, status="missed")])
+    assert scored["followed"] == {"done": 7, "missed": 1, "of": 8} and scored["overall"]["n"] == 6

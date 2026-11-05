@@ -1,34 +1,34 @@
 // Mirror of PHONE_WRITES in app/backend/cadence_app/share.py: the only writes a paired phone may make.
-// Anchored (method, regex) pairs matched against the whole path (query string ignored); keep the two lists identical.
-const SEG = "[^/]+";
+// Anchored (method, regex) pairs matched against the whole path (query string ignored); tests/test_phone_writes_sync.py fails if the two lists differ.
+// Keep every entry a plain ["METHOD", "regex"] string literal pair (no templates), using only syntax common to Python and JS.
 const RULES: [string, string][] = [
   ["POST", "/api/push/(subscribe|unsubscribe|test)"],
   ["PUT", "/api/push/prefs"],
   ["POST", "/api/garmin/sync"],
-  ["PUT", `/api/journal/${SEG}`],
+  ["PUT", "/api/journal/[^/]+"],
   ["POST", "/api/journal/behaviours"],
-  ["PATCH", `/api/journal/behaviours/${SEG}`],
-  ["PUT", `/api/wellbeing/${SEG}`],
-  ["DELETE", `/api/wellbeing/${SEG}`],
+  ["PATCH", "/api/journal/behaviours/[^/]+"],
+  ["PUT", "/api/wellbeing/[^/]+"],
+  ["DELETE", "/api/wellbeing/[^/]+"],
   ["POST", "/api/strength/(parse|ocr)"],
-  ["PUT", `/api/strength/${SEG}`],
-  ["DELETE", `/api/strength/${SEG}`],
+  ["PUT", "/api/strength/[^/]+"],
+  ["DELETE", "/api/strength/[^/]+"],
   ["POST", "/api/planner"],
-  ["DELETE", `/api/planner/${SEG}`],
-  ["PUT", `/api/reading/${SEG}`],
+  ["DELETE", "/api/planner/[^/]+"],
+  ["PUT", "/api/reading/[^/]+"],
   ["POST", "/api/phases"],
-  ["PUT", `/api/phases/${SEG}`],
-  ["DELETE", `/api/phases/${SEG}`],
+  ["PUT", "/api/phases/[^/]+"],
+  ["DELETE", "/api/phases/[^/]+"],
   ["POST", "/api/weight/entries"],
-  ["DELETE", `/api/weight/entries/${SEG}`],
+  ["DELETE", "/api/weight/entries/[^/]+"],
   ["POST", "/api/food/(dishes|entries|meals|copy|label|label/text)"],
-  ["PATCH", `/api/food/(dishes|entries|meals)/${SEG}`],
-  ["DELETE", `/api/food/(entries|meals)/${SEG}`],
-  ["POST", `/api/food/meals/${SEG}/log`],
+  ["PATCH", "/api/food/(dishes|entries|meals)/[^/]+"],
+  ["DELETE", "/api/food/(entries|meals)/[^/]+"],
+  ["POST", "/api/food/meals/[^/]+/log"],
   ["PUT", "/api/settings/(weather|profile|plan)"],
   ["POST", "/api/time-off"],
-  ["PUT", `/api/time-off/${SEG}`],
-  ["DELETE", `/api/time-off/${SEG}`],
+  ["PUT", "/api/time-off/[^/]+"],
+  ["DELETE", "/api/time-off/[^/]+"],
 ];
 const PHONE_WRITES = RULES.map(([method, p]) => [method, new RegExp(`^(?:${p})$`)] as const);
 

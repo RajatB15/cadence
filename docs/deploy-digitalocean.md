@@ -192,6 +192,7 @@ copy `/etc/cadence/garmin.env` back (step 4).
   seconds per address, and every retry restarts that window, so do not retry in a loop. Wait a minute, or connect over
   Tailscale instead (`ssh root@<tailscale-ip>`, from `tailscale status`), which counts separately. A deploy followed by
   more commands can trigger it.
+- **The service restarts on its own or a rebuild/OCR vanishes:** `cadence.service` caps memory (`MemoryMax=900M`); watch for the kernel killing it with `ssh root@<ip> journalctl -u cadence | grep -i oom-kill` and `journalctl -k | grep -i "out of memory"`, and raise the cap on a larger droplet.
 - **`scripts/deploy.sh` says the server did not become healthy:** `ssh root@<ip> journalctl -u cadence -n 50 --no-pager`.
   The 1 vCPU server needs about 15 seconds to start.
 - **Phone shows "not paired":** re-scan the QR code from the tunnelled Settings page.

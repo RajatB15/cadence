@@ -174,7 +174,7 @@ def sleep_need(hours: A.Series, hrv: A.Series) -> dict:
         return default
     k, _, fit = best
     slope, t_stat = float(fit["coef"][1]), float(fit["t"][1])
-    p_value = float(2 * stats.t.sf(abs(t_stat), len(z) - 2))
+    p_value = float(2 * stats.t.sf(abs(t_stat), fit["df"]))  # same conservative HAC degrees of freedom as regress.ols
     # A knot at either end of the grid means the data found no plateau inside it: a straight line, not a ceiling.
     if slope <= 0 or p_value >= 0.05 or k in (float(grid[0]), float(grid[-1])):
         return default

@@ -242,3 +242,10 @@ def test_a_ride_race_with_no_run_goal_drives_the_plan(env):  # noqa: F811
     assert client.get("/api/goals").json()["plan_goal_id"] == made["id"]
     assert client.put("/api/settings/goal", json={"distance": "10k", "date": str(clock.today() + timedelta(weeks=20))}, headers=MUTATE).status_code == 200
     assert client.get("/api/insights").json()["plan"]["goal"]["distance"] == "10k"  # a run race takes over
+
+
+def test_cs_needed_matches_the_blended_prediction_when_a_long_race_leans_on_riegel():
+    anchor = {"seconds": 1000.0, "distance_m": 4000.0}  # longest fitted effort
+    for d in (3000, 5000, 10000, 21097.5, 42195.0):
+        t = float(P.race_time(d, 4.0, 200.0, anchor))
+        assert G.cs_needed(d, t, 200.0, anchor) == pytest.approx(4.0, rel=1e-4)

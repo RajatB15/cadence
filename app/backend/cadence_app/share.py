@@ -38,6 +38,9 @@ PAIRING_TTL_S = 10 * 60
 LEGACY_GRACE_S = 30 * 86400
 MAX_SESSIONS = 20
 FAIL_FREE, FAIL_MAX_BLOCK_S = 5, 15 * 60
+SHARED_BUCKET_MAX_BLOCK_S = 60  # tailscale serve / reverse proxies show every peer as loopback: one peer must not lock out the rest for long
+LOOPBACK = ("127.0.0.1", "::1", "localhost")
+GLOBAL_FAIL_WINDOW_S, GLOBAL_FAIL_MAX = 10 * 60, 60  # bad guesses from anywhere; limits a spread-out guesser, never a valid key
 BLOCKED_API = ("/api/share",)
 # The only writes a paired phone may make, as anchored (method, regex) pairs matched against the whole path.
 # Everything else (Garmin push/delete of planned sessions, reading feed refresh, credentials, goals, rebuilds, sharing) stays on the Mac.
@@ -105,7 +108,8 @@ class ShareAuth:
         self._pairing: tuple[str, float] | None = None  # (key, expires) held in memory only
         self._fails: dict[str, tuple[int, float]] = {}  # client -> (failures, blocked until)
         self._seen: dict[str, float] = {}
-        self._legacy_checked = False
+        self._global_fails: list[float] = []
+        self._upgraded: dict[str, str] = {}  # sha256(legacy cookie) -> the session minted for it, so parallel loads share one
 
     # --- storage
     def _sessions(self) -> dict[str, dict]:
@@ -136,10 +140,17 @@ class ShareAuth:
         _, until = self._fails.get(client, (0, 0.0))
         return max(0, int(until - self._clock() + 0.999))
 
+    def global_blocked(self) -> bool:
+        now = self._clock()
+        self._global_fails = [t for t in self._global_fails if now - t < GLOBAL_FAIL_WINDOW_S]
+        return len(self._global_fails) >= GLOBAL_FAIL_MAX
+
     def _fail(self, client: str) -> None:
         count, _ = self._fails.get(client, (0, 0.0))
         count += 1
-        delay = min(FAIL_MAX_BLOCK_S, 2 ** (count - FAIL_FREE) * 15) if count > FAIL_FREE else 0
+        cap = SHARED_BUCKET_MAX_BLOCK_S if client in LOOPBACK else FAIL_MAX_BLOCK_S
+        delay = min(cap, 2 ** (count - FAIL_FREE) * 15) if count > FAIL_FREE else 0
+        self._global_fails.append(self._clock())
         if len(self._fails) > 1000:
             self._fails.clear()
         self._fails[client] = (count, self._clock() + delay)
@@ -148,15 +159,24 @@ class ShareAuth:
     # --- sessions
     def pair(self, key: str, client: str, user_agent: str = "") -> str | None:
         """Session token for a valid, unexpired, unused key; None otherwise (counted against the client)."""
+        return self.try_pair(key, client, user_agent)[0]
+
+    def try_pair(self, key: str, client: str, user_agent: str = "") -> tuple[str | None, int]:
+        """(token, 0) for a valid key, whoever is blocked: the key is 256 bits, so throttling only matters for wrong guesses.
+        Otherwise (None, seconds to wait) when the client or the whole server is throttled (not counted again), or (None, 0) for a fresh miss."""
         with self._lock:
             now = self._clock()
             ok = self._pairing is not None and self._pairing[1] > now and hmac.compare_digest(key.encode(), self._pairing[0].encode())
-            if not ok:
-                self._fail(client)
-                return None
-            self._pairing = None  # single use
-            self._fails.pop(client, None)
-            return self._new_session(user_agent)
+            if ok:
+                self._pairing = None  # single use
+                self._fails.pop(client, None)
+                return self._new_session(user_agent), 0
+            if wait := self.blocked_for(client):
+                return None, wait
+            if self.global_blocked():
+                return None, 60
+            self._fail(client)
+            return None, 0
 
     def _new_session(self, user_agent: str) -> str:
         token = secrets.token_urlsafe(32)
@@ -204,10 +224,18 @@ class ShareAuth:
             return False
         return True
 
-    def upgrade_legacy(self, user_agent: str) -> str:
-        """Swaps a valid legacy cookie for a real per-device session (called on page loads, where a cookie can be set)."""
+    def upgrade_legacy(self, user_agent: str, legacy_cookie: str = "") -> str:
+        """Swaps a valid legacy cookie for a real per-device session (called on page loads, where a cookie can be set).
+        Idempotent per legacy cookie while that session lives: parallel loads get the same token, not one session each."""
         with self._lock:
-            return self._new_session(user_agent)
+            digest = _hash(legacy_cookie) if legacy_cookie else ""
+            known = self._upgraded.get(digest)
+            if known and any(hmac.compare_digest(str(r.get("hash", "")), _hash(known)) for r in self._sessions().values()):
+                return known
+            token = self._new_session(user_agent)
+            if digest:
+                self._upgraded[digest] = token
+            return token
 
     def list(self) -> list[dict]:
         return [{"id": sid, "label": r.get("label", "Device"), "created_at": r.get("created_at"), "last_seen_at": r.get("last_seen_at")} for sid, r in self._sessions().items()]
@@ -284,19 +312,17 @@ class ShareGate:
 
     def _route(self, request: Request) -> Response | None:
         path = request.url.path
-        if request.method not in ("GET", "HEAD") and not phone_may_write(request.method, path):
-            return PlainTextResponse("This device has read-only access.", status_code=405)
         if not self.enabled():
             return _page("Sharing is off", "Turn on phone access in Cadence → Settings on your Mac.", 503)
         secure = request_is_secure(request)
         agent = request.headers.get("user-agent", "")
         if path == "/pair":
             client = request.client.host if request.client else "?"
-            if wait := self.auth.blocked_for(client):
+            token, wait = self.auth.try_pair(request.query_params.get("key", ""), client, agent)
+            if token is None and wait:
                 return PlainTextResponse("Too many attempts. Try again later.", status_code=429, headers={"Retry-After": str(wait)})
-            token = self.auth.pair(request.query_params.get("key", ""), client, agent)
             if token is None:
-                return _page("Pairing code expired", "Scan the current QR code in Cadence → Settings on your Mac. Each code works once.", 403)
+                return _page("Pairing code expired", "Scan a fresh QR code in Cadence → Settings on your Mac. Each code works once.", 403)
             response = RedirectResponse("/", status_code=303)
             self._set_session(response, token, secure)
             return response
@@ -304,9 +330,11 @@ class ShareGate:
         upgraded = None
         if self.auth.check(cookie) is None:
             if not self.auth.legacy_valid(cookie):
-                return _page("Not paired", "Scan the QR code in Cadence → Settings on your Mac to open your data here.", 401)
-            if not path.startswith("/api/"):
-                upgraded = self.auth.upgrade_legacy(agent)
+                return _page("Not paired", "This phone isn't paired, or its pairing expired or was removed. Scan a fresh QR code in Cadence → Settings on your Mac.", 401)
+            if request.method == "GET" and path in ("/", "/index.html"):
+                upgraded = self.auth.upgrade_legacy(agent, cookie)
+        if request.method not in ("GET", "HEAD") and not phone_may_write(request.method, path):
+            return PlainTextResponse("This device has read-only access.", status_code=405)  # only after authentication: strangers learn nothing about the allowlist
         if path.startswith("/api/"):
             if path.startswith(BLOCKED_API):
                 return JSONResponse({"detail": "Not available on shared devices"}, status_code=404)

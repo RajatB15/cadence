@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { BookmarkPlus, Check, ChevronLeft, ChevronRight, Copy, Minus, Plus, Trash2, Utensils } from "lucide-react";
-import { useMemo, useState, type FormEvent } from "react";
+import { useMemo, useRef, useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
 import { NoteCard } from "../components/CoachNotes";
 import { EnergyCard, PlanNeeds, ProteinCard, WeekCard } from "../components/FoodPlan";
@@ -9,7 +9,7 @@ import { SavedMeals, SaveMealSheet, useSavedMeals } from "../components/FoodMeal
 import { NutrientsCard } from "../components/FoodNutrients";
 import { Sheet } from "../components/Sheet";
 import { ErrorBlock, LoadingBlock, PageHeader } from "../components/Shell";
-import { api } from "../lib/api";
+import { api, keyFor, newIdempotencyKey } from "../lib/api";
 import { BASIS_NOTE, browseList, grams1, matchedAlias, mealSubtotal, MEALS, portionPreview, searchList, servingsLabel, shiftDay, SOURCE_NOTE, stepServings, type PortionMode } from "../lib/food";
 import { formatDate } from "../lib/format";
 import type { FoodDish, FoodEntry, FoodView, Meal } from "../lib/types";
@@ -267,13 +267,16 @@ function Library({ meal, day, recentIds, search, setSearch, onSaved, onAdded, on
   const [out, setOut] = useState(false);
   const grams = Number(gramsText.replace(",", "."));
   const gramsValid = gramsText.trim() !== "" && Number.isFinite(grams) && grams > 0 && grams <= 5000;
+  const idem = useRef<{ sig: string; key: string } | null>(null);
   const save = useMutation({
     mutationFn: () => {
       const opts = portionOptions(picked!);
       const eaten = mode === "grams" ? grams : opts.length ? opts[Math.min(portionIdx, opts.length - 1)].grams * servings : null;
-      return api.addFoodEntry({ day, meal, dish_id: picked!.id, eating_out: out, ...(eaten != null ? { grams: Math.round(eaten * 10) / 10 } : { servings }) });
+      const entry = { day, meal, dish_id: picked!.id, eating_out: out, ...(eaten != null ? { grams: Math.round(eaten * 10) / 10 } : { servings }) };
+      return api.addFoodEntry(entry, keyFor(idem, entry));
     },
     onSuccess: () => {
+      idem.current = null;
       onSaved();
       onAdded(picked!.name);
       setPicked(null);
@@ -286,7 +289,7 @@ function Library({ meal, day, recentIds, search, setSearch, onSaved, onAdded, on
   });
   // One tap on the + of a result logs one usual serving; the amount can be changed afterwards with the ± on the entry.
   const quick = useMutation({
-    mutationFn: (d: FoodDish) => api.addFoodEntry({ day, meal, dish_id: d.id, servings: 1 }).then(() => d),
+    mutationFn: (d: FoodDish) => api.addFoodEntry({ day, meal, dish_id: d.id, servings: 1 }, newIdempotencyKey()).then(() => d),
     onSuccess: (d) => {
       onSaved();
       onAdded(d.name);
@@ -464,9 +467,14 @@ function QuickEntry({ meal, day, onSaved, onAdded }: { meal: Meal; day: string; 
   const m = (t: string) => (t.trim() === "" ? null : Number(t.replace(",", ".")));
   const okMacro = (t: string, cap: number) => m(t) == null || (Number.isFinite(m(t)!) && m(t)! >= 0 && m(t)! <= cap);
   const valid = name.trim() !== "" && Number.isFinite(k) && k > 0 && k <= 5000 && okMacro(macros.protein, 500) && okMacro(macros.carbs, 1000) && okMacro(macros.fat, 500);
+  const idem = useRef<{ sig: string; key: string } | null>(null);
   const save = useMutation({
-    mutationFn: () => api.addFoodEntry({ day, meal, name: name.trim(), kcal: k, protein_g: m(macros.protein), carbs_g: m(macros.carbs), fat_g: m(macros.fat), save_dish: remember }),
+    mutationFn: () => {
+      const entry = { day, meal, name: name.trim(), kcal: k, protein_g: m(macros.protein), carbs_g: m(macros.carbs), fat_g: m(macros.fat), save_dish: remember };
+      return api.addFoodEntry(entry, keyFor(idem, entry));
+    },
     onSuccess: () => {
+      idem.current = null;
       onSaved();
       if (remember) client.invalidateQueries({ queryKey: ["food-dishes"] });
       onAdded(name.trim());

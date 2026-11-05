@@ -7,8 +7,11 @@ that follow. Two outcomes, each regressed on the form (fitness minus fatigue) on
 - easy-run efficiency: speed per heartbeat above resting HR, controlled for a linear drift over time.
 Ordinary least squares with Newey–West standard errors (analytics/regress.py). An effect is only stated when its 95 % interval
 excludes zero and the sample is big enough; otherwise the result says it is unproven, which is a legitimate answer.
-Observational, and the hard-session sample is selected (only days you chose to run hard), which can bias a form
-coefficient in either direction; this is not corrected for. Sessions after rest days may differ in other ways (weather, motivation), so this is evidence, not proof.
+Observational, and the hard-session sample is selected: "hard" is judged from the session's own heart-rate zones, which are
+partly a consequence of how it went (and you chose to run hard on that day), so conditioning on it can bias the form
+coefficient in either direction (collider/selection bias). Using all runs with intensity as a covariate would not remove this,
+because realised intensity is itself an outcome of freshness and of the 5-minute speed being measured, so the selection is kept
+and flagged here, not corrected. Sessions after rest days may differ in other ways (weather, motivation), so this is evidence, not proof.
 """
 
 from __future__ import annotations

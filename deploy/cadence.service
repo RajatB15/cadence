@@ -35,6 +35,9 @@ CapabilityBoundingSet=
 AmbientCapabilities=
 UMask=0077
 # Cap memory so a runaway OCR or rebuild is killed instead of taking the droplet down (raise on larger machines).
+# When the cap is hit the kernel OOM-kills the service (systemd restarts it); check for it with:
+#   journalctl -k | grep -i "out of memory"; journalctl -u cadence | grep -i "oom-kill\|memory"
+# and systemctl show cadence -p NRestarts -p MemoryPeak. Raise MemoryMax if it recurs.
 MemoryMax=900M
 MemoryHigh=750M
 

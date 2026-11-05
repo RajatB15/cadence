@@ -2,7 +2,10 @@
 
 Methods follow published sports-science heuristics; every output carries enough evidence to be checked:
 - Fitness/fatigue/form: Banister impulse-response with 42/7-day exponentially weighted load (as in PMC charts).
-- Acute:chronic workload ratio: EWMA 7/28 (Williams et al. 2017); 0.8-1.3 is the commonly cited "sweet spot".
+- Acute:chronic workload ratio: exponentially weighted 7/28 days, the idea from Williams et al. 2017, who weight with
+  2/(N+1). Cadence smooths with 1/N instead (the classic impulse-response time constant of N days; Banister 1975), so its
+  ratio reacts somewhat more slowly and is NOT numerically identical to the published one; 0.8-1.3 is the commonly cited
+  "sweet spot" from that literature and applies only approximately. Kept as is so stored and displayed history do not shift.
 - Training monotony and strain: Foster (1998); monotony > 2 flags low day-to-day variation.
 - Intensity distribution: Seiler's ~80/20 polarised model for endurance work.
 - Aerobic decoupling (Pa:HR): Friel; < 5% drift over a steady long effort indicates good aerobic durability.
