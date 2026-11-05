@@ -36,10 +36,20 @@ DEEP_ORDER = (
     "food_logs", "activity_detail", "activity_workouts", "hr_intraday",
 )
 ACTIVITY_ASSETS = ("activity_fit", "activity_detail", "activity_workouts")
+# A response that keeps coming back malformed must not block everything queued behind it: after this many attempts it is stored final.
+MAX_BAD_ATTEMPTS = 3
 
 
 class Cancelled(Exception):
     pass
+
+
+class BadBody(GarminError):
+    """A 200 whose body was not the expected format. `gave_up`: it failed MAX_BAD_ATTEMPTS times and is now stored final with an error marker."""
+
+    def __init__(self, message: str, gave_up: bool = False):
+        super().__init__(message)
+        self.gave_up = gave_up
 
 
 class WindowRejected(Exception):
@@ -85,6 +95,7 @@ class SyncEngine:
         self.message = ""
         self.failures: list[str] = []
         self._stored_keys: list[str] = []
+        self._bad_this_run: set[str] = set()  # a bad key is never requested twice in one run
 
     # ---- public entry points -------------------------------------------------
 
@@ -125,7 +136,11 @@ class SyncEngine:
                     continue
             ds = BY_KEY[key]
             path, params = render(ds, id=activity_id)
-            self._fetch(ds, request_key, path, params, final=True, file_id=activity_id)
+            try:
+                self._fetch(ds, request_key, path, params, final=True, file_id=activity_id)
+            except BadBody as bad:
+                self._note_bad(ds, bad)
+                continue
             fetched.append(key)
         return fetched
 
@@ -171,20 +186,18 @@ class SyncEngine:
                 replayed += 1
                 if replayed % 50 == 0:
                     self._progress(f"Rebuilding from vault · {replayed} responses replayed")
+        # Prune activities and weights first, then re-derive from what is left, then prune metrics: otherwise a pruned activity's
+        # training load / VO2max would be re-derived into a metric that the final prune then sees as "produced".
+        self._prune_rows(seen_activities, seen_weights)
         seen_metrics |= self._refresh_derived()
-        self._prune_unseen(seen_metrics, seen_activities, seen_weights)
+        self._prune_metrics(seen_metrics)
         self._mark_synced()
         self._progress(f"Rebuilt from {replayed} stored responses with zero API calls")
         return replayed
 
-    def _prune_unseen(self, metrics: set, activities: set, weights: set) -> None:
-        """Remove normalized rows that no stored response reproduces (one transaction)."""
+    def _prune_rows(self, activities: set, weights: set) -> None:
+        """Remove activities and weights that no stored response reproduces (one transaction)."""
         with self.factory() as session, session.begin():
-            stale = [
-                i for i, d, m in session.execute(
-                    select(DailyMetric.id, DailyMetric.day, DailyMetric.metric).where(DailyMetric.source_id == SOURCE_ID)
-                ) if (d, m) not in metrics
-            ]
             for model, seen in ((Activity, activities), (WeightReading, weights)):
                 ids = [
                     i for i, rid in session.execute(
@@ -193,6 +206,15 @@ class SyncEngine:
                 ]
                 for k in range(0, len(ids), 500):
                     session.execute(delete(model).where(model.id.in_(ids[k : k + 500])))
+
+    def _prune_metrics(self, metrics: set) -> None:
+        """Remove daily metrics that no stored response (or surviving activity) reproduces (one transaction)."""
+        with self.factory() as session, session.begin():
+            stale = [
+                i for i, d, m in session.execute(
+                    select(DailyMetric.id, DailyMetric.day, DailyMetric.metric).where(DailyMetric.source_id == SOURCE_ID)
+                ) if (d, m) not in metrics
+            ]
             for k in range(0, len(stale), 500):
                 session.execute(delete(DailyMetric).where(DailyMetric.id.in_(stale[k : k + 500])))
 
@@ -224,6 +246,7 @@ class SyncEngine:
         start = state.final_until + timedelta(days=1) if state.final_until else today - timedelta(days=size - 1)
         segments = [(start, settled, True), (max(start, settled + timedelta(days=1)), today, False)]
         found: date | None = None
+        unresolved: date | None = None  # earliest settled window whose body was bad and is still worth retrying
         self._stored_keys = []
         for seg_start, seg_end, final in segments:
             cursor = seg_start
@@ -239,6 +262,12 @@ class SyncEngine:
                     size = max(1, size // 2)
                     self._update(ds.key, window_days=size)
                     continue
+                except BadBody as bad:
+                    self._note_bad(ds, bad)  # skip this window (never retried within the run) and carry on
+                    if final and not bad.gave_up and unresolved is None:
+                        unresolved = cursor
+                    cursor = end + timedelta(days=1)
+                    continue
                 if got.earliest is not None:
                     found = min(filter(None, (found, got.earliest)))
                 cursor = end + timedelta(days=1)
@@ -249,7 +278,7 @@ class SyncEngine:
             oldest = found
         self._update(
             ds.key,
-            final_until=settled,
+            final_until=settled if unresolved is None else unresolved - timedelta(days=1),  # re-covered next run, at most MAX_BAD_ATTEMPTS times
             oldest_fetched=state.oldest_fetched or start,
             oldest_with_data=oldest,
         )
@@ -277,6 +306,11 @@ class SyncEngine:
                     return
                 self._update(ds.key, window_days=max(1, size // 2))
                 continue
+            except BadBody as bad:
+                if not bad.gave_up:
+                    raise  # this window cannot be skipped without a hole in history: retried next run, then given up on
+                self._note_bad(ds, bad)
+                got = Got()
             span = (end - start).days + 1
             streak = 0 if got.useful else state.empty_days_streak + span
             oldest = got.earliest or state.oldest_with_data
@@ -314,7 +348,10 @@ class SyncEngine:
         for n, activity_id in enumerate(pending, 1):
             self._progress(f"{ds.label} · {n}/{len(pending)}")
             path, params = render(ds, id=activity_id)
-            self._fetch(ds, f"{ds.key}:{activity_id}", path, params, final=True, file_id=activity_id)
+            try:
+                self._fetch(ds, f"{ds.key}:{activity_id}", path, params, final=True, file_id=activity_id)
+            except BadBody as bad:
+                self._note_bad(ds, bad)
 
     def _per_day(self, ds: Dataset) -> None:
         state = self._state(ds.key)
@@ -327,9 +364,13 @@ class SyncEngine:
         for n, day in enumerate(pending, 1):
             self._progress(f"{ds.label} · {day:%d %b %Y} · {n}/{len(pending)}")
             path, params = render(ds, day=day.isoformat())
-            useful = self._fetch(
-                ds, f"{ds.key}:{day.isoformat()}", path, params, final=True, window=(day, day)
-            ).useful
+            try:
+                useful = self._fetch(
+                    ds, f"{ds.key}:{day.isoformat()}", path, params, final=True, window=(day, day)
+                ).useful
+            except BadBody as bad:
+                self._note_bad(ds, bad)
+                continue
             if ds.probe and n == 1 and not useful:
                 self._update(ds.key, unsupported=True, last_error="No data on this account")
                 return
@@ -403,6 +444,8 @@ class SyncEngine:
         file_id: str | None = None,
     ) -> Got:
         self._check()
+        if key in self._bad_this_run:
+            raise BadBody(f"{ds.label}: bad response already seen this run")
         try:
             fetched: Fetched = self.client.fetch(path, params)
         except ServerError:
@@ -440,15 +483,26 @@ class SyncEngine:
         ]
         earliest = min(dates) if dates else (window[0] if useful else None)
         now = self.now()
+        gave_up = False
         with self.factory() as session, session.begin():
+            state = self._state_in(session, ds.key)
+            failures = json.loads(state.item_failures or "{}")
+            if error is not None and final:
+                entry = failures.get(key[:160], {"n": 0})
+                entry.update(n=entry["n"] + 1, error=error)
+                gave_up = entry["n"] >= MAX_BAD_ATTEMPTS
+                entry["gave_up"] = gave_up
+                failures[key[:160]] = entry
+            elif key[:160] in failures:
+                failures.pop(key[:160])
+            state.item_failures = json.dumps(failures) if failures else None
             vault.store(
                 session, dataset=ds.key, request_key=key[:160], path=path, params=params,
                 status=fetched.status, content_type=fetched.content_type, body=fetched.body,
-                fetched_at=now, final=final and error is None, item_count=count, window=window,
+                fetched_at=now, final=final and (error is None or gave_up), item_count=count, window=window,
                 file_path=file_path,
             )
             self.records += write_batch(session, SOURCE_ID, batch, now)
-            state = self._state_in(session, ds.key)
             state.calls += 1
             state.last_fetched_at = now
             state.last_error = error
@@ -456,11 +510,18 @@ class SyncEngine:
                 state.newest_with_data = max(filter(None, (state.newest_with_data, window[1])))
         self._stored_keys.append(key[:160])
         if error is not None:
-            # A 200 that is not the expected format is kept for inspection but never final, and
-            # the checkpoint must not advance past it, so it is retried on the next run.
-            raise GarminError(f"{ds.label}: {error}")
+            # A 200 that is not the expected format is kept for inspection and not final, so it is retried on the next run, but only
+            # MAX_BAD_ATTEMPTS times: then it is stored final with the error marker in the dataset state, so it cannot block later items.
+            self._bad_this_run.add(key)
+            raise BadBody(f"{ds.label}: {error}", gave_up=gave_up)
         self._progress(self.message)
         return Got(count, useful, earliest)
+
+    def _note_bad(self, ds: Dataset, bad: BadBody) -> None:
+        """Record a skipped bad-body item; the dataset carries on with the next one."""
+        self._update(ds.key, last_error=str(bad))
+        if not bad.gave_up:
+            self.failures.append(ds.label)
 
     def _guard(self, step: Callable[[Dataset], object], ds: Dataset) -> None:
         try:

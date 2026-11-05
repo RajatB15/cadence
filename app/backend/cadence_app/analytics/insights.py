@@ -7,14 +7,14 @@ import logging
 import threading
 import time
 from collections import defaultdict
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from statistics import fmean, median, pstdev
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, sessionmaker
 
-from cadence_app import goal_store
+from cadence_app import goal_store, localtime
 from cadence_app import journal as journal_store
 from cadence_app import strength as strength_store
 from cadence_app import timeoff_store
@@ -314,20 +314,31 @@ CONTEXT_TTL_S = 300
 _ctx_cache: dict[tuple, tuple[float, dict | None]] = {}
 _ctx_lock = threading.Lock()
 _build_lock = threading.Lock()
+_ctx_generation = 0  # bumped by every invalidation; a build only caches itself if no invalidation happened meanwhile
 
 
 def invalidate_context() -> None:
     """Drop the cached context: called after anything you write, so the next page sees it."""
+    global _ctx_generation  # pylint: disable=global-statement
     with _ctx_lock:
+        _ctx_generation += 1
         _ctx_cache.clear()
 
 
 def data_version(session: Session) -> tuple:
-    """Changes whenever a sync starts or finishes or background analysis lands (the vault only changes through those and your own writes)."""
+    """Changes whenever a sync starts or finishes, background analysis lands or is removed (the vault only changes through those and your own writes)."""
     runs = session.execute(select(func.max(SyncRun.id), func.max(SyncRun.finished_at), func.count(SyncRun.id))).one()
-    # max() of an indexed key is a single b-tree probe; count() would scan the table on every request
-    derived = (session.scalar(select(func.max(ActivityAnalysis.activity_id))), session.scalar(select(func.max(DayHeartHistogram.day))), ANALYSIS_VERSION)
-    return (session.get_bind().url.render_as_string(), *runs, *derived)  # the database is part of the key: tests and apps never share
+    # count() and max(computed_at) are answered from the computed_at index alone (no table scan, no JSON blobs read), and together they also see
+    # recomputed older rows (new computed_at) and deletes (count drops), which max(primary key) cannot.
+    analyses = session.execute(select(func.count(), func.max(ActivityAnalysis.computed_at), func.max(ActivityAnalysis.version))).one()
+    hists = session.execute(select(func.count(), func.max(DayHeartHistogram.computed_at), func.max(DayHeartHistogram.version))).one()
+    return (session.get_bind().url.render_as_string(), *runs, *analyses, *hists, ANALYSIS_VERSION)  # the database is part of the key: tests and apps never share
+
+
+def _release_connection(session: Session) -> None:
+    """End the read transaction so a request waiting for the build lock does not hold a pooled connection."""
+    if session.in_transaction() and not (session.new or session.dirty or session.deleted):
+        session.rollback()
 
 
 def context(session: Session, source_id: str, today: date, now: datetime | None = None) -> dict | None:
@@ -335,24 +346,38 @@ def context(session: Session, source_id: str, today: date, now: datetime | None 
 
     Callers get their own shallow copy, so assigning a key never leaks into another request; the nested phase cache is shared on purpose.
     """
-    key = (source_id, today, data_version(session))
-    with _ctx_lock:
-        hit = _ctx_cache.get(key)
-    if hit and time.monotonic() - hit[0] < CONTEXT_TTL_S:
-        return dict(hit[1]) if hit[1] is not None else None
-    # Single flight: concurrent requests for the same key wait for one build instead of each doing the work.
-    with _build_lock:
+    def lookup(key):
         with _ctx_lock:
             hit = _ctx_cache.get(key)
         if hit and time.monotonic() - hit[0] < CONTEXT_TTL_S:
-            return dict(hit[1]) if hit[1] is not None else None
-        c = build_context(session, source_id, today, now)
-        if c is not None:
-            c.setdefault("_phase", {})
-            c.setdefault("_memo", {})
-        with _ctx_lock:
-            _ctx_cache.clear()
-            _ctx_cache[key] = (time.monotonic(), c)
+            return True, (dict(hit[1]) if hit[1] is not None else None)
+        return False, None
+
+    key = (source_id, today, data_version(session))
+    found, value = lookup(key)
+    if found:
+        return value
+    _release_connection(session)  # waiting behind another build must not pin a pooled connection
+    c = None
+    # Single flight: concurrent requests for the same key wait for one build instead of each doing the work.
+    for attempt in range(3):
+        with _build_lock:
+            key = (source_id, today, data_version(session))  # re-read: a write may have landed while we waited
+            found, value = lookup(key)
+            if found:
+                return value
+            with _ctx_lock:
+                generation = _ctx_generation
+            c = build_context(session, source_id, today, now)
+            if c is not None:
+                c.setdefault("_phase", {})
+                c.setdefault("_memo", {})
+            with _ctx_lock:
+                if _ctx_generation == generation:
+                    _ctx_cache.clear()
+                    _ctx_cache[key] = (time.monotonic(), c)
+                    return dict(c) if c is not None else None
+        # invalidated while building: the result may predate a write, so build again rather than cache or serve it
     return dict(c) if c is not None else None
 
 
@@ -393,6 +418,8 @@ def build_context(session: Session, source_id: str, today: date, now: datetime |
     """Everything the coach rules need, computed from the vault (use `context`, which caches it)."""
     garmin = source_id == "garmin"
     weather_on = garmin and weather_store.enabled(session)
+    tz = localtime.zone(localtime.load(session))
+    offset = (now or utcnow()).replace(tzinfo=timezone.utc).astimezone(tz).utcoffset()
     return assemble(
         source_id, load_series(session, source_id), load_acts(session, source_id), today,
         analyses=load_analyses(session) if garmin else {},
@@ -412,6 +439,7 @@ def build_context(session: Session, source_id: str, today: date, now: datetime |
         weather=weather_store.by_activity(session, source_id) if weather_on else None,
         forecast=weather_store.forecast(session, now or utcnow()) if weather_on else None,
         geo=load_geo(session) if garmin else None,
+        utc_offset=offset,
     )
 
 
@@ -422,6 +450,7 @@ def assemble(
     labels: dict[int, dict] | None = None, wellbeing: dict[date, dict] | None = None, training_mode: str = "auto", hr_hists: dict[date, tuple[dict, dict]] | None = None,
     time_off: list[dict] | None = None, plan_settings: dict | None = None,
     weather: dict[int, dict] | None = None, forecast: list[dict] | None = None, geo: dict[int, dict] | None = None,
+    utc_offset: timedelta | None = None,
 ) -> dict | None:
     """Pure assembly of the shared context from loaded data (tests build contexts with this directly)."""
     if not series and not acts:
@@ -494,7 +523,7 @@ def assemble(
     c["weather_runs"] = {aid: {**w, "hot": W.hot(w), "cost_pct": W.cost_pct(heat_model, w)[0]} for aid, w in weather.items()}
     c["forecast"] = forecast or []
     c["geo"] = geo or {}
-    c["utc_offset"] = datetime.now().astimezone().utcoffset() or timedelta(0)
+    c["utc_offset"] = utc_offset or timedelta(0)
     c["start_hour"] = W.usual_start_hour([a.start_local for a in acts if a.family == "run" and a.start_local and a.day > as_of - timedelta(days=90)])
     c["strain"] = strain_days(c, hr_hists or {})
     c["journal"] = journal or {"behaviours": [], "answers": {}}
@@ -636,7 +665,7 @@ def readiness_on(c: dict, day: date) -> dict | None:
 
 def readiness_now(c: dict, now: datetime | None = None) -> dict | None:
     """Today's readiness as it stands right now; past days keep their morning value."""
-    now = now or datetime.now()
+    now = now or (utcnow() + c.get("utc_offset", timedelta(0)))  # the user's wall clock, not the server's
     day = c["as_of"]
     morning = readiness_on(c, day)
     if morning is None or day != now.date():

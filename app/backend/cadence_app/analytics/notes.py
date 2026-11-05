@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from statistics import fmean, median
 
 from cadence_app.analytics import athlete as A
@@ -766,7 +766,7 @@ def _streak(flags: dict[date, bool], end: date) -> tuple[int, int]:
 
 def streaks(c: dict) -> list[dict]:
     s, as_of, out = c["series"], c["as_of"], []
-    weeks = A.weekly(c["acts"], c["load"], c["first"], as_of)
+    weeks = A.weekly(c["acts"], c["load"], c["first"], as_of, unsettled=c.get("today"))
     if len(weeks) >= 2:
         flags = {w["week"]: w["total_sessions"] >= 3 for w in weeks if w["complete"]}
         best = cur = 0
@@ -880,7 +880,7 @@ def today_session(c: dict, r: dict | None, week: dict, plan: dict | None, now_ho
         detail = f"Today was earmarked for rest; you did {did}."
         nxt = f"Keep {tomorrow} easy so the extra work doesn't cost the week."
 
-    hour = now_hour if now_hour is not None else datetime.now().hour
+    hour = now_hour if now_hour is not None else (datetime.now(timezone.utc).replace(tzinfo=None) + c.get("utc_offset", timedelta(0))).hour  # the user's wall clock
     room = typical == 0 or load < 0.7 * typical
     if status == "open" and r and r["score"] >= 70 and hour < 19 and room and not hard_today and not budget_used:
         cap = t.get("easy_cap") or easy_cap(c)

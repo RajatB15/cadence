@@ -26,12 +26,12 @@ def load(session: Session) -> dict | None:
         return None
 
 
-def save(session: Session, height_cm: float, birth_date: date, sex: str) -> dict:
+def save(session: Session, height_cm: float, birth_date: date, sex: str, today: date | None = None) -> dict:
     if sex not in ("male", "female"):
         raise ValueError("sex must be 'male' or 'female' (used only by the body-composition formulas)")
     if not MIN_HEIGHT_CM <= height_cm <= MAX_HEIGHT_CM:
         raise ValueError(f"height must be between {MIN_HEIGHT_CM:g} and {MAX_HEIGHT_CM:g} cm")
-    if birth_date >= date.today() or birth_date.year < 1900:
+    if birth_date >= (today or date.today()) or birth_date.year < 1900:  # callers pass the user-zone day; the fallback is for scripts
         raise ValueError("birth date looks wrong")
     value = json.dumps({"height_cm": height_cm, "birth_date": birth_date.isoformat(), "sex": sex})
     row = session.get(AppSetting, PROFILE_KEY)

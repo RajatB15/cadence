@@ -207,3 +207,16 @@ def test_the_lines_under_a_card_are_plain_and_skip_empty_effects():
     assert any("Only 4 of the 12 hard runs" in x for x in unmeasured)
     card = notes.whatif_card(WI.for_period(c, D0 + timedelta(days=66), D0 + timedelta(days=99), {"freshness": FRESH_HELPS}), "week", c)
     assert "That only pays off" not in card["text"] and card["lines"]
+
+
+def test_freshness_is_priced_on_hard_runs_only_and_each_run_once():
+    c = history(grey_days=(70, 71))
+    ride = act(901, D0 + timedelta(days=72), HARD, family="ride", load=120.0, moving_s=3600)
+    c1 = ctx(list(c["acts"]) + [ride], days=100)
+    p1 = WI.compare(c1, [{"activity_id": 500, "action": "easy"}], lab={"freshness": FRESH_HELPS})["payoff"]
+    assert p1["items"] == []  # the measured effect is about runs
+    run = act(900, D0 + timedelta(days=73), HARD, load=120.0, moving_s=3600)
+    c2 = ctx(list(c["acts"]) + [run], days=100)
+    p2 = WI.compare(c2, [{"activity_id": 500, "action": "easy"}, {"activity_id": 501, "action": "easy"}], lab={"freshness": FRESH_HELPS})["payoff"]
+    assert [i["session_id"] for i in p2["items"]] == [900]
+    assert p2["total_gain_pct"] == p2["items"][0]["payoff"]["gain_pct"]

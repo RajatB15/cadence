@@ -66,12 +66,13 @@ def summarise(pairs: list[dict]) -> dict:
 
 def score_plans(plans: list[dict]) -> dict:
     """Realised plans vs predictions. `plans` are reconciled (status/activity) planned sessions."""
-    rows, missed, planned_past = [], 0, 0
+    rows, missed, planned_past, done = [], 0, 0, 0
     for p in plans:
         if p.get("status") == "missed":
             missed += 1
         if p.get("status") in ("done", "missed"):
             planned_past += 1
+        done += p.get("status") == "done"  # done counts even when it can't be scored (no recorded load or prediction)
         if p.get("status") != "done" or not p.get("activity"):
             continue
         predicted, actual = raw_load(p["predicted"]), (p["activity"] or {}).get("load")
@@ -86,7 +87,7 @@ def score_plans(plans: list[dict]) -> dict:
         "overall": summarise(rows),
         "by_sport": {s: v for s, v in by_sport.items() if v["enough"]},
         "recent": [{k: r[k] for k in ("id", "day", "sport", "title", "predicted", "actual", "error_pct")} for r in rows[-8:]][::-1],
-        "followed": {"done": len(rows), "missed": missed, "of": planned_past} if planned_past else None,
+        "followed": {"done": done, "missed": missed, "of": planned_past} if planned_past else None,
         "points": [{k: r[k] for k in ("day", "sport", "predicted", "actual")} for r in rows[-POINTS:]],
         "rows": rows,
     }

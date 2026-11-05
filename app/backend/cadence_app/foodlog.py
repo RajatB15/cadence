@@ -19,6 +19,7 @@ from functools import lru_cache
 from pathlib import Path
 
 from sqlalchemy import delete, select, update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from cadence_app import nutrients
@@ -288,7 +289,7 @@ def _micros_json(m: dict | None) -> str | None:
 
 
 def log_dish(session: Session, day: date, meal: str, dish_id: int, servings: float, eating_out: bool,
-             today: date, now: datetime, grams: float | None = None) -> dict:
+             today: date, now: datetime, grams: float | None = None, client_key: str | None = None) -> dict:
     """Logs a dish by number of servings, or by grams for dishes that have a weight."""
     _check_day(day, today)
     _check_meal(meal)
@@ -299,14 +300,13 @@ def log_dish(session: Session, day: date, meal: str, dish_id: int, servings: flo
     entry = FoodEntry(day=day, meal=meal, dish_id=d.id, name=d.name, servings=p["servings"], kcal=p["kcal"],
                       protein_g=p["protein_g"], carbs_g=p["carbs_g"], fat_g=p["fat_g"], grams=p["grams"],
                       micros=_micros_json(p["micros"]),
-                      spread_pct=max(d.spread_pct, OUT_SPREAD) if eating_out else d.spread_pct, logged_at=now)
-    session.add(entry)
-    session.commit()
-    return entry_dict(entry)
+                      spread_pct=max(d.spread_pct, OUT_SPREAD) if eating_out else d.spread_pct, logged_at=now, client_key=client_key)
+    return _commit_entry(session, entry, client_key)
 
 
 def log_quick(session: Session, day: date, meal: str, name: str, kcal: float, protein_g: float | None,
-              today: date, now: datetime, carbs_g: float | None = None, fat_g: float | None = None, save_dish: bool = True) -> dict:
+              today: date, now: datetime, carbs_g: float | None = None, fat_g: float | None = None, save_dish: bool = True,
+              client_key: str | None = None) -> dict:
     """A one-off entry (eating out, something not in the library). Calories required; macros optional and left unknown if
     not given. By default it is also remembered as one of your dishes (one serving) so it can be picked again next time;
     if a dish with that name already exists it is only logged."""
@@ -328,10 +328,29 @@ def log_quick(session: Session, day: date, meal: str, name: str, kcal: float, pr
         session.flush()
         dish_id, saved = dish.id, True
     entry = FoodEntry(day=day, meal=meal, dish_id=dish_id, name=name, servings=1, kcal=kcal,
-                      protein_g=protein_g, carbs_g=carbs_g, fat_g=fat_g, spread_pct=OUT_SPREAD, logged_at=now)
+                      protein_g=protein_g, carbs_g=carbs_g, fat_g=fat_g, spread_pct=OUT_SPREAD, logged_at=now, client_key=client_key)
+    out = _commit_entry(session, entry, client_key)
+    return {**out, "saved_dish": saved and not out.get("replayed")}
+
+
+def entry_for_key(session: Session, client_key: str | None) -> dict | None:
+    """The entry an earlier request with this idempotency key created, if any (a retry after a timeout)."""
+    if not client_key:
+        return None
+    e = session.scalar(select(FoodEntry).where(FoodEntry.client_key == client_key))
+    return {**entry_dict(e), "replayed": True} if e is not None else None
+
+
+def _commit_entry(session: Session, entry: FoodEntry, client_key: str | None) -> dict:
     session.add(entry)
-    session.commit()
-    return {**entry_dict(entry), "saved_dish": saved}
+    try:
+        session.commit()
+    except IntegrityError:  # two requests with the same key raced: the other one won
+        session.rollback()
+        if (existing := entry_for_key(session, client_key)) is None:
+            raise
+        return existing
+    return entry_dict(entry)
 
 
 def remove(session: Session, entry_id: int) -> bool:

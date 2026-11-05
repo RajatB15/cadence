@@ -245,7 +245,11 @@ def critical_speed(runs: list[dict], end: date, days: int = CS_WINDOW_DAYS) -> d
     r2 = 1 - sse / float(np.sum((y - y.mean()) ** 2))
     n = len(points)
     X = np.column_stack([x, np.ones(n)])
-    cov = sse / (n - 2) * np.linalg.inv(X.T @ X)
+    xtx = X.T @ X
+    if not np.all(np.isfinite(xtx)) or np.linalg.cond(xtx) > 1e12:
+        out["missing"] = "a hard 3-minute effort and two hard efforts of 10+ minutes"  # degenerate (e.g. identical durations): no usable fit
+        return out
+    cov = sse / (n - 2) * np.linalg.inv(xtx)
     cs_se, d_se = float(np.sqrt(cov[0, 0])), float(np.sqrt(cov[1, 1]))
     tcrit = float(stats.t.ppf(0.975, n - 2))
     v = y / x

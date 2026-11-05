@@ -124,7 +124,7 @@ def factors(c: dict, d: date, hard: set[date] | None = None) -> list[dict]:  # n
                       f"{stacked} of {len(recent_hard)} hard days stacked", "≤ 2 hard days per 7",
                       "Put at least one easy or rest day between hard sessions so each one is high quality."))
 
-    weeks = [w for w in A.weekly(acts, c["load"], d - timedelta(weeks=12), d) if w["complete"]][-12:]
+    weeks = [w for w in A.weekly(acts, c["load"], d - timedelta(weeks=12), d, unsettled=c.get("today")) if w["complete"]][-12:]
     if len(weeks) >= 4:
         good = sum(1 for w in weeks if w["total_sessions"] >= 3)
         out.append(_f("consistency", "train", "Consistency", good / len(weeks) * 100, f"{good}/{len(weeks)} weeks with 3+ sessions",

@@ -1,7 +1,7 @@
 import { useMutation } from "@tanstack/react-query";
 import { Camera, Check, FileText, Plus } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { api, ApiError } from "../lib/api";
+import { api, ApiError, newIdempotencyKey } from "../lib/api";
 import { amount, dishFromLabel, fieldsFrom, LABEL_FIELDS, type LabelColumn, type LabelFields } from "../lib/foodLabel";
 import type { FoodLabelRead, Meal } from "../lib/types";
 import { LoadingBlock } from "./Shell";
@@ -103,13 +103,18 @@ function Review({ read, photo, meal, day, onBack, onAdded }: { read: FoodLabelRe
     setBasis(c);
     setF(fieldsFrom(read, c));
   };
+  const attempt = useRef<string | null>(null);
   const save = useMutation({
     mutationFn: async () => {
       const created = await api.addFoodDish(dish!);
-      await api.addFoodEntry({ day, meal, dish_id: created.id, servings: 1 });
+      attempt.current ??= newIdempotencyKey();
+      await api.addFoodEntry({ day, meal, dish_id: created.id, servings: 1 }, attempt.current);
       return created;
     },
-    onSuccess: (d) => onAdded(d.name),
+    onSuccess: (d) => {
+      attempt.current = null;
+      onAdded(d.name);
+    },
   });
   const found = Object.values(read.columns).some((c) => c && Object.keys(c).length > 0);
   return (

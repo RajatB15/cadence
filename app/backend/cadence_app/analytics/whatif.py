@@ -115,12 +115,16 @@ def _payoff(c: dict, rows: list[dict], alt_by_day: dict, base_by_day: dict, lab:
         return {"status": "unmeasured", "items": []}
     h = fresh["hard"]
     edited = {r["id"] for r in rows}
-    items = []
+    items, seen = [], set()
     for r in rows:
-        nxt = next((a for a in sorted(c["acts"], key=lambda x: x.day)
-                    if A.is_hard(a) and r["day"] < a.day <= r["day"] + timedelta(days=PAYOFF_DAYS) and a.id not in edited and a.day in alt_by_day), None)
+        # The freshness effect is measured on hard RUNS only, so it is never applied to a ride or swim. A session that follows
+        # several edited ones is priced once (its form delta already carries all the earlier edits), not once per edit.
+        nxt = next((a for a in sorted(c["acts"], key=lambda x: (x.day, x.id))
+                    if a.family == "run" and A.is_hard(a) and r["day"] < a.day <= r["day"] + timedelta(days=PAYOFF_DAYS) and a.id not in edited
+                    and a.id not in seen and a.day in alt_by_day), None)
         if nxt is None:
             continue
+        seen.add(nxt.id)
         delta = alt_by_day[nxt.day]["form"] - base_by_day[nxt.day]["form"]
         pay = FR.payoff(fresh, delta)
         items.append({"after": r["id"], "session_id": nxt.id, "name": nxt.name, "day": nxt.day, "form_delta": round(delta, 1), "payoff": pay})
@@ -195,7 +199,7 @@ def compare(c: dict, edits: list[dict], rates: dict[str, dict] | None = None, la
 
 
 def candidates(c: dict) -> list[tuple[str, A.Act]]:
-    """Sessions of the last WINDOW_DAYS that an easier day would most plausibly have improved, with why."""
+    """Sessions of the last WINDOW_DAYS that an easier day might have helped (a model replay, not a verdict), with why."""
     as_of = c["as_of"]
     since = as_of - timedelta(days=WINDOW_DAYS)
     spacing = (c.get("recovery") or {}).get("hard_spacing_days", 2)
@@ -251,7 +255,7 @@ def _brief(r: dict) -> dict:
 
 
 def for_period(c: dict, start: date, end: date, lab: dict | None = None) -> dict | None:
-    """Sessions in [start, end] that an easier day would have improved, replayed together up to `end` (or today).
+    """Sessions in [start, end] that an easier day might have helped, replayed together up to `end` (or today).
 
     Also counts the easy sessions you kept easy, so a clean period reads as the win it is. None outside the replay window.
     """
