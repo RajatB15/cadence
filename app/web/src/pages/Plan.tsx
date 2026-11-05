@@ -48,7 +48,7 @@ export function PlanPage() {
             <button key={d.day} type="button" onClick={() => setDay(d.day)} aria-pressed={active}
               className={clsx("flex min-h-20 flex-col items-center gap-1.5 border px-1 py-2.5 text-center transition-colors",
                 active ? "border-gold bg-gold/10" : "border-line bg-ink/40 hover:border-line-strong")}>
-              <span className="eyebrow !text-[10px]">{d.day === w.today ? "Today" : weekday.format(parse(d.day))}</span>
+              <span className="eyebrow !text-[11px]">{d.day === w.today ? "Today" : weekday.format(parse(d.day))}</span>
               <span className="num text-lg text-cream">{parse(d.day).getDate()}</span>
               <span className="flex gap-0.5">
                 {d.plans.map((pl) => {

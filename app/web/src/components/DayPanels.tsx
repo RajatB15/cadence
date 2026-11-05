@@ -196,7 +196,7 @@ function TimeChart({
       ...chartBase,
       useUTC: true,
       grid: { left: 8, right: 16, top: 16, bottom: 8, containLabel: true },
-      xAxis: { ...chartBase.xAxis, type: "time", axisLabel: { color: "#5c5a55", fontSize: 10, formatter: (v: number) => fmtClock(v) } },
+      xAxis: { ...chartBase.xAxis, type: "time", axisLabel: { color: "#8d8a82", fontSize: 11, formatter: (v: number) => fmtClock(v) } },
       yAxis: { ...chartBase.yAxis, min, max },
       tooltip: {
         ...chartBase.tooltip,

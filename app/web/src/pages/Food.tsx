@@ -425,7 +425,7 @@ function Library({ meal, day, recentIds, search, setSearch, onSaved, onAdded, on
               <button type="button" className="flex min-w-0 flex-1 items-baseline justify-between gap-3 py-3 text-left hover:text-cream pointer-coarse:py-3.5" onClick={() => pick(d)}>
                 <span className="min-w-0">
                   <span className="block truncate text-sm text-paper">
-                    {!search && recentIds.includes(d.id) && <span className="mr-2 text-[10px] tracking-widest text-gold uppercase">Recent</span>}
+                    {!search && recentIds.includes(d.id) && <span className="mr-2 text-[11px] tracking-widest text-gold uppercase">Recent</span>}
                     {d.name}
                   </span>
                   <span className="block text-xs text-dim">

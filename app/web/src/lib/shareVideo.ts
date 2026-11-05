@@ -1,10 +1,9 @@
-import { Map as MapLibreMap, setWorkerUrl, type ExpressionSpecification, type LngLatBoundsLike, type LngLatLike } from "maplibre-gl";
-import workerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url";
+import { Map as MapLibreMap, type ExpressionSpecification, type LngLatBoundsLike, type LngLatLike } from "maplibre-gl";
+import "./maplibreWorker";
 import { DEM_TILES, SKY, STYLES, terrainFor, type Basemap } from "./mapStyle";
 import { cameraSigma, chaseHeading, chaseWindow, chasePitch, sample, smoothPath, steer, terrainExaggeration, turn } from "./route";
 import { CARD_H, CARD_W, drawCard, fontsReady, makeCanvas, videoSeconds, type CardModel } from "./shareCard";
 
-setWorkerUrl(workerUrl);
 
 export interface VideoOptions {
   speed: number;

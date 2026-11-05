@@ -63,13 +63,69 @@ import type {
   WeightResponse,
 } from "./types";
 
+export type ApiErrorKind = "http" | "offline" | "timeout" | "parse" | "aborted";
+
 export class ApiError extends Error {
   constructor(
     public status: number,
     message: string,
+    public kind: ApiErrorKind = "http",
   ) {
     super(message);
   }
+}
+
+/** Default per-request timeout; uploads that run OCR get longer. */
+export const REQUEST_TIMEOUT_MS = 30_000;
+export const UPLOAD_TIMEOUT_MS = 90_000;
+
+/** React Query retry rule: never retry client errors (4xx) or deliberate aborts; retry once otherwise. */
+export function shouldRetry(failureCount: number, error: unknown): boolean {
+  if (error instanceof ApiError && (error.kind === "aborted" || (error.status >= 400 && error.status < 500))) return false;
+  return failureCount < 1;
+}
+
+/** fetch with a timeout, caller abort support and distinct offline/timeout errors. */
+export async function apiFetch(path: string, init: RequestInit = {}, timeoutMs = REQUEST_TIMEOUT_MS): Promise<Response> {
+  const ctrl = new AbortController();
+  let timedOut = false;
+  const timer = setTimeout(() => {
+    timedOut = true;
+    ctrl.abort();
+  }, timeoutMs);
+  const outer = init.signal;
+  const onOuterAbort = () => ctrl.abort();
+  if (outer) {
+    if (outer.aborted) ctrl.abort();
+    else outer.addEventListener("abort", onOuterAbort, { once: true });
+  }
+  try {
+    return await fetch(path, { ...init, signal: ctrl.signal });
+  } catch (e) {
+    if (timedOut) throw new ApiError(0, "The request timed out. Check your connection and try again.", "timeout");
+    if (outer?.aborted || (e instanceof DOMException && e.name === "AbortError")) throw new ApiError(0, "Request cancelled.", "aborted");
+    const offline = typeof navigator !== "undefined" && navigator.onLine === false;
+    throw new ApiError(0, offline ? "You're offline. Reconnect and try again." : "Couldn't reach the Cadence server. Is it running?", "offline");
+  } finally {
+    clearTimeout(timer);
+    outer?.removeEventListener("abort", onOuterAbort);
+  }
+}
+
+async function readJson<T>(res: Response): Promise<T> {
+  if (res.status === 204) return undefined as T;
+  const text = await res.text().catch(() => "");
+  if (!text) return undefined as T;
+  try {
+    return JSON.parse(text) as T;
+  } catch {
+    throw new ApiError(res.status, "The server sent an unexpected response.", "parse");
+  }
+}
+
+async function failure(res: Response): Promise<ApiError> {
+  const body = await res.json().catch(() => null);
+  return new ApiError(res.status, typeof body?.detail === "string" ? body.detail : res.statusText || `Request failed (${res.status})`);
 }
 
 // The phone share server injects this meta tag; it only accepts reads.
@@ -85,13 +141,11 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   }
   const headers = new Headers(init.headers);
   if (method !== "GET") headers.set("X-Cadence-Request", "1");
-  if (init.body) headers.set("Content-Type", "application/json");
-  const res = await fetch(path, { ...init, headers });
-  if (!res.ok) {
-    const body = await res.json().catch(() => null);
-    throw new ApiError(res.status, typeof body?.detail === "string" ? body.detail : res.statusText);
-  }
-  return res.json() as Promise<T>;
+  // Only JSON string bodies get a JSON type; FormData/Blob set their own (multipart boundary etc.).
+  if (typeof init.body === "string" && !headers.has("Content-Type")) headers.set("Content-Type", "application/json");
+  const res = await apiFetch(path, { ...init, headers });
+  if (!res.ok) throw await failure(res);
+  return readJson<T>(res);
 }
 
 export const api = {
@@ -172,16 +226,13 @@ export const api = {
   parseStrength: (text: string) => request<StrengthLabel>("/api/strength/parse", { method: "POST", body: JSON.stringify({ text }) }),
   readScreenshot: async (file: Blob): Promise<StrengthLabel> => {
     // Raw image body: read on the Cadence machine; nothing is stored until you save.
-    const res = await fetch("/api/strength/ocr", {
+    const res = await apiFetch("/api/strength/ocr", {
       method: "POST",
       body: file,
       headers: { "X-Cadence-Request": "1", "Content-Type": file.type || "image/png" },
-    });
-    if (!res.ok) {
-      const body = await res.json().catch(() => null);
-      throw new ApiError(res.status, typeof body?.detail === "string" ? body.detail : res.statusText);
-    }
-    return res.json() as Promise<StrengthLabel>;
+    }, UPLOAD_TIMEOUT_MS);
+    if (!res.ok) throw await failure(res);
+    return readJson<StrengthLabel>(res);
   },
   saveStrength: (id: number, text: string, template: string | null) =>
     request<StrengthLabel>(`/api/strength/${id}`, { method: "PUT", body: JSON.stringify({ text, template }) }),
@@ -232,16 +283,13 @@ export const api = {
     request<unknown>(`/api/food/entries/${id}`, { method: "PATCH", body: JSON.stringify({ servings }) }),
   readFoodLabel: async (photo: Blob): Promise<FoodLabelRead> => {
     // Raw image body, read with Tesseract on the Cadence server; nothing is saved until you confirm.
-    const res = await fetch("/api/food/label", {
+    const res = await apiFetch("/api/food/label", {
       method: "POST",
       body: photo,
       headers: { "X-Cadence-Request": "1", "Content-Type": photo.type || "image/jpeg" },
-    });
-    if (!res.ok) {
-      const body = await res.json().catch(() => null);
-      throw new ApiError(res.status, typeof body?.detail === "string" ? body.detail : res.statusText);
-    }
-    return res.json() as Promise<FoodLabelRead>;
+    }, UPLOAD_TIMEOUT_MS);
+    if (!res.ok) throw await failure(res);
+    return readJson<FoodLabelRead>(res);
   },
   readFoodLabelText: (text: string) => request<FoodLabelRead>("/api/food/label/text", { method: "POST", body: JSON.stringify({ text }) }),
   foodMeals: () => request<{ meals: FoodSavedMeal[] }>("/api/food/meals"),

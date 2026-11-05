@@ -107,7 +107,7 @@ function BmiCard({ body }: { body: BodyEstimate }) {
             <div key={z.label} style={{ width: `${((z.to - z.from) / (GAUGE_MAX - GAUGE_MIN)) * 100}%`, background: z.color, opacity: z.color === color ? 1 : 0.28 }} />
           ))}
         </div>
-        <div className="relative mt-2 h-4 text-[10px] text-dim">
+        <div className="relative mt-2 h-4 text-[11px] text-dim">
           {[18.5, 25, 30].map((t) => (
             <span key={t} className="absolute -translate-x-1/2" style={{ left: `${pct(t, GAUGE_MIN, GAUGE_MAX)}%` }}>{t}</span>
           ))}
@@ -144,7 +144,7 @@ function RangeCard({ body, weightKg, goalKg }: { body: BodyEstimate; weightKg: n
           transition={{ type: "spring", stiffness: 90, damping: 16 }}
         />
       </div>
-      <div className="mt-2 flex justify-between text-[10px] text-dim">
+      <div className="mt-2 flex justify-between text-[11px] text-dim">
         <span>{lo} kg</span>
         <span className="text-gold">you {weightKg.toFixed(1)}</span>
         <span>{hi} kg</span>

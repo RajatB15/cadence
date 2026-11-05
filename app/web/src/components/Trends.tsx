@@ -162,7 +162,7 @@ export function EvidencePanel({ evidence }: { evidence: FitnessEvidence }) {
           return (
             <button key={m.key} type="button" onClick={() => setOpen(open === m.key ? null : m.key)} aria-pressed={open === m.key}
               className={clsx("border p-2.5 text-left transition-colors", open === m.key ? "border-gold bg-gold/10" : "border-line hover:border-line-strong")}>
-              <p className="text-[10px] tracking-wide text-mute uppercase">{SHORT[m.key] ?? m.label}</p>
+              <p className="text-[11px] tracking-wide text-mute uppercase">{SHORT[m.key] ?? m.label}</p>
               <p className="num mt-1 text-lg leading-none" style={{ color: st.color }}>{st.sign} <span className="text-sm">{markerValue(m)}</span></p>
             </button>
           );

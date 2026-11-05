@@ -26,7 +26,7 @@ export function useGarminRefresh() {
   useEffect(() => {
     const busy = status.data?.busy ?? false;
     if (wasBusy.current && !busy) {
-      client.invalidateQueries({ predicate: (q) => q.queryKey[0] !== "garmin-status" });
+      client.invalidateQueries({ predicate: (q) => q.queryKey[0] !== "garmin-status", refetchType: "active" });
     }
     wasBusy.current = busy;
   }, [status.data, client]);

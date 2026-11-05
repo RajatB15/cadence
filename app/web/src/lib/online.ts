@@ -1,0 +1,27 @@
+import { useEffect, useState } from "react";
+
+/** Current connectivity as reported by the browser (a hint: "online" does not prove the server is reachable). */
+export function useOnline(): boolean {
+  const [online, setOnline] = useState(() => (typeof navigator === "undefined" ? true : navigator.onLine !== false));
+  useEffect(() => {
+    const on = () => setOnline(true);
+    const off = () => setOnline(false);
+    window.addEventListener("online", on);
+    window.addEventListener("offline", off);
+    return () => {
+      window.removeEventListener("online", on);
+      window.removeEventListener("offline", off);
+    };
+  }, []);
+  return online;
+}
+
+/** Register the app service worker (production builds only; the dev server must not be cached). */
+export function registerServiceWorker(): void {
+  if (!import.meta.env.PROD || typeof navigator === "undefined" || !("serviceWorker" in navigator) || !window.isSecureContext) return;
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("/sw.js", { scope: "/" }).catch(() => {
+      // Unsupported or blocked: the app works the same without it.
+    });
+  });
+}

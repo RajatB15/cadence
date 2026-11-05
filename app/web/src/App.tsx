@@ -1,38 +1,45 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { lazy, Suspense } from "react";
+import { lazy, Suspense, type ComponentType, type ReactNode } from "react";
 import { BrowserRouter, Route, Routes } from "react-router-dom";
 import { LoadingBlock, Shell } from "./components/Shell";
-import { ActivitiesPage } from "./pages/Activities";
-import { EventPage, EventsPage } from "./pages/Events";
-import { FoodPage } from "./pages/Food";
-import { ReadingPage } from "./pages/Reading";
-import { FoodCrawlPage } from "./pages/FoodCrawl";
-import { GoalsPage } from "./pages/Goals";
-import { OverviewPage } from "./pages/Overview";
-import { PlanPage } from "./pages/Plan";
-import { ReviewPage } from "./pages/Review";
-import { SettingsPage } from "./pages/Settings";
-import { VaultPage } from "./pages/Vault";
+import { shouldRetry } from "./lib/api";
 import { useAppLifecycle } from "./lib/useAppLifecycle";
+import { OverviewPage } from "./pages/Overview";
 
-// ECharts is heavy; only chart pages pull it in.
-const WeightPage = lazy(() => import("./pages/Weight").then((m) => ({ default: m.WeightPage })));
-const MetricPage = lazy(() => import("./pages/Metric").then((m) => ({ default: m.MetricPage })));
-const ActivityPage = lazy(() => import("./pages/ActivityDetail").then((m) => ({ default: m.ActivityPage })));
-const CoachPage = lazy(() => import("./pages/Coach").then((m) => ({ default: m.CoachPage })));
-const LabPage = lazy(() => import("./pages/Lab").then((m) => ({ default: m.LabPage })));
-const PhasesPage = lazy(() => import("./pages/Phases").then((m) => ({ default: m.PhasesPage })));
-const PhasePage = lazy(() => import("./pages/Phases").then((m) => ({ default: m.PhasePage })));
-const ScorePage = lazy(() => import("./pages/Score").then((m) => ({ default: m.ScorePage })));
+// Only Home ships in the entry bundle; every other page (and ECharts/MapLibre with it) loads on demand.
+const page = <K extends string>(load: () => Promise<Record<K, ComponentType>>, name: K) =>
+  lazy(() => load().then((m) => ({ default: m[name] })));
+
+const WeightPage = page(() => import("./pages/Weight"), "WeightPage");
+const MetricPage = page(() => import("./pages/Metric"), "MetricPage");
+const ActivityPage = page(() => import("./pages/ActivityDetail"), "ActivityPage");
+const CoachPage = page(() => import("./pages/Coach"), "CoachPage");
+const LabPage = page(() => import("./pages/Lab"), "LabPage");
+const PhasesPage = page(() => import("./pages/Phases"), "PhasesPage");
+const PhasePage = page(() => import("./pages/Phases"), "PhasePage");
+const ScorePage = page(() => import("./pages/Score"), "ScorePage");
+const ActivitiesPage = page(() => import("./pages/Activities"), "ActivitiesPage");
+const EventsPage = page(() => import("./pages/Events"), "EventsPage");
+const EventPage = page(() => import("./pages/Events"), "EventPage");
+const FoodPage = page(() => import("./pages/Food"), "FoodPage");
+const ReadingPage = page(() => import("./pages/Reading"), "ReadingPage");
+const FoodCrawlPage = page(() => import("./pages/FoodCrawl"), "FoodCrawlPage");
+const GoalsPage = page(() => import("./pages/Goals"), "GoalsPage");
+const PlanPage = page(() => import("./pages/Plan"), "PlanPage");
+const ReviewPage = page(() => import("./pages/Review"), "ReviewPage");
+const SettingsPage = page(() => import("./pages/Settings"), "SettingsPage");
+const VaultPage = page(() => import("./pages/Vault"), "VaultPage");
 
 const queryClient = new QueryClient({
-  defaultOptions: { queries: { staleTime: 60_000, retry: 1 } },
+  defaultOptions: { queries: { staleTime: 60_000, retry: shouldRetry } },
 });
 
 function Lifecycle() {
   useAppLifecycle();
   return null;
 }
+
+const wrap = (node: ReactNode, height = 520) => <Suspense fallback={<LoadingBlock height={height} />}>{node}</Suspense>;
 
 export function App() {
   return (
@@ -42,81 +49,25 @@ export function App() {
         <Routes>
           <Route element={<Shell />}>
             <Route index element={<OverviewPage />} />
-            <Route
-              path="score"
-              element={
-                <Suspense fallback={<LoadingBlock height={640} />}>
-                  <ScorePage />
-                </Suspense>
-              }
-            />
-            <Route
-              path="coach"
-              element={
-                <Suspense fallback={<LoadingBlock height={640} />}>
-                  <CoachPage />
-                </Suspense>
-              }
-            />
-            <Route
-              path="weight"
-              element={
-                <Suspense fallback={<LoadingBlock height={520} />}>
-                  <WeightPage />
-                </Suspense>
-              }
-            />
-            <Route path="plan" element={<PlanPage />} />
-            <Route path="food" element={<FoodPage />} />
-            <Route path="reading" element={<ReadingPage />} />
-            <Route path="food/library" element={<FoodCrawlPage />} />
-            <Route path="goals" element={<GoalsPage />} />
-            <Route
-              path="lab"
-              element={
-                <Suspense fallback={<LoadingBlock height={640} />}>
-                  <LabPage />
-                </Suspense>
-              }
-            />
-            <Route path="review" element={<ReviewPage />} />
-            <Route path="activities" element={<ActivitiesPage />} />
-            <Route
-              path="phases"
-              element={
-                <Suspense fallback={<LoadingBlock height={420} />}>
-                  <PhasesPage />
-                </Suspense>
-              }
-            />
-            <Route
-              path="phases/:id"
-              element={
-                <Suspense fallback={<LoadingBlock height={640} />}>
-                  <PhasePage />
-                </Suspense>
-              }
-            />
-            <Route path="events" element={<EventsPage />} />
-            <Route path="events/:id" element={<EventPage />} />
-            <Route
-              path="activities/:id"
-              element={
-                <Suspense fallback={<LoadingBlock height={640} />}>
-                  <ActivityPage />
-                </Suspense>
-              }
-            />
-            <Route path="vault" element={<VaultPage />} />
-            <Route
-              path="metrics/:metric"
-              element={
-                <Suspense fallback={<LoadingBlock height={520} />}>
-                  <MetricPage />
-                </Suspense>
-              }
-            />
-            <Route path="settings" element={<SettingsPage />} />
+            <Route path="score" element={wrap(<ScorePage />, 640)} />
+            <Route path="coach" element={wrap(<CoachPage />, 640)} />
+            <Route path="weight" element={wrap(<WeightPage />)} />
+            <Route path="plan" element={wrap(<PlanPage />, 640)} />
+            <Route path="food" element={wrap(<FoodPage />, 640)} />
+            <Route path="reading" element={wrap(<ReadingPage />)} />
+            <Route path="food/library" element={wrap(<FoodCrawlPage />)} />
+            <Route path="goals" element={wrap(<GoalsPage />)} />
+            <Route path="lab" element={wrap(<LabPage />, 640)} />
+            <Route path="review" element={wrap(<ReviewPage />)} />
+            <Route path="activities" element={wrap(<ActivitiesPage />, 640)} />
+            <Route path="phases" element={wrap(<PhasesPage />, 420)} />
+            <Route path="phases/:id" element={wrap(<PhasePage />, 640)} />
+            <Route path="events" element={wrap(<EventsPage />)} />
+            <Route path="events/:id" element={wrap(<EventPage />)} />
+            <Route path="activities/:id" element={wrap(<ActivityPage />, 640)} />
+            <Route path="vault" element={wrap(<VaultPage />, 560)} />
+            <Route path="metrics/:metric" element={wrap(<MetricPage />)} />
+            <Route path="settings" element={wrap(<SettingsPage />, 640)} />
             <Route path="*" element={<OverviewPage />} />
           </Route>
         </Routes>

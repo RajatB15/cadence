@@ -159,7 +159,7 @@ function Stepper({ value, unit, onChange }: { value: number; unit: string; onCha
       </button>
       <span className={clsx("num w-14 text-center", value ? "text-violet" : "text-dim")}>
         {value}
-        <span className="block text-[10px] text-dim">{unit}</span>
+        <span className="block text-[11px] text-dim">{unit}</span>
       </span>
       <button type="button" aria-label="More" disabled={value >= 30} onClick={() => onChange(value + 1)}
         className="grid h-10 w-10 place-items-center border border-line-strong text-mute disabled:opacity-30">

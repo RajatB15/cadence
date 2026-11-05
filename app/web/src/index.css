@@ -13,7 +13,7 @@
   --color-cream: #f2e8cf;
   --color-paper: #ecebe6;
   --color-mute: #8d8a82;
-  --color-dim: #5c5a55;
+  --color-dim: #85827a;
   --color-gold: #d9b26a;
   --color-lime: #c8f560;
   --color-violet: #9b8cff;
@@ -89,9 +89,11 @@
   .surface-hover {
     transition: border-color 0.25s, transform 0.35s var(--ease-snap);
   }
-  .surface-hover:hover {
-    border-color: var(--color-line-strong);
-    transform: translateY(-2px);
+  @media (hover: hover) {
+    .surface-hover:hover {
+      border-color: var(--color-line-strong);
+      transform: translateY(-2px);
+    }
   }
 
   /* NeoPOP-style plunk button: a flat face with two skewed edges that collapse on press. */
@@ -142,8 +144,10 @@
     transform: skewX(45deg);
     transform-origin: top left;
   }
-  .pop:hover {
-    transform: translate(-1px, -1px);
+  @media (hover: hover) {
+    .pop:hover {
+      transform: translate(-1px, -1px);
+    }
   }
   .pop:active,
   .pop[data-pressed="true"] {
@@ -207,5 +211,31 @@
   *::after {
     transition-duration: 0.01ms !important;
     animation-duration: 0.01ms !important;
+  }
+}
+
+/* Respect the notch / rounded corners in landscape. */
+body {
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
+}
+
+/* Touch devices: comfortable targets, no iOS zoom-on-focus, and no film grain (it costs a full-screen composite layer). */
+@media (pointer: coarse) {
+  body::before {
+    display: none;
+  }
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+  select,
+  textarea {
+    font-size: max(16px, 1em);
+  }
+  button:not([data-compact]):not([role="switch"]):not([role="checkbox"]),
+  select,
+  summary {
+    min-height: 44px;
+  }
+  button[aria-label]:not([data-compact]):not([role="switch"]):not([role="checkbox"]) {
+    min-width: 44px;
   }
 }

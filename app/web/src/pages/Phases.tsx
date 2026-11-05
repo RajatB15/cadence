@@ -228,6 +228,13 @@ function Heatmap({ phase }: { phase: PhaseDetail }) {
   const lead = (first.getDay() + 6) % 7;
   const weeks = Math.ceil((lead + phase.total_days) / 7);
   const today = isoDay(new Date());
+  // Touch has no hover: tapping a day selects it and shows its numbers underneath.
+  const [picked, setPicked] = useState<string | null>(null);
+  const describe = (key: string) => {
+    const m = byDay.get(key)?.minutes ?? 0;
+    const n = byDay.get(key)?.sessions ?? 0;
+    return key > today ? `${formatShortDate(key)}: to come` : `${formatShortDate(key)}: ${m ? `${m} min · ${n} session${n === 1 ? "" : "s"}` : "no activity"}`;
+  };
   const tone = (m: number) => (m <= 0 ? 0 : m < 20 ? 0.28 : m < 45 ? 0.5 : m < 90 ? 0.75 : 1);
   const shade = (t: number) => (t ? `color-mix(in srgb, var(--phase) ${t * 100}%, #1c1c1f)` : "#1c1c1f");
   const at = (w: number, r: number) => new Date(first.getFullYear(), first.getMonth(), first.getDate() + w * 7 + r - lead);
@@ -239,25 +246,29 @@ function Heatmap({ phase }: { phase: PhaseDetail }) {
   return (
     <div className="space-y-3" style={{ ["--phase" as string]: phase.color }}>
       <div className="flex gap-2 overflow-x-auto pb-1">
-        <div className="grid shrink-0 grid-rows-[16px_repeat(7,14px)] gap-[3px] pt-0 text-[10px] text-dim sm:grid-rows-[16px_repeat(7,16px)]" aria-hidden>
+        <div className="grid shrink-0 grid-rows-[16px_repeat(7,14px)] gap-[3px] pt-0 text-[11px] text-dim sm:grid-rows-[16px_repeat(7,16px)]" aria-hidden>
           <span />
           {["Mon", "", "Wed", "", "Fri", "", "Sun"].map((d, i) => <span key={i} className="leading-[14px] sm:leading-4">{d}</span>)}
         </div>
         <div role="img" aria-label="Every day of the phase, shaded by minutes of activity" className="grid grid-flow-col grid-rows-[16px_repeat(7,14px)] gap-[3px] sm:grid-rows-[16px_repeat(7,16px)]" style={{ gridTemplateColumns: `repeat(${weeks}, minmax(14px, 16px))` }}>
           {Array.from({ length: weeks }, (_, w) => [
-            <span key={`m${w}`} className="overflow-visible text-[10px] leading-4 whitespace-nowrap text-dim">{labels[w]}</span>,
+            <span key={`m${w}`} className="overflow-visible text-[11px] leading-4 whitespace-nowrap text-dim">{labels[w]}</span>,
             ...Array.from({ length: 7 }, (_, r) => {
               const i = w * 7 + r - lead;
               if (i < 0 || i >= phase.total_days) return <span key={`${w}-${r}`} />;
               const key = isoDay(at(w, r));
               const m = byDay.get(key)?.minutes ?? 0;
-              const n = byDay.get(key)?.sessions ?? 0;
               const future = key > today;
               return (
-                <span
+                <button
+                  type="button"
+                  data-compact
                   key={`${w}-${r}`}
-                  title={future ? `${formatShortDate(key)}: to come` : `${formatShortDate(key)}: ${m ? `${m} min · ${n} session${n === 1 ? "" : "s"}` : "no activity"}`}
-                  className={clsx("rounded-[2px]", future && "border border-line", key === today && "ring-1 ring-paper")}
+                  title={describe(key)}
+                  aria-label={describe(key)}
+                  aria-pressed={picked === key}
+                  onClick={() => setPicked((p) => (p === key ? null : key))}
+                  className={clsx("rounded-[2px]", future && "border border-line", key === today && "ring-1 ring-paper", picked === key && "outline outline-2 outline-gold")}
                   style={future ? undefined : { background: shade(tone(m)) }}
                 />
               );
@@ -265,7 +276,8 @@ function Heatmap({ phase }: { phase: PhaseDetail }) {
           ])}
         </div>
       </div>
-      <div className="flex items-center gap-2 text-[10px] text-dim">
+      <p className="min-h-5 text-sm text-mute" role="status">{picked ? describe(picked) : "Tap a day for its numbers."}</p>
+      <div className="flex items-center gap-2 text-[11px] text-dim">
         <span>Less</span>
         {[0, 0.28, 0.5, 0.75, 1].map((t) => <span key={t} className="h-3 w-3 rounded-[2px]" style={{ background: shade(t) }} />)}
         <span>More</span>
@@ -298,7 +310,7 @@ function WeekChart({ phase }: { phase: PhaseDetail }) {
 const FIGURE = (label: string, value: string) => (
   <div key={label}>
     <dd className="num text-3xl text-paper">{value}</dd>
-    <dt className="text-[10px] tracking-widest text-dim uppercase">{label}</dt>
+    <dt className="text-[11px] tracking-widest text-dim uppercase">{label}</dt>
   </div>
 );
 
@@ -379,8 +391,9 @@ function VsBefore({ phase }: { phase: PhaseDetail }) {
   ];
   return (
     <div>
+      <div className="overflow-x-auto">
       <table className="w-full max-w-lg text-left text-sm">
-        <thead className="text-[10px] tracking-widest text-dim uppercase">
+        <thead className="text-[11px] tracking-widest text-dim uppercase">
           <tr><th className="py-2 font-normal" /><th className="py-2 font-normal">This phase</th><th className="py-2 font-normal">Before</th><th className="py-2 font-normal">Change</th></tr>
         </thead>
         <tbody className="divide-y divide-line">
@@ -394,6 +407,7 @@ function VsBefore({ phase }: { phase: PhaseDetail }) {
           ))}
         </tbody>
       </table>
+      </div>
       <p className="mt-3 text-xs text-dim">Against the {b.days} days before the phase began ({weeksBefore.toFixed(1)} weeks). A change in what you did, not proof of why.</p>
     </div>
   );
@@ -418,14 +432,14 @@ function Vitals({ phase }: { phase: PhaseDetail }) {
             return (
               <div key={r.label}>
                 <dd className="num text-2xl text-paper">{r.vit.first!.toFixed(r.digits)} → {r.vit.latest!.toFixed(r.digits)}<span className="ml-1 text-sm text-mute">{r.unit}</span></dd>
-                <dt className="text-[10px] tracking-widest text-dim uppercase">{r.label} · {signed(delta, r.digits)} · {r.vit.n_first}/{r.vit.n_latest} days</dt>
+                <dt className="text-[11px] tracking-widest text-dim uppercase">{r.label} · {signed(delta, r.digits)} · {r.vit.n_first}/{r.vit.n_latest} days</dt>
               </div>
             );
           })}
           {w.first != null && w.latest != null && (
             <div>
               <dd className="num text-2xl text-paper">{w.first.toFixed(1)} → {w.latest.toFixed(1)}<span className="ml-1 text-sm text-mute">kg</span></dd>
-              <dt className="text-[10px] tracking-widest text-dim uppercase">Weight · {signed(w.latest - w.first)} · {w.n} weigh-ins</dt>
+              <dt className="text-[11px] tracking-widest text-dim uppercase">Weight · {signed(w.latest - w.first)} · {w.n} weigh-ins</dt>
             </div>
           )}
         </dl>

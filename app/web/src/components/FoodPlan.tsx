@@ -62,7 +62,7 @@ export function EnergyCard({ data }: { data: FoodView }) {
     <section className="surface p-6">
       <div className="flex items-center justify-between gap-3">
         <div className="eyebrow">Energy {isToday ? "today" : formatDate(data.day)}</div>
-        {t && <span className="chip !text-[10px]">{PHASE_LABEL[plan.phase]}</span>}
+        {t && <span className="chip !text-[11px]">{PHASE_LABEL[plan.phase]}</span>}
       </div>
       {s.logged ? (
         <>

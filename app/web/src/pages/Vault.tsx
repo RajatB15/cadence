@@ -48,11 +48,14 @@ export function VaultPage() {
     refetchInterval: (q) => (q.state.data?.busy ? 1000 : 15000),
   });
   const wasBusy = useRef(false);
+  const lastRefresh = useRef(0);
   useEffect(() => {
     const busy = status.data?.busy ?? false;
-    // Refresh dashboards as data lands and once more when the job settles.
-    if (busy || wasBusy.current) {
-      client.invalidateQueries({ predicate: (q) => q.queryKey[0] !== "garmin-status" });
+    // Refresh visible dashboards as data lands (at most every 5 s) and once more when the job settles; inactive views just go stale.
+    const settled = wasBusy.current && !busy;
+    if ((busy || settled) && (settled || Date.now() - lastRefresh.current > 5000)) {
+      lastRefresh.current = Date.now();
+      client.invalidateQueries({ predicate: (q) => q.queryKey[0] !== "garmin-status", refetchType: "active" });
     }
     wasBusy.current = busy;
   }, [status.data, client]);
@@ -207,7 +210,7 @@ function Stat({ label, value }: { label: string; value: number }) {
   return (
     <div className="text-right">
       <p className="num text-2xl text-paper">{value.toLocaleString()}</p>
-      <p className="text-[10px] tracking-widest text-dim uppercase">{label}</p>
+      <p className="text-[11px] tracking-widest text-dim uppercase">{label}</p>
     </div>
   );
 }
