@@ -18,18 +18,35 @@ if [[ -f "$STATUS" ]]; then
   prev_success="$(sed -n 's/.*"last_success_at": *"\([^"]*\)".*/\1/p' "$STATUS" | head -1)"
   prev_snap="$(sed -n 's/.*"snapshot": *"\([^"]*\)".*/\1/p' "$STATUS" | head -1)"
 fi
-json() { if [[ -n "$1" ]]; then printf '"%s"' "$1"; else printf null; fi; }
+# JSON string or null; escapes backslashes, quotes and control characters so an odd error text can't corrupt backup-status.json.
+json() {
+  if [[ -z "$1" ]]; then printf null; return; fi
+  local v="${1//\\/\\\\}"
+  v="${v//\"/\\\"}"
+  v="${v//$'\n'/\\n}"; v="${v//$'\r'/\\r}"; v="${v//$'\t'/\\t}"
+  printf '"%s"' "$v"
+}
 write_status() {  # success_at snapshot error
   printf '{"last_success_at": %s, "snapshot": %s, "last_attempt_at": "%s", "last_error": %s}\n' \
     "$(json "$1")" "$(json "$2")" "$(date -u +%Y-%m-%dT%H:%M:%S)" "$(json "$3")" > "$STATUS.tmp" && mv "$STATUS.tmp" "$STATUS"
 }
 trap 'write_status "$prev_success" "$prev_snap" "Backup failed - see: journalctl -u cadence-backup"' ERR
 
+# Refuse to upload anything unless the remote is an rclone crypt remote: a plain Drive remote would store health data unencrypted.
+remote_name="${REMOTE%%:*}"
+if [[ "$REMOTE" != *:* ]] || ! rclone config show "$remote_name" 2>/dev/null | grep -Eq '^type *= *crypt *$'; then
+  echo "CADENCE_BACKUP_REMOTE ($REMOTE) is not an rclone crypt remote; refusing to upload." >&2
+  write_status "$prev_success" "$prev_snap" "Backup refused: remote is not an rclone crypt remote"
+  trap - ERR
+  exit 1
+fi
+
 # SQLite's online backup is consistent even while the service is writing.
 sqlite3 "$DATA/cadence.sqlite3" ".backup '$work/cadence.sqlite3'"
 rclone copy "$work" "${REMOTE}db/$stamp"
 
 # Archived Garmin responses are write-once, so only new files are uploaded (never deletes remote copies).
+# Retention note: the archive is never pruned (db snapshots are, see KEEP). It only grows; prune old remote files by hand if Drive space matters.
 [[ -d "$DATA/archive" ]] && rclone copy "$DATA/archive" "${REMOTE}archive"
 
 # Keep the newest $KEEP database snapshots.

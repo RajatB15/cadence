@@ -10,6 +10,8 @@ change, sample size and uncertainty, and the verdict only counts how many agree.
 - A marker is "better" or "worse" only when the 95% interval of its change excludes zero and the change is at least a
   practical floor (the noise you would see anyway); otherwise it is "flat". Too little data in the window is "missing",
   never zero.
+- Verdict: HRV level and resting HR share one overnight autonomic signal, so they count as ONE marker. "Not adapting" needs
+  at least 3 independent markers worsening (or 2 with one change >= 3x its practical floor) and more worsening than improving.
 - Load side: fitness now against 42 days ago (±3% counts as steady).
 - Everyday strain (heart-rate load outside workouts, from strain.py) is shown as context, not as a marker: it costs
   recovery but does not itself build aerobic fitness.
@@ -107,8 +109,41 @@ def life_strain(strain: dict | None, end: date) -> dict | None:
             "note": "Everyday load costs recovery but doesn't build fitness; it is not part of the markers."}
 
 
+AUTONOMIC = ("hrv", "resting_hr")  # both read the same overnight autonomic signal, so they count as one marker
+LARGE_EFFECT = 3.0  # a worsening this many times its practical floor counts extra
+NOT_ADAPTING_MIN = 3
+
+
+def _groups(markers: list[dict]) -> list[dict]:
+    """Markers as independent votes: HRV level and resting HR are merged into one vote."""
+    out, auto = [], [m for m in markers if m["key"] in AUTONOMIC]
+    for m in markers:
+        if m["key"] not in AUTONOMIC:
+            out.append({"key": m["key"], "state": m["state"], "large": _large(m)})
+    if auto:
+        states = {m["state"] for m in auto}
+        judged = states - {"missing"}
+        if not judged:
+            state = "missing"
+        elif "worse" in judged and "better" in judged:
+            state = "flat"  # the two disagree: no clear direction
+        elif "worse" in judged:
+            state = "worse"
+        elif "better" in judged:
+            state = "better"
+        else:
+            state = "flat"
+        out.append({"key": "autonomic", "state": state, "large": any(_large(m) for m in auto if m["state"] == state)})
+    return out
+
+
+def _large(m: dict) -> bool:
+    return m["state"] == "worse" and m["change"] is not None and abs(m["change"]) >= LARGE_EFFECT * MARKERS[m["key"]][3]
+
+
 def verdict(markers: list[dict], load: dict | None) -> dict:
-    count = {s: sum(m["state"] == s for m in markers) for s in ("better", "worse", "flat", "missing")}
+    groups = _groups(markers)
+    count = {s: sum(g["state"] == s for g in groups) for s in ("better", "worse", "flat", "missing")}
     judged = count["better"] + count["worse"] + count["flat"]
     summary = f"{count['better']} improving · {count['worse']} worsening · {count['flat']} unchanged · {count['missing']} not enough data"
     base = {"counts": count, "summary": summary, "judged": judged}
@@ -116,13 +151,15 @@ def verdict(markers: list[dict], load: dict | None) -> dict:
         return {**base, "key": "unknown", "label": "Not enough evidence",
                 "text": f"Only {judged} marker{'s' if judged != 1 else ''} has enough data in its window to judge. {summary}."}
     steady_or_up = load is None or load["state"] != "down"
-    if count["worse"] >= 2 and count["worse"] > count["better"]:
+    large = any(g["large"] for g in groups if g["state"] == "worse")
+    if count["worse"] > count["better"] and (count["worse"] >= NOT_ADAPTING_MIN or (count["worse"] >= 2 and large)):
         return {**base, "key": "not_adapting" if steady_or_up else "fading",
                 "label": "Not adapting yet" if steady_or_up else "Fading",
-                "text": ("Load is holding or rising but most body markers are moving the wrong way: more hard work is unlikely to help until recovery catches up. "
-                         if steady_or_up else "Load has fallen and most body markers are moving the wrong way. ") + summary + "."}
+                "text": ("Load is holding or rising, but several body markers have moved the wrong way over recent weeks. "
+                         "That can come with fatigue, illness, stress or poor sleep, or just noise. "
+                         if steady_or_up else "Load has fallen and several body markers have moved the wrong way over recent weeks. ") + summary + "."}
     if count["better"] >= 2 and count["better"] > count["worse"]:
-        return {**base, "key": "adapting", "label": "Adapting", "text": "Several independent markers say your body is responding to the training. " + summary + "."}
+        return {**base, "key": "adapting", "label": "Adapting", "text": "Several independent markers have moved in the fitter direction alongside the training. " + summary + "."}
     return {**base, "key": "mixed", "label": "Mixed", "text": "The markers don't agree, so there is no clear answer from the body yet. " + summary + "."}
 
 

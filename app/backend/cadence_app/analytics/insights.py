@@ -313,6 +313,7 @@ def load_analyses(session: Session) -> dict[int, dict]:
 CONTEXT_TTL_S = 300
 _ctx_cache: dict[tuple, tuple[float, dict | None]] = {}
 _ctx_lock = threading.Lock()
+_build_lock = threading.Lock()
 
 
 def invalidate_context() -> None:
@@ -324,7 +325,8 @@ def invalidate_context() -> None:
 def data_version(session: Session) -> tuple:
     """Changes whenever a sync starts or finishes or background analysis lands (the vault only changes through those and your own writes)."""
     runs = session.execute(select(func.max(SyncRun.id), func.max(SyncRun.finished_at), func.count(SyncRun.id))).one()
-    derived = (session.scalar(select(func.count(ActivityAnalysis.activity_id))), session.scalar(select(func.count(DayHeartHistogram.day))))
+    # max() of an indexed key is a single b-tree probe; count() would scan the table on every request
+    derived = (session.scalar(select(func.max(ActivityAnalysis.activity_id))), session.scalar(select(func.max(DayHeartHistogram.day))), ANALYSIS_VERSION)
     return (session.get_bind().url.render_as_string(), *runs, *derived)  # the database is part of the key: tests and apps never share
 
 
@@ -338,13 +340,19 @@ def context(session: Session, source_id: str, today: date, now: datetime | None 
         hit = _ctx_cache.get(key)
     if hit and time.monotonic() - hit[0] < CONTEXT_TTL_S:
         return dict(hit[1]) if hit[1] is not None else None
-    c = build_context(session, source_id, today, now)
-    if c is not None:
-        c.setdefault("_phase", {})
-        c.setdefault("_memo", {})
-    with _ctx_lock:
-        _ctx_cache.clear()
-        _ctx_cache[key] = (time.monotonic(), c)
+    # Single flight: concurrent requests for the same key wait for one build instead of each doing the work.
+    with _build_lock:
+        with _ctx_lock:
+            hit = _ctx_cache.get(key)
+        if hit and time.monotonic() - hit[0] < CONTEXT_TTL_S:
+            return dict(hit[1]) if hit[1] is not None else None
+        c = build_context(session, source_id, today, now)
+        if c is not None:
+            c.setdefault("_phase", {})
+            c.setdefault("_memo", {})
+        with _ctx_lock:
+            _ctx_cache.clear()
+            _ctx_cache[key] = (time.monotonic(), c)
     return dict(c) if c is not None else None
 
 
@@ -456,7 +464,7 @@ def assemble(
     c = {
         "source_id": source_id, "first": first, "as_of": as_of, "acts": acts, "act_by_id": act_by_id,
         "series": series, "load": load, "pmc": pmc, "pmc_by_day": {p["day"]: p for p in pmc},
-        "weeks": A.weekly(acts, load, as_of - timedelta(weeks=25), as_of),
+        "weeks": A.weekly(acts, load, as_of - timedelta(weeks=25), as_of, unsettled=today),
         "split_28": A.intensity_split(acts, as_of - timedelta(days=27)),
         "eff": eff, "ref_hr": ref_hr, "eff_trend": eff_trend,
         "dec": analyses, "durability": durability,
@@ -1077,9 +1085,9 @@ def coach(c: dict) -> list[dict]:  # noqa: C901 - a flat list of independent rul
     f = c.get("underfuelling")
     if f:
         out.append(finding("underfuelling", "warn", "Fuelling", "Possible under-fuelling",
-                           f"Weight is falling {abs(f['rate_pct_week']):.1f}% a week while HRV is down ({f['hrv_z']:+.1f} SD) and aerobic efficiency isn't improving. "
-                           "Together these match low energy availability (RED-S), which erodes training adaptation, bone health and hormones.",
-                           "Eat more on training days, especially carbohydrate around sessions. If it persists, talk to a sports dietitian or doctor.",
+                           f"Weight is falling about {abs(f['rate_pct_week']):.1f}% a week ({f.get('n', '?')} weigh-ins) while HRV is down ({f['hrv_z']:+.1f} SD) and aerobic efficiency isn't improving. "
+                           "These can go together when intake is low for the training, but they have other causes too; this is a prompt to look, not a diagnosis.",
+                           "Check you are eating enough on training days. If it persists or you feel unwell, consider talking to a sports dietitian or doctor.",
                            [{"label": "Weight trend", "value": f"{f['rate_kg_week']:+.2f} kg/wk"}], "/weight"))
 
     s = c["sleep_14"]

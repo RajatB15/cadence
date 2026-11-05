@@ -5,6 +5,7 @@ import { Archive, Bell, Database, KeyRound, RefreshCw, ShieldCheck, Smartphone, 
 import { motion } from "motion/react";
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
+import { ConfirmDialog } from "../components/ConfirmDialog";
 import { ErrorBlock, LoadingBlock, PageHeader, Segmented } from "../components/Shell";
 import { READ_ONLY, api } from "../lib/api";
 import { formatDate, parseDay, timeAgo } from "../lib/format";
@@ -154,7 +155,7 @@ function WeatherCard() {
         </p>
         {!q.data.available && <p className="mt-2 text-xs text-dim">Weather requests are turned off for this server.</p>}
       </div>
-      <button type="button" role="switch" aria-checked={q.data.enabled} disabled={toggle.isPending}
+      <button type="button" role="switch" aria-checked={q.data.enabled} disabled={toggle.isPending || READ_ONLY}
         onClick={() => toggle.mutate(!q.data.enabled)} className={q.data.enabled ? "pop pop-lime" : "pop pop-ghost"}>
         {q.data.enabled ? "On" : "Off"}
       </button>
@@ -181,8 +182,9 @@ function ReadingFeedCard() {
           Results aren’t reviewed by us, and only the title, journal, a short abstract excerpt and a link are kept.
         </p>
         {!q.data.available && <p className="mt-2 text-xs text-dim">Feed requests are turned off for this server.</p>}
+        {READ_ONLY && <p className="mt-2 text-xs text-dim">This setting can only be changed on your Mac.</p>}
       </div>
-      <button type="button" role="switch" aria-checked={q.data.enabled} disabled={toggle.isPending}
+      <button type="button" role="switch" aria-checked={q.data.enabled} disabled={toggle.isPending || READ_ONLY}
         onClick={() => toggle.mutate(!q.data.enabled)} className={q.data.enabled ? "pop pop-lime" : "pop pop-ghost"}>
         {q.data.enabled ? "On" : "Off"}
       </button>
@@ -531,10 +533,30 @@ function ShareCard() {
   const start = useMutation({ mutationFn: api.shareStart, onSuccess });
   const stop = useMutation({ mutationFn: api.shareStop, onSuccess });
   const reset = useMutation({ mutationFn: api.shareReset, onSuccess });
+  const revoke = useMutation({ mutationFn: api.shareRevoke, onSuccess });
+  const [revoking, setRevoking] = useState<{ id: string; label: string } | null>(null);
+  // Each QR code lives for pair_expires_in_s; count down locally and ask the server for a fresh one at zero.
+  const expiresIn = query.data?.pair_expires_in_s ?? null;
+  const [left, setLeft] = useState<number | null>(null);
+  useEffect(() => {
+    if (expiresIn == null) return setLeft(null);
+    const end = Date.now() + expiresIn * 1000;
+    setLeft(expiresIn);
+    const t = setInterval(() => {
+      const r = Math.max(0, Math.ceil((end - Date.now()) / 1000));
+      setLeft(r);
+      if (r === 0) {
+        clearInterval(t);
+        query.refetch();
+      }
+    }, 1000);
+    return () => clearInterval(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [expiresIn, query.dataUpdatedAt]);
   if (query.isPending) return <LoadingBlock height={220} />;
   if (query.isError) return <ErrorBlock error={query.error} retry={() => query.refetch()} />;
   const s = query.data;
-  const error = start.error ?? stop.error ?? reset.error;
+  const error = start.error ?? stop.error ?? reset.error ?? revoke.error;
 
   return (
     <section className="surface p-8">
@@ -563,6 +585,18 @@ function ShareCard() {
               <li><span className="num mr-2 text-gold">2</span>Point the Camera at the code and open the link.</li>
               <li><span className="num mr-2 text-gold">3</span>In Safari tap Share → <span className="text-paper">Add to Home Screen</span>, open Cadence from there, and turn on notifications in Settings.</li>
             </ol>
+            {s.insecure_lan && (
+              <p role="note" className="mt-6 border-l-2 border-gold/60 bg-gold/5 p-3 text-xs text-mute">
+                <span className="text-paper">Home Wi-Fi only, over plain HTTP.</span> Anyone on this network could see the traffic, so only
+                pair on a network you trust. Offline mode and notifications on the iPhone need the secure https:// Tailscale address.
+              </p>
+            )}
+            <p className="mt-4 text-xs text-dim">
+              Each code works once, for one phone.{" "}
+              {left != null && (left > 0
+                ? <>This one expires in <span className="num text-mute">{Math.floor(left / 60)}:{String(left % 60).padStart(2, "0")}</span>.</>
+                : "This one has expired; getting a new one…")}
+            </p>
             {!s.secure && (
               <p className="mt-6 border-l-2 border-gold/60 pl-3 text-xs text-mute">
                 For access away from home and for notifications, install Tailscale on this Mac and your iPhone, then run{" "}
@@ -582,7 +616,7 @@ function ShareCard() {
                 New pairing code
               </button>
             </div>
-            <p className="mt-3 text-xs text-dim">A new code unpairs every phone that used the old one.</p>
+            <p className="mt-3 text-xs text-dim">“New pairing code” issues a fresh code; to unpair a phone, revoke it below.</p>
           </div>
         </div>
       ) : (
@@ -599,6 +633,41 @@ function ShareCard() {
           )}
         </div>
       )}
+      <div className="mt-8 border-t border-line pt-4">
+        <h3 className="eyebrow mb-3">Paired phones</h3>
+        {s.sessions.length === 0 ? (
+          <p className="text-sm text-mute">No phones are paired yet.</p>
+        ) : (
+          <ul className="divide-y divide-line">
+            {s.sessions.map((p) => (
+              <li key={p.id} className="flex flex-wrap items-center justify-between gap-3 py-3">
+                <div className="min-w-0">
+                  <p className="text-sm text-paper">{p.label || "Phone"}</p>
+                  <p className="text-xs text-dim">
+                    Paired {new Date(`${p.created_at}Z`).toLocaleDateString()} ·{" "}
+                    {p.last_seen_at ? `last seen ${timeAgo(new Date(`${p.last_seen_at}Z`))}` : "not seen yet"}
+                  </p>
+                </div>
+                <button type="button" className="pop pop-ghost !px-3 !py-1.5 text-xs" disabled={revoke.isPending}
+                  onClick={() => setRevoking({ id: p.id, label: p.label || "this phone" })}>
+                  Revoke
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+      <ConfirmDialog
+        open={revoking != null}
+        title="Revoke this phone?"
+        body={`${revoking?.label ?? "This phone"} will be signed out and will need a new pairing code to open Cadence again.`}
+        confirmLabel="Revoke"
+        onCancel={() => setRevoking(null)}
+        onConfirm={() => {
+          if (revoking) revoke.mutate(revoking.id);
+          setRevoking(null);
+        }}
+      />
       {error && <p className="mt-4 text-sm text-coral">{error.message}</p>}
       {s.web_built_at && (
         <p className="mt-6 border-t border-line pt-4 text-xs text-dim">

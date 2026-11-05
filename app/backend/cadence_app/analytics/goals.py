@@ -6,7 +6,7 @@ predicts the future or gives medical advice; it states what the numbers imply, w
 - Run races / performances with a valid critical-speed fit (Monod & Scherrer; Jones et al. 2010): the target time maps to
   the critical speed it needs (`race_time`, Riegel exponent 1.06 beyond 5 km). The chance of reaching it by the goal date
   is a Monte Carlo over (a) the uncertainty of today's critical speed (sampled from the scatter of your own monthly
-  history, or 4 % when there are fewer than 4 months, and flagged as assumed) and (b) your trend, a Theil–Sen slope of
+  history, or 4 % when there are fewer than 4 independent fits, and flagged as assumed; monthly fits share 90-day windows, so only fits at least 90 days apart are used) and (b) your trend, a Theil–Sen slope of
   that history with its 90 % interval, halved (new gains come slower than old ones) and capped at +10 % in total.
   The result is shown as a band, never as a promise.
 - Ride and swim performances, and runs without a critical-speed fit: only demonstrated performances exist in the vault
@@ -82,15 +82,25 @@ def cs_model(c: dict) -> dict | None:
     cs = (c.get("performance") or {}).get("critical_speed")
     if not cs or not cs.get("valid"):
         return None
-    hist = [h for h in (c["performance"].get("history") or []) if h.get("cs_mps")]
+    hist_all = sorted((h for h in (c["performance"].get("history") or []) if h.get("cs_mps")), key=lambda h: h["day"])
     end = c["as_of"]
-    out = {"cs": cs["cs_mps"], "d_prime": cs["d_prime_m"], "n_history": len(hist), "slope": 0.0, "slope_se": 0.0, "sigma": ASSUMED_SIGMA, "sigma_assumed": True}
+    # Each history point fits the best efforts of the 90 days before it, so monthly points share most of their data. Keep
+    # only points at least a window apart: the slope and scatter below then treat independent fits as independent.
+    hist: list[dict] = []
+    for h in reversed(hist_all):
+        if not hist or (hist[-1]["day"] - h["day"]).days >= P.CS_WINDOW_DAYS:
+            hist.append(h)
+    hist.reverse()
+    out = {"cs": cs["cs_mps"], "d_prime": cs["d_prime_m"], "n_history": len(hist), "slope": 0.0, "slope_se": 0.0, "sigma": ASSUMED_SIGMA, "sigma_assumed": True,
+           "anchor": cs.get("anchor")}
+    if cs.get("cs_se") and cs["cs_mps"]:
+        out["sigma"] = max(0.015, cs["cs_se"] / cs["cs_mps"])  # today's fit alone is this uncertain
     if len(hist) >= 4:
         x = np.array([(h["day"] - end).days for h in hist], dtype=float)
         y = np.array([h["cs_mps"] for h in hist])
         slope, intercept, lo, hi = stats.theilslopes(y, x, 0.90)
         resid = y - (intercept + slope * x)
-        out.update(slope=float(slope), slope_se=float((hi - lo) / (2 * 1.645)), sigma=max(0.015, float(resid.std(ddof=1) / y.mean())), sigma_assumed=False)
+        out.update(slope=float(slope), slope_se=float((hi - lo) / (2 * 1.645)), sigma=max(0.015, float(resid.std(ddof=1) / y.mean()), out["sigma"]), sigma_assumed=False)
     return out
 
 
@@ -102,8 +112,7 @@ def project_run(model: dict, distance_m: float, target_s: float | None, days: in
     cs_future = np.minimum(cs0 + slope * days, cs0 * (1 + MAX_GAIN))
     cs_future = np.maximum(cs_future, 0.5 * cs0)
     d = model["d_prime"]
-    t5 = (5000 - d) / cs_future
-    times = (distance_m - d) / cs_future if distance_m <= 5000 else t5 * (distance_m / 5000) ** RIEGEL
+    times = P.race_time(distance_m, cs_future, d, model.get("anchor"))
     out = {"p10_s": round(float(np.percentile(times, 10))), "p50_s": round(float(np.percentile(times, 50))), "p90_s": round(float(np.percentile(times, 90)))}
     if target_s:
         out["probability"] = round(float((times <= target_s).mean()) * 20) / 20
@@ -211,12 +220,12 @@ def assess_performance(goal: dict, c: dict, today: date) -> dict:
     out["demonstrated"] = demo
     if model:
         proj = project_run(model, distance, target, horizon_days)
-        now_s = round(P.race_time(distance, model["cs"], model["d_prime"]))
+        now_s = round(float(P.race_time(distance, model["cs"], model["d_prime"], model.get("anchor"))))
         out.update(basis="critical speed", current_s=now_s, projected=proj, horizon_days=horizon_days,
                    cs={"cs_mps": model["cs"], "n_history": model["n_history"], "sigma_pct": round(model["sigma"] * 100, 1), "sigma_assumed": model["sigma_assumed"],
                        "slope_pct_per_month": round(model["slope"] * 30 / model["cs"] * 100, 2) if model["cs"] else None})
         if model["sigma_assumed"]:
-            out["caveats"].append(f"Fewer than 4 monthly critical-speed estimates, so a {ASSUMED_SIGMA * 100:.0f}% uncertainty on today's level is assumed.")
+            out["caveats"].append(f"Fewer than 4 independent (90 days apart) critical-speed estimates, so a {ASSUMED_SIGMA * 100:.0f}% uncertainty on today's level is assumed.")
         if distance > 20000:
             out["caveats"].append("Marathon-and-longer times assume long runs of 90+ minutes in training.")
         if target:

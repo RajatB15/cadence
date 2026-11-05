@@ -12,7 +12,7 @@ from fastapi.testclient import TestClient
 from cadence_app import push
 from cadence_app.config import Settings
 from cadence_app.main import create_app
-from cadence_app.share import COOKIE, ShareGate
+from cadence_app.share import COOKIE, ShareAuth, ShareGate
 from tests.test_api import MUTATE, FixedClock
 
 APPLE = "https://web.push.apple.com/QGuQyavXutnMH"
@@ -129,8 +129,10 @@ def test_scheduler_syncs_on_interval_and_faster_in_the_morning(app_env):
 def test_paired_phone_can_manage_notifications_only(app_env):
     app, _, tmp_path = app_env
     _, _, keys = receiver()
-    phone = TestClient(ShareGate(app, lambda: "tok", tmp_path / "dist"), base_url="http://192.168.1.20:8766")
-    phone.cookies.set(COOKIE, "tok")
+    store: dict[str, str] = {}
+    auth = ShareAuth(store.get, lambda k, v: store.pop(k, None) if v is None else store.__setitem__(k, v))
+    phone = TestClient(ShareGate(app, auth, tmp_path / "dist"), base_url="http://192.168.1.20:8766")
+    phone.cookies.set(COOKIE, auth.pair(auth.pairing_key()[0], "test"))
     r = phone.post("/api/push/subscribe", headers={**MUTATE, "Origin": "http://192.168.1.20:8766"},
                    json={"endpoint": APPLE, "keys": keys, "label": "iPhone"})
     assert r.status_code == 200

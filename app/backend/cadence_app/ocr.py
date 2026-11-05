@@ -9,8 +9,40 @@ from __future__ import annotations
 import io
 import shutil
 import subprocess
+import threading
+from collections.abc import AsyncIterable
 
 MAX_IMAGE_BYTES = 15 * 1024 * 1024
+MAX_IMAGE_PIXELS = 50_000_000  # a 15 MB file can decode to gigabytes; phone photos are 12-48 MP
+MAX_WAITING = 2  # one read at a time; a couple may queue, the rest are turned away
+_one_at_a_time = threading.Lock()
+_pending = 0
+_pending_lock = threading.Lock()
+
+
+class UploadError(Exception):
+    def __init__(self, status: int, detail: str):
+        super().__init__(detail)
+        self.status, self.detail = status, detail
+
+
+async def read_upload(chunks: AsyncIterable[bytes], content_length: str | None) -> bytes:
+    """Request body up to MAX_IMAGE_BYTES: rejects on the declared length first, then caps while streaming."""
+    too_big = UploadError(413, "Image is empty or larger than 15 MB")
+    if content_length:
+        try:
+            if int(content_length) > MAX_IMAGE_BYTES:
+                raise too_big
+        except ValueError:
+            raise UploadError(400, "Bad Content-Length") from None
+    buf = bytearray()
+    async for chunk in chunks:
+        buf += chunk
+        if len(buf) > MAX_IMAGE_BYTES:
+            raise too_big
+    if not buf:
+        raise too_big
+    return bytes(buf)
 TESSERACT_TIMEOUT_S = 60
 FULL_EDGE = 1800  # long edge of the image that is read
 PROBE_EDGE = 900  # long edge of the copy used to pick the rotation
@@ -23,22 +55,43 @@ def available() -> bool:
 
 
 def image_text(data: bytes) -> str:
-    """Recognised lines, top to bottom (left to right within a row)."""
-    return _tesseract_text(data)
+    """Recognised lines, top to bottom (left to right within a row). One read at a time machine-wide: Tesseract is heavy
+    and a burst of photos must not exhaust memory; a short queue is allowed, beyond that raises Busy."""
+    global _pending  # pylint: disable=global-statement
+    with _pending_lock:
+        if _pending > MAX_WAITING:
+            raise Busy("Text recognition is busy. Try again in a moment.")
+        _pending += 1
+    try:
+        with _one_at_a_time:
+            return _tesseract_text(data)
+    finally:
+        with _pending_lock:
+            _pending -= 1
+
+
+class Busy(Exception):
+    pass
 
 
 def _upright(data: bytes):
     """Decoded with EXIF orientation applied and any transparency flattened onto white."""
     from PIL import Image, ImageOps, UnidentifiedImageError  # pylint: disable=import-outside-toplevel
 
+    Image.MAX_IMAGE_PIXELS = MAX_IMAGE_PIXELS
     try:
-        img = ImageOps.exif_transpose(Image.open(io.BytesIO(data)))
+        opened = Image.open(io.BytesIO(data))
+        if opened.width * opened.height > MAX_IMAGE_PIXELS:  # header says so: refuse before decoding anything
+            raise Image.DecompressionBombError("too many pixels")
+        img = ImageOps.exif_transpose(opened)
         if img.mode in ("RGBA", "LA", "P"):
             img = img.convert("RGBA")
             page = Image.new("RGBA", img.size, "white")
             page.alpha_composite(img)
             img = page
         return img.convert("RGB")
+    except Image.DecompressionBombError:
+        raise ValueError("The image is too large to read (over 50 megapixels)") from None
     except (UnidentifiedImageError, OSError, ValueError):
         raise ValueError("Couldn't read the image (unsupported or damaged file)") from None
 

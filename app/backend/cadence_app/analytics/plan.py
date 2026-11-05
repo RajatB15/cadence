@@ -2,13 +2,14 @@
 
 - Phases count back from a goal race: taper (1–3 weeks by distance), race-specific (6 weeks), build (8), base before.
   Without a goal, the plan builds continuously and inserts a recovery week after three building weeks.
-- Weekly load: fitness (42-day CTL) rises ~2–8 points a week in building weeks (your ramp setting, 5% of current fitness by
-  default), never above 1.25 × chronic load; recovery weeks drop to your deload setting (65%) after your build length (3
+- Weekly load: fitness (42-day CTL) rises up to 8 points a week in building weeks (your ramp setting, 5% of current fitness by
+  default), never above 1.25 × chronic load and never above 1.15 × your last complete week (or two-week mean), so ramps
+  start from what you have done (cf. Gabbett 2016, BJSM, on week-to-week load jumps); recovery weeks drop to your deload setting (65%) after your build length (3
   weeks) (3:1 mesocycles), tapers step down 20–50%.
 - Time off (analytics/timeoff.py): travel, holiday, illness and injury scale the week's targets by the days you can train
   and ease you back on a ramp from your pre-break load. A week lost to a break counts as the block's recovery week.
 - Sessions: +1 in the last building week of a block when the last three clean weeks all reached the current number.
-- Long run: +10 minutes per building week up to what the goal needs, and never more than 10% longer (by distance) than
+- Long run: about 10% + 5 minutes on the recent longest run per building week (25 min with no recent runs) up to what the goal needs, and never more than 10% longer (by distance) than
   the longest run of the last 30 days. Single-run spikes predicted overuse injury better than weekly ratios in a
   large 2025 cohort of Garmin runners (Frandsen et al., BJSM).
 - Key sessions rotate by phase and progress through each block: threshold and VO₂max intervals while building,
@@ -35,6 +36,8 @@ GOALS = {
     "marathon": {"label": "Marathon", "distance_m": 42195.0, "long_min": 165, "taper_weeks": 3},
 }
 GENERAL_LONG_MIN = 90
+RECENT_CAP = 1.15  # weekly target <= 1.15 x max(last complete week, mean of the last two): ramps are measured from what was done
+LONG_NO_HISTORY_MIN = 25  # a first long run with no recent runs to build on
 TAPER_LOAD = {1: (0.6,), 2: (0.7, 0.55), 3: (0.8, 0.65, 0.5)}
 PHASES = {
     "base": ("Base", "Aerobic volume, strides and controlled threshold work."),
@@ -261,7 +264,7 @@ def weekly_plan(c: dict) -> dict | None:
 
     avg_load = fmean(w["load"] for w in weeks)
     chronic = 7 * ctl if ctl > 5 else avg_load
-    ramp = max(2.0, min(8.0, cfg["ramp_pct"] / 100 * ctl))
+    ramp = min(8.0, cfg["ramp_pct"] / 100 * ctl)  # the ramp setting binds (no floor), so a 1% ramp is not silently 2 points
     if name in ("build", "specific", "base"):
         gain = ramp * (0.75 if name == "base" else 1.0)
         target = 7 * (ctl + gain / CTL_WEEK_GAIN) if ctl > 5 else avg_load * 1.05
@@ -281,6 +284,15 @@ def weekly_plan(c: dict) -> dict | None:
         why = f"Taper week {ph['week_in_block']}: volume down, intensity kept."
     else:
         target, why = 0.4 * chronic, "Race week: just enough to stay sharp."
+    recent_cap = None
+    if name in ("build", "specific", "base", "maintain"):
+        last = weeks[-1]
+        if T.week_scale(periods, cfg, c.get("today", as_of), last["week"])["scale"] >= 0.95:  # a time-off week is not a load to build on
+            recent = max(last["load"], fmean(w["load"] for w in weeks[-2:]))
+            recent_cap = RECENT_CAP * recent
+            if recent > 0 and target > recent_cap:
+                target = recent_cap
+                why += f" Held to {RECENT_CAP:.2f} × your recent weeks' load ({recent:.0f}): build from what you have actually done."
     if WB.stress_high(wb, now) and name not in ("recovery", "absorb", "taper", "race"):
         target *= 0.9
         why += " Trimmed 10% because you've reported heavy life stress most of this week."
@@ -292,15 +304,22 @@ def weekly_plan(c: dict) -> dict | None:
         if wk["ret"] < 0.999:
             bits.append(f"easing back ({round(wk['ret'] * 100)}% of your usual on average)")
         why += f" Scaled to {round(wk['scale'] * 100)}% for " + " and ".join(bits) + "."
-    load_band = [round(target * 0.93), round(target * 1.07)]
+    top = target * 1.07
+    if name in ("build", "specific", "base"):
+        top = min(top, 1.25 * chronic)  # the band never invites more than the 1.25 × chronic ceiling
+        if recent_cap:
+            top = min(top, max(recent_cap, target))
+    load_band = [round(target * 0.93), round(top)]
 
     clean = [w for w in weeks if T.week_scale(periods, cfg, c.get("today", as_of), w["week"])["scale"] >= 0.95] or weeks
-    sessions = int(max(3, min(7, round(fmean(w["total_sessions"] for w in clean)))))
+    base_sessions = int(min(7, round(fmean(w["total_sessions"] for w in clean))))
+    floor = min(3, base_sessions)  # the floor never asks for more than the base you actually sustain
+    sessions = max(floor, base_sessions)
     if name in ("build", "specific", "base") and ph.get("week_in_block") == cfg["build_weeks"] and sessions < 6 and len(clean) >= 3 \
             and all(w["total_sessions"] >= sessions for w in clean[-3:]):
         sessions += 1  # the block's peak week asks for one more session than you've been sustaining
     if name in ("recovery", "absorb", "taper", "race", "return"):
-        sessions = max(3, sessions - 1)
+        sessions = max(floor, sessions - 1)
     if wk["scale"] < 0.999:
         sessions = 0 if name == "away" else max(1, min(sessions, round(sessions * wk["scale"] + 0.25)))
     hard = {"base": 1, "build": 2 if sessions >= 4 else 1, "specific": 2 if sessions >= 4 else 1, "maintain": 1, "recovery": 1, "taper": 1, "race": 1,
@@ -409,14 +428,14 @@ def _long_run(c: dict, name: str, goal: dict | None, easy_pace: float | None) ->
     recent = [w for w in c["weeks"] if w["complete"]][-3:]
     longest = max((w.get("long_run_min", 0) for w in recent), default=0)
     if name in ("recovery", "absorb", "return"):
-        minutes, why = max(45, 0.75 * max(longest, 60)), "Shortened by a quarter for the lighter week."
+        minutes, why = (0.75 * longest if longest else LONG_NO_HISTORY_MIN), "Shortened by a quarter for the lighter week."
     elif name == "taper":
         minutes, why = 0.6 * need, "Trimmed for the taper; keep it relaxed."
     elif name == "maintain":
-        minutes, why = min(need, max(60, longest)), f"Holding your recent longest ({longest:.0f} min): maintenance doesn't need a longer one."
+        minutes, why = min(need, longest or LONG_NO_HISTORY_MIN), f"Holding your recent longest ({longest:.0f} min): maintenance doesn't need a longer one."
     else:
-        minutes = min(need, max(60, longest + 10))
-        why = (f"Up 10 min from your recent longest ({longest:.0f} min), building toward {need} min" + (f" for the {GOALS[goal['distance']]['label'].lower()}." if goal else ".")
+        minutes = min(need, longest * 1.1 + 5 if longest else LONG_NO_HISTORY_MIN)
+        why = (f"About 10% + 5 min up on your recent longest ({longest:.0f} min), building toward {need} min" + (f" for the {GOALS[goal['distance']]['label'].lower()}." if goal else ".")
                if minutes < need else f"At your goal duration of {need} min: hold it here.")
     prior = [a.distance_m for a in c["acts"] if a.family == "run" and a.distance_m and as_of - timedelta(days=30) <= a.day <= as_of]
     cap_km = round(max(prior) * 1.10 / 1000, 1) if len(prior) >= 3 else None

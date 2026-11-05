@@ -2,6 +2,8 @@
 
 Every factor maps a personal metric onto 0-100 against a published target (or your own baseline) and is computable
 for any past day, so the score has an honest history. Missing data drops a factor; it never counts as zero.
+Caveat: history is recomputed from today's data, with today's settings, baselines and fitted parameters, so it is not
+point-in-time: a past day's score can differ from what the app would have shown then.
 Planned recovery and taper weeks are not penalised for lower load or a dip in fitness: that dip is the point.
 """
 
@@ -155,8 +157,9 @@ def factors(c: dict, d: date, hard: set[date] | None = None) -> list[dict]:  # n
         out.append(_f("steps", "move", "Daily steps", fmean(steps) / 100, f"{fmean(steps):,.0f} avg", "≥ 10,000",
                       "Easy walking between sessions aids recovery and adds low-cost aerobic volume."))
     im = s.get("intensity_minutes", {})
-    if any(x in im for x in A.daterange(*week)):
-        total = sum(im.get(x, 0) for x in A.daterange(*week))
+    present = [im[x] for x in A.daterange(*week) if x in im]
+    if len(present) >= 5:  # fewer recorded days than that and a 7-day total would be mostly missing data counted as zero
+        total = sum(present) * 7 / len(present)  # scaled to a full week when 5-6 days are recorded
         out.append(_f("intensity_minutes", "move", "Intensity minutes", total / 150 * 100, f"{total:.0f} min / 7 days", "≥ 150",
                       "Moderate or vigorous activity across the week; workouts and brisk walks both count."))
 

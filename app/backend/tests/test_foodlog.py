@@ -8,7 +8,7 @@ from cadence_app import foodlog as F
 from cadence_app.config import Settings
 from cadence_app.main import create_app
 from tests.test_api import MUTATE, FixedClock
-from tests.test_share import api, phone, web  # noqa: F401  (fixtures)
+from tests.test_share import api, pair, phone, web  # noqa: F401  (fixtures)
 
 
 def e(kcal, protein=None, carbs=None, fat=None, spread=20):
@@ -203,7 +203,7 @@ def test_copy_yesterday_and_deactivated_dishes_stay_in_history(fenv):
 
 def test_paired_phone_can_log_food_but_not_sync(api, web):  # noqa: F811
     c = phone(api, web)
-    c.get("/pair?key=tok", follow_redirects=False)
+    pair(c)
     r = c.post("/api/food/entries", json={"day": "2026-10-22", "meal": "snack", "name": "Chai and biscuits", "kcal": 150}, headers=MUTATE)
     assert r.status_code == 200 and c.get("/api/food?day=2026-10-22").json()["summary"]["kcal"] == 150
     assert c.post("/api/sync/demo", headers=MUTATE).status_code == 405

@@ -28,6 +28,7 @@ from cadence_app.analytics import performance
 
 CTL_DAYS, ATL_DAYS, ACWR_CHRONIC_DAYS = 42, 7, 28
 BASELINE_DAYS, MIN_BASELINE = 60, 14
+EFF_MIN_SPAN_DAYS = 60
 ENDURANCE = {"run", "ride", "swim", "walk"}  # sessions that get an intensity verdict
 INTENSITY_FAMILIES = {"run", "ride", "swim"}  # training that counts toward the 80/20 split (walks would dilute it)
 NOT_TRAINING = {"walk", "mind"}
@@ -112,11 +113,14 @@ def daily_load(acts: list[Act]) -> Series:
 def pmc(load: Series, start: date, end: date, ctl_days: float = CTL_DAYS, atl_days: float = ATL_DAYS) -> list[dict]:
     """Fitness (CTL), fatigue (ATL), form (TSB = yesterday's CTL - ATL) and EWMA ACWR per day.
 
+    Smoothing is x/N per day (alpha = 1/N, a time constant of N days), not the 2/(N+1) of the usual EMA convention, so a
+    "7-day" ACWR here reacts a little more slowly than a 2/(N+1) one. The ratio is None for the first ACWR_CHRONIC_DAYS
+    days: the averages start from zero and would read as a spike.
     The 42/7-day constants are the standard; `ctl_days`/`atl_days` let the what-if replay use your own (analytics/banister.py).
     """
     ctl = atl = chronic = 0.0
     out = []
-    for d in daterange(start, end):
+    for i, d in enumerate(daterange(start, end)):
         form = ctl - atl
         x = load.get(d, 0.0)
         ctl += (x - ctl) / ctl_days
@@ -129,7 +133,7 @@ def pmc(load: Series, start: date, end: date, ctl_days: float = CTL_DAYS, atl_da
                 "fitness": round(ctl, 1),
                 "fatigue": round(atl, 1),
                 "form": round(form, 1),
-                "acwr": round(atl / chronic, 2) if chronic > 5 else None,
+                "acwr": round(atl / chronic, 2) if chronic > 5 and i >= ACWR_CHRONIC_DAYS else None,  # None while warming up: the EWMAs start from zero
             }
         )
     return out
@@ -139,7 +143,8 @@ def week_start(d: date) -> date:
     return d - timedelta(days=d.weekday())
 
 
-def weekly(acts: list[Act], load: Series, start: date, end: date) -> list[dict]:
+def weekly(acts: list[Act], load: Series, start: date, end: date, unsettled: date | None = None) -> list[dict]:
+    """Per-week totals. `unsettled` is a day whose data may still be arriving (today): a week that ends on it is not complete."""
     weeks: dict[date, dict] = {}
     for d in daterange(week_start(start), end):
         w = weeks.setdefault(
@@ -190,7 +195,7 @@ def weekly(acts: list[Act], load: Series, start: date, end: date) -> list[dict]:
                 "easy_pct": round(w["easy_s"] / zone_total * 100) if zone_total else None,
                 "moderate_pct": round(w["moderate_s"] / zone_total * 100) if zone_total else None,
                 "hard_pct": round(w["hard_s"] / zone_total * 100) if zone_total else None,
-                "complete": len(days) == 7,
+                "complete": len(days) == 7 and not (unsettled is not None and ws + timedelta(days=6) >= unsettled),
             }
         )
     return out
@@ -302,10 +307,12 @@ def readiness(day: date, series: dict[str, Series], pmc_by_day: dict[date, dict]
 
 def load_score(p: dict) -> float:
     """The training-load part of readiness (0-100) from one day's fitness/form/acute:chronic."""
-    acwr = p["acwr"] or 1.0
-    acwr_score = 90 if acwr <= 1 else 90 - (acwr - 1) * 100 if acwr <= 1.3 else 60 - (acwr - 1.3) * 150
     ratio = p["form"] / p["fitness"] if p["fitness"] > 0 else 0.0
     form_score = 90 if ratio >= 0 else 90 + 100 * ratio
+    acwr = p["acwr"]
+    if acwr is None:
+        return clamp(form_score)  # ratio unknown (warming up): form alone, not an assumed 1.0
+    acwr_score = 90 if acwr <= 1 else 90 - (acwr - 1) * 100 if acwr <= 1.3 else 60 - (acwr - 1.3) * 150
     return clamp((acwr_score + form_score) / 2)
 
 
@@ -386,8 +393,8 @@ def pace_at_hr(ef: float, hr: float, rhr: float) -> float | None:
 
 
 def efficiency_trend(points: list[dict], ref_hr: float, end: date) -> dict | None:
-    if len(points) < 8:
-        return None
+    if len(points) < 8 or (max(p["day"] for p in points) - min(p["day"] for p in points)).days < EFF_MIN_SPAN_DAYS:
+        return None  # a 90-day extrapolation from a short span is a guess
     rhr = median(p["rhr"] for p in points[-30:])
     x = np.array([(p["day"] - end).days for p in points], dtype=float)
     y = np.array([p["ef"] for p in points])
@@ -427,12 +434,13 @@ def sleep_pattern(bedtime: Series, wake: Series, hours: Series, since: date, nee
     durs = [v for d, v in hours.items() if d >= since]
     if len(durs) < 7:
         return None
+    last = max(d for d in hours if d >= since)
     return {
         "nights": len(durs),
         "avg_hours": round(fmean(durs), 2),
         "need_hours": need,
         "nights_short": sum(1 for h in durs if h < need - 0.25),
-        "debt_hours": round(sum(max(0, need - h) for h in durs[-7:]), 1),
+        "debt_hours": round(sum(max(0, need - h) for d, h in hours.items() if last - 6 * timedelta(days=1) <= d <= last), 1),  # last 7 calendar days
         "avg_bedtime_min": round(fmean(beds)) if beds else None,
         "bedtime_sd_min": round(pstdev(beds)) if len(beds) > 2 else None,
         "avg_wake_min": round(fmean(wakes)) if wakes else None,
@@ -484,7 +492,9 @@ def compare(
         y = series.get(d + timedelta(days=lag))
         if y is None or (d in exposed_days and d in reference_days):
             continue
-        covs = [covariates[k].get(d, 0.0) for k in covariates]
+        covs = [covariates[k].get(d) for k in covariates]
+        if any(v is None for v in covs):
+            continue  # a missing covariate is unknown, not zero: leave the day out
         rows.append((d, 1.0 if d in exposed_days else 0.0, y, covs))
     a = [r[2] for r in rows if r[1] == 1.0]
     b = [r[2] for r in rows if r[1] == 0.0]

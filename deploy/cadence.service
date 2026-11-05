@@ -20,8 +20,23 @@ ProtectSystem=strict
 ProtectHome=true
 ReadWritePaths=/var/lib/cadence
 ProtectKernelTunables=true
-ProtectControlGroups=true
 RestrictSUIDSGID=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectClock=true
+ProtectControlGroups=true
+PrivateDevices=true
+LockPersonality=true
+RestrictRealtime=true
+RestrictNamespaces=true
+SystemCallArchitectures=native
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+CapabilityBoundingSet=
+AmbientCapabilities=
+UMask=0077
+# Cap memory so a runaway OCR or rebuild is killed instead of taking the droplet down (raise on larger machines).
+MemoryMax=900M
+MemoryHigh=750M
 
 [Install]
 WantedBy=multi-user.target

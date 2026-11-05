@@ -7,7 +7,8 @@ that follow. Two outcomes, each regressed on the form (fitness minus fatigue) on
 - easy-run efficiency: speed per heartbeat above resting HR, controlled for a linear drift over time.
 Ordinary least squares with Newey–West standard errors (analytics/regress.py). An effect is only stated when its 95 % interval
 excludes zero and the sample is big enough; otherwise the result says it is unproven, which is a legitimate answer.
-Observational: sessions after rest days may differ in other ways (weather, motivation), so this is evidence, not proof.
+Observational, and the hard-session sample is selected (only days you chose to run hard), which can bias a form
+coefficient in either direction; this is not corrected for. Sessions after rest days may differ in other ways (weather, motivation), so this is evidence, not proof.
 """
 
 from __future__ import annotations
@@ -20,7 +21,7 @@ from scipy import stats
 from cadence_app.analytics import athlete as A
 from cadence_app.analytics import regress as R
 
-MIN_HARD = 12
+MIN_HARD = 25
 MIN_EASY = 24
 LOOKBACK_DAYS = 90
 MIN_PRIOR = 3

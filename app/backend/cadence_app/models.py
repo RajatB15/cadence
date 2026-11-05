@@ -9,6 +9,7 @@ from sqlalchemy import (
     DateTime,
     Float,
     ForeignKey,
+    Index,
     Integer,
     LargeBinary,
     String,
@@ -438,7 +439,10 @@ class RawResponse(Base):
     """Vault of every upstream response, so normalized data can be rebuilt with zero API calls."""
 
     __tablename__ = "raw_responses"
-    __table_args__ = (UniqueConstraint("source_id", "request_key"),)
+    __table_args__ = (
+        UniqueConstraint("source_id", "request_key"),
+        Index("ix_raw_responses_source_dataset_fetched", "source_id", "dataset", "fetched_at"),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     source_id: Mapped[str] = mapped_column(ForeignKey("sources.id"), index=True)

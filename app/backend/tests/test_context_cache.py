@@ -35,3 +35,31 @@ def test_callers_get_their_own_copy(tmp_path, monkeypatch):
         b = insights.context(session, "demo", date(2026, 1, 1))
         assert "scratch" not in b and b["_phase"] == a["_phase"]
         assert insights.context(session, "demo", date(2026, 1, 2))["as_of"] == 1  # another day is rebuilt, not reused
+
+
+def test_concurrent_requests_share_one_build(tmp_path, monkeypatch):
+    import threading
+    import time
+
+    url = f"sqlite:///{tmp_path / 's.db'}"
+    upgrade_database(url)
+    factory = make_session_factory(make_engine(url))
+    builds = []
+
+    def slow(*a, **k):
+        builds.append(1)
+        time.sleep(0.2)
+        return {"as_of": 1}
+
+    monkeypatch.setattr(insights, "build_context", slow)
+    insights.invalidate_context()
+    results = []
+
+    def go():
+        with factory() as session:
+            results.append(insights.context(session, "demo", date(2026, 1, 1)))
+
+    threads = [threading.Thread(target=go) for _ in range(6)]
+    [t.start() for t in threads]
+    [t.join() for t in threads]
+    assert len(builds) == 1 and len(results) == 6

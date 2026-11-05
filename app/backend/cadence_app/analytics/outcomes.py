@@ -3,7 +3,8 @@
 Descriptive on purpose: it lines up what changed in fitness and efficiency, in the body (resting HR, HRV, sleep), in what you
 did (load, hard share, plan adherence) and in what it cost (days of pain, illness, feeling flat). It does not say the plan
 caused any of it; a change smaller than the marker's usual noise is reported as "no clear change" and a window with too few
-points as missing, never as zero.
+points as missing, never as zero. Both 84-day windows include their first and last day and sit back to back;
+daily series need 28 days with data in each window, efficiency 6 runs.
 """
 
 from __future__ import annotations
@@ -25,7 +26,7 @@ MARKERS = {
     "sleep": ("Sleep", "h", True, 0.2),
 }
 PERFORMANCE = ("fitness", "efficiency", "critical_speed", "vo2max")
-MIN_POINTS = {"efficiency": 4, "resting_hr": 14, "hrv": 14, "sleep": 14, "vo2max": 2}
+MIN_POINTS = {"efficiency": 6, "resting_hr": 28, "hrv": 28, "sleep": 28, "vo2max": 2}  # per 84-day window; a third of the days for daily series
 
 
 def _med(values: list[float]) -> float | None:
@@ -79,7 +80,7 @@ def summarise(c: dict, plans: list[dict] | None = None) -> dict:
 
     def context(start: date, end: date) -> dict:
         acts = [a for a in c["acts"] if start <= a.day <= end and A.is_training(a)]
-        weeks = (end - start).days / 7
+        weeks = ((end - start).days + 1) / 7  # both ends are inside the window
         endurance = [a for a in acts if a.family in A.INTENSITY_FAMILIES]
         plan_rows = [p for p in (plans or []) if start <= p["day"] <= end and p.get("status") in ("done", "missed")]
         wb = {d: e for d, e in (c.get("wellbeing") or {}).items() if start <= d <= end}

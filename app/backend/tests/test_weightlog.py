@@ -1,5 +1,5 @@
 from tests.test_api import MUTATE, env  # noqa: F401  (fixture)
-from tests.test_share import api, phone, web  # noqa: F401  (fixtures)
+from tests.test_share import api, pair, phone, web  # noqa: F401  (fixtures)
 
 
 def test_manual_entry_round_trip_and_replace(env):  # noqa: F811
@@ -42,7 +42,7 @@ def test_manual_entry_blends_with_the_demo_history(env):  # noqa: F811
 
 def test_paired_phone_can_log_and_remove_a_weight(api, web):  # noqa: F811
     c = phone(api, web)
-    c.get("/pair?key=tok", follow_redirects=False)
+    pair(c)
     day = "2026-10-22"
     r = c.post("/api/weight/entries", json={"day": day, "weight_kg": 75.0}, headers=MUTATE)
     assert r.status_code == 200

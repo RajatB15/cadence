@@ -2,7 +2,7 @@ from datetime import date, datetime, timedelta
 
 import httpx
 import pytest
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 
 from tests.fake_garmin import FIRST, FIRST_HRV, HRV_MAX_DAYS, SUMMARY_MAX_DAYS, FakeGarmin
 from cadence_app.db import make_engine, make_session_factory, upgrade_database
@@ -208,3 +208,79 @@ def test_every_sync_refreshes_todays_all_day_heart_rate(world):
             select(RawResponse.window_start, RawResponse.final).where(RawResponse.dataset == "hr_intraday", RawResponse.window_start >= TODAY - timedelta(days=1))
         ).all()
     assert sorted(live) == [(TODAY - timedelta(days=1), False), (TODAY, False)]
+
+
+def test_bad_200_body_is_never_final_and_is_retried(world):
+    factory, fake, clock, archive = world
+    bad = {"on": True}
+
+    def handler(request):
+        if bad["on"] and "dailySleepSummariesByDate" in request.url.path:
+            return httpx.Response(200, text="<html>maintenance</html>", headers={"content-type": "text/html"})
+        return fake.handle(request)
+
+    def sync():
+        engine = SyncEngine(factory, archive, clock.today, clock.now)
+        client = GarminClient("synthetic-key", httpx.MockTransport(handler), min_interval_s=0, sleep=lambda s: None)
+        try:
+            engine.sync(client, include_deep=False)
+        finally:
+            client.close()
+
+    sync()
+    with factory() as s:
+        sleep_rows = s.scalars(select(RawResponse).where(RawResponse.dataset == "sleep")).all()
+        assert sleep_rows and not any(r.final for r in sleep_rows)
+    bad["on"] = False
+    sync()
+    with factory() as s:
+        good = s.scalars(select(RawResponse).where(RawResponse.dataset == "sleep", RawResponse.final.is_(True))).all()
+        assert good
+
+
+def test_rebuild_keeps_activities_and_analyses(world):
+    from cadence_app.models import ActivityAnalysis
+
+    factory, fake, clock, archive = world
+    run_sync(factory, fake, clock, archive)
+    with factory() as s:
+        act = s.scalars(select(Activity)).first()
+        act_id = act.id
+        s.add(ActivityAnalysis(activity_id=act_id, version=1, computed_at=clock.now(), data="{}"))
+        s.commit()
+    SyncEngine(factory, archive, clock.today, clock.now).rebuild()
+    with factory() as s:
+        assert s.get(Activity, act_id) is not None
+        assert s.get(ActivityAnalysis, act_id) is not None
+
+
+def test_rebuild_failure_midway_leaves_data(world):
+    factory, fake, clock, archive = world
+    run_sync(factory, fake, clock, archive)
+    before = counts(factory)
+    engine = SyncEngine(factory, archive, clock.today, clock.now)
+    n = {"i": 0}
+    original = engine._check
+
+    def boom():
+        n["i"] += 1
+        if n["i"] > 3:
+            raise RuntimeError("crash")
+        original()
+
+    engine._check = boom
+    with pytest.raises(RuntimeError):
+        engine.rebuild()
+    assert counts(factory) == before
+
+
+def test_rebuild_prunes_rows_the_vault_no_longer_has(world):
+    factory, fake, clock, archive = world
+    run_sync(factory, fake, clock, archive)
+    with factory() as s:
+        s.execute(delete(RawResponse).where(RawResponse.dataset == "weight"))
+        s.commit()
+    w = counts(factory)[2]
+    assert w > 0
+    SyncEngine(factory, archive, clock.today, clock.now).rebuild()
+    assert counts(factory)[2] == 0
