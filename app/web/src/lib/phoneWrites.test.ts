@@ -11,6 +11,7 @@ describe("phoneMayWrite", () => {
     expect(phoneMayWrite("POST", "/api/food/meals/3/log")).toBe(true);
     expect(phoneMayWrite("PUT", "/api/settings/plan")).toBe(true);
     expect(phoneMayWrite("POST", "/api/garmin/sync")).toBe(true);
+    expect(phoneMayWrite("POST", "/api/activities/12/fetch")).toBe(true);
   });
   it("ignores the query string and method case", () => {
     expect(phoneMayWrite("post", "/api/weight/entries?x=1")).toBe(true);
@@ -30,6 +31,9 @@ describe("phoneMayWrite", () => {
     expect(phoneMayWrite("DELETE", "/api/push/subscribe")).toBe(false);
     expect(phoneMayWrite("GET", "/api/planner")).toBe(false);
     expect(phoneMayWrite("PUT", "/api/journal/")).toBe(false);
+    expect(phoneMayWrite("POST", "/api/activities/1/fetch/x")).toBe(false);
+    expect(phoneMayWrite("POST", "/api/activities/abc/fetch")).toBe(false);
+    expect(phoneMayWrite("POST", "/api/days/2026-01-01/fetch")).toBe(false);
   });
   it("rejects sharing, credentials and goals", () => {
     expect(phoneMayWrite("POST", "/api/share/reset")).toBe(false);

@@ -5,6 +5,7 @@ const RULES: [string, string][] = [
   ["POST", "/api/push/(subscribe|unsubscribe|test)"],
   ["PUT", "/api/push/prefs"],
   ["POST", "/api/garmin/sync"],
+  ["POST", "/api/activities/[0-9]+/fetch"],
   ["PUT", "/api/journal/[^/]+"],
   ["POST", "/api/journal/behaviours"],
   ["PATCH", "/api/journal/behaviours/[^/]+"],

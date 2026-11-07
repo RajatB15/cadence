@@ -39,6 +39,8 @@ export interface CardModel {
   heat: Gradient | null;
   /** What fills the card when there is no route: heart-rate trace, zone split and a list of blocks or exercises. */
   panel: Panel;
+  /** Why there is no route (null when there is one, or when the activity is not from Garmin); explains the missing map and video. */
+  noRouteReason: string | null;
 }
 
 export interface Panel {
@@ -84,7 +86,18 @@ export function buildCardModel(d: ActivityDetail, color: string, kicker: string)
     track,
     heat: track ? gradient(track, "speed", HEAT) : null,
     panel: buildPanel(d),
+    noRouteReason: track ? null : noRouteReason(d),
   };
+}
+
+/** Why a Garmin activity has no route in the app; null when it has one or the source is not Garmin. */
+export function noRouteReason(d: ActivityDetail): string | null {
+  if (d.activity.source_id !== "garmin") return null;
+  if (d.fit && d.fit.route.length > 1) return null;
+  if (d.fit?.error) return "The recording couldn't be decoded, so there is no route.";
+  if (d.fit) return "No GPS in this recording \u2014 indoor or GPS was off; map and video need GPS.";
+  if (d.missing.includes("activity_fit")) return "The recording isn't archived yet, so there is no route.";
+  return null;
 }
 
 function numOf(obj: Json | null | undefined, key: string): number | null {

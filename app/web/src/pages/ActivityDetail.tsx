@@ -16,7 +16,8 @@ import { READ_ONLY, api } from "../lib/api";
 import { formatDate, formatDuration, formatPace } from "../lib/format";
 import { clockTime, signed } from "../lib/goals";
 import { activityStyle } from "../lib/metrics";
-import { buildCardModel } from "../lib/shareCard";
+import { phoneMayWrite } from "../lib/phoneWrites";
+import { buildCardModel, noRouteReason } from "../lib/shareCard";
 import type { ActivityDetail, ActivityRoute, FitData, Json, SessionCoach as SessionCoachData } from "../lib/types";
 
 const ZONE_COLORS = ["#5c5a55", "#6cc7ff", "#5be3b0", "#c8f560", "#ffbe55", "#ff6a55", "#ff3b6b"];
@@ -43,13 +44,14 @@ export function ActivityPage() {
   });
   const tried = useRef(false);
   const missing = query.data?.missing ?? [];
+  const canFetch = phoneMayWrite("POST", `/api/activities/${id}/fetch`);
   useEffect(() => {
     // Assets not yet archived by the background sync are fetched once, on first open.
-    if (!READ_ONLY && missing.length && query.data?.activity.source_id === "garmin" && !tried.current) {
+    if (canFetch && missing.length && query.data?.activity.source_id === "garmin" && !tried.current) {
       tried.current = true;
       fetchNow.mutate();
     }
-  }, [missing.length, query.data, fetchNow]);
+  }, [canFetch, missing.length, query.data, fetchNow]);
 
   if (query.isPending) return <LoadingBlock height={640} />;
   if (query.isError) return <ErrorBlock error={query.error} retry={() => query.refetch()} />;
@@ -67,7 +69,7 @@ export function ActivityPage() {
           {" "}— unlink it from the event page.
         </p>
       )}
-      {missing.length > 0 && !READ_ONLY && (
+      {missing.length > 0 && canFetch && (
         <div className="surface flex flex-wrap items-center gap-4 border-gold/40 px-6 py-4">
           <CloudDownload size={18} className={clsx("text-gold", fetchNow.isPending && "animate-pulse")} />
           <p className="flex-1 text-sm text-mute">
@@ -83,6 +85,9 @@ export function ActivityPage() {
             </button>
           )}
         </div>
+      )}
+      {!missing.includes("activity_fit") && !d.fit?.error && !d.route && noRouteReason(d) && (
+        <p className="text-sm text-mute">{noRouteReason(d)}</p>
       )}
       <HeadlineStats d={d} />
       {d.coach && (d.coach.notes.length > 0 || d.coach.verdict) && <SessionCoach coach={d.coach} />}

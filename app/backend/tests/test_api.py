@@ -204,11 +204,12 @@ def test_activity_detail_shows_everything_and_fetches_once(tmp_path):
         detail = client.get(f"/api/activities/{first['id']}").json()
         assert detail["garmin_summary"]["activityName"] == "Morning Run"
         assert detail["garmin_summary"]["vO2MaxValue"] == 50.0
-        assert set(detail["missing"]) == {"activity_fit", "activity_detail", "activity_workouts"}
+        # A quick sync already archives the FIT of recent activities; the rest waits for the first open.
+        assert set(detail["missing"]) == {"activity_detail", "activity_workouts"}
 
         calls = fake.total
         assert client.post(f"/api/activities/{first['id']}/fetch", headers=MUTATE).json()["fetched"]
-        assert fake.total == calls + 3 + 1  # three assets plus one token exchange
+        assert fake.total == calls + 2 + 1  # two assets plus one token exchange
         detail = client.get(f"/api/activities/{first['id']}").json()
         assert detail["missing"] == [] and detail["detail"]["splitSummaries"] == []
         assert detail["fit"] is not None

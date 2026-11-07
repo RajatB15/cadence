@@ -150,6 +150,10 @@ export function ShareBody({ model }: { model: CardModel }) {
         />
       )}
 
+      {!hasRoute && (
+        <p className="text-xs text-dim">Video needs a GPS route{model.noRouteReason ? `. ${model.noRouteReason}` : " and this activity has none."}</p>
+      )}
+
       {!video && (
         <div className="space-y-2">
           <p className="eyebrow">Background</p>
