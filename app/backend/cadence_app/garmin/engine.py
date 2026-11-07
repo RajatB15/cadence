@@ -35,6 +35,8 @@ DEEP_ORDER = (
     "fitness_age", "menstrual", "activity_fit", "hrv_intraday", "spo2",
     "food_logs", "activity_detail", "activity_workouts", "hr_intraday",
 )
+RECENT_FIT_DAYS = 14
+RECENT_FIT_MAX = 8
 ACTIVITY_ASSETS = ("activity_fit", "activity_detail", "activity_workouts")
 # A response that keeps coming back malformed must not block everything queued behind it: after this many attempts it is stored final.
 MAX_BAD_ATTEMPTS = 3
@@ -121,6 +123,9 @@ class SyncEngine:
                 for key in DEEP_ORDER:
                     ds = BY_KEY[key]
                     self._guard(self._per_activity if ds.kind == ACTIVITY else self._per_day, ds)
+            else:
+                # Quick syncs still archive the route file of fresh activities, so a new ride shows its map on the phone too.
+                self._guard(self._recent_fit, BY_KEY["activity_fit"])
         finally:
             self._refresh_derived()
             self._mark_synced()
@@ -352,6 +357,33 @@ class SyncEngine:
                 self._fetch(ds, f"{ds.key}:{activity_id}", path, params, final=True, file_id=activity_id)
             except BadBody as bad:
                 self._note_bad(ds, bad)
+
+    def _recent_fit(self, ds: Dataset) -> None:
+        """Quick-sync top-up: FIT files for the newest activities that lack one (final or given-up items are skipped).
+        One failing activity never fails the sync; rate limits and auth errors still propagate."""
+        state = self._state(ds.key)
+        if state.unsupported:
+            return
+        since = self.today() - timedelta(days=RECENT_FIT_DAYS)
+        with self.factory() as session:
+            done = self._keys(session, ds.key)
+            ids = session.scalars(
+                select(Activity.source_record_id)
+                .where(Activity.source_id == SOURCE_ID, Activity.local_date >= since)
+                .order_by(Activity.start_time_utc.desc())
+            ).all()
+        pending = [i for i in ids if f"{ds.key}:{i}" not in done][:RECENT_FIT_MAX]
+        for n, activity_id in enumerate(pending, 1):
+            self._progress(f"{ds.label} · {n}/{len(pending)}")
+            path, params = render(ds, id=activity_id)
+            try:
+                self._fetch(ds, f"{ds.key}:{activity_id}", path, params, final=True, file_id=activity_id)
+            except BadBody as bad:
+                self._note_bad(ds, bad)
+            except (Cancelled, RateLimited, AuthError, DatasetUnavailable):
+                raise
+            except GarminError as exc:
+                self._update(ds.key, last_error=str(exc))
 
     def _per_day(self, ds: Dataset) -> None:
         state = self._state(ds.key)

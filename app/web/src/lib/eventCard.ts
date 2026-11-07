@@ -48,6 +48,7 @@ export function buildEventCardModel(e: EventDetail, details: ActivityDetail[]): 
     // One speed scale across a ride and a run would just paint the ride hot, so a mixed event is coloured by elevation.
     heat: track ? (mixed ? gradient(track, "alt", RELIEF) : gradient(track, "speed", HEAT)) : null,
     panel: buildEventPanel(e, details),
+    noRouteReason: null,
   };
 }
 

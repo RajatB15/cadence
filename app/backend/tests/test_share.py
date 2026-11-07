@@ -264,6 +264,10 @@ def test_phone_write_allowlist_is_anchored():
     assert not phone_may_write("POST", "/api/journalx/behaviours")
     assert not phone_may_write("DELETE", "/api/push/test")  # method matters
     assert not phone_may_write("POST", "/api/settings/plan")
+    assert phone_may_write("POST", "/api/activities/12/fetch")
+    assert not phone_may_write("POST", "/api/activities/1/fetch/x")
+    assert not phone_may_write("POST", "/api/activities/abc/fetch")
+    assert not phone_may_write("GET", "/api/activities/1/fetch")
 
 
 def test_every_write_route_is_either_allowlisted_or_blocked_from_the_phone(api, web):
@@ -284,7 +288,7 @@ def test_every_write_route_is_either_allowlisted_or_blocked_from_the_phone(api, 
     allowed_routes = {(m, t) for m, t in write_routes if phone_may_write(m, re.sub(r"\{[^}]+\}", "1", t))}
     never = ["/api/planner/{plan_id}/garmin", "/api/reading/feed/refresh", "/api/garmin/rebuild", "/api/garmin/stop", "/api/garmin-connect", "/api/garmin-connect/login",
              "/api/settings/goal", "/api/settings/reading-feed", "/api/settings/training-mode", "/api/settings/weight-goal", "/api/goals", "/api/events", "/api/sync/demo",
-             "/api/sources/demo/data", "/api/credentials/reminders/dismiss", "/api/share/reset", "/api/activities/{activity_id}/fetch", "/api/days/{day}/fetch"]
+             "/api/sources/demo/data", "/api/credentials/reminders/dismiss", "/api/share/reset", "/api/days/{day}/fetch"]
     assert not [(m, t) for m, t in allowed_routes if t in never]
     # Every allowlist entry must still match a real route, so renames don't leave dead (or accidentally broad) rules.
     for method, rx in PHONE_WRITES:

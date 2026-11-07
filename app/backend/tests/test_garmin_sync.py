@@ -7,7 +7,7 @@ from sqlalchemy import delete, func, select
 from tests.fake_garmin import FIRST, FIRST_HRV, HRV_MAX_DAYS, SUMMARY_MAX_DAYS, FakeGarmin
 from cadence_app.db import make_engine, make_session_factory, upgrade_database
 from cadence_app.garmin.client import GarminClient, GarminError, RateLimited
-from cadence_app.garmin.engine import CORE_RANGE, SyncEngine, SyncManager
+from cadence_app.garmin.engine import CORE_RANGE, RECENT_FIT_MAX, SyncEngine, SyncManager
 from cadence_app.models import Activity, DailyMetric, DatasetState, RawResponse, SyncRun, WeightReading
 
 LIVE_HR_DAYS = 2  # today and yesterday, refreshed every sync for live strain
@@ -114,7 +114,7 @@ def test_days_later_fetches_only_new_days(world):
 
     run_sync(factory, fake, clock, archive)
 
-    assert fake.total <= 1 + 2 * len(CORE_RANGE) + LIVE_HR_DAYS
+    assert fake.total <= 1 + 2 * len(CORE_RANGE) + LIVE_HR_DAYS + RECENT_FIT_MAX
     with factory() as s:
         assert s.scalar(select(func.max(DailyMetric.day)).where(DailyMetric.metric == "steps")) == clock.day
 
@@ -284,3 +284,50 @@ def test_rebuild_prunes_rows_the_vault_no_longer_has(world):
     assert w > 0
     SyncEngine(factory, archive, clock.today, clock.now).rebuild()
     assert counts(factory)[2] == 0
+
+
+def _fit_rows(factory):
+    with factory() as s:
+        return s.scalars(select(RawResponse).where(RawResponse.dataset == "activity_fit")).all()
+
+
+def test_quick_sync_archives_fit_for_recent_activities_once(world):
+    factory, fake, clock, archive = world
+    run_sync(factory, fake, clock, archive)
+    rows = _fit_rows(factory)
+    assert 0 < len(rows) <= 8
+    assert all(r.final for r in rows)
+    assert len(list((archive / "garmin" / "fit").glob("*.zip"))) == len(rows)
+
+    fake.calls.clear()
+    run_sync(factory, fake, clock, archive)
+    assert fake.calls["download-service:files"] <= RECENT_FIT_MAX - len(rows)  # only newly arrived activities
+
+    calls = fake.total
+    SyncEngine(factory, archive, clock.today, clock.now).rebuild()
+    assert fake.total == calls
+
+
+def test_quick_sync_bad_fit_body_is_given_up_without_failing_sync(world):
+    factory, fake, clock, archive = world
+
+    def handler(request):
+        if request.url.path.startswith("/download-service/files/activity/"):
+            return httpx.Response(200, content=b"not a zip", headers={"content-type": "application/octet-stream"})
+        return fake.handle(request)
+
+    def sync():
+        engine = SyncEngine(factory, archive, clock.today, clock.now)
+        client = GarminClient("synthetic-key", httpx.MockTransport(handler), min_interval_s=0, sleep=lambda s: None)
+        try:
+            engine.sync(client, include_deep=False)
+        finally:
+            client.close()
+
+    for _ in range(4):
+        sync()
+    rows = _fit_rows(factory)
+    assert rows and all(r.final for r in rows)  # given up after MAX_BAD_ATTEMPTS, no longer retried
+    before = fake.calls["download-service:files"]
+    sync()
+    assert fake.calls["download-service:files"] == before

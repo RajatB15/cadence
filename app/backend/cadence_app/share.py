@@ -51,6 +51,7 @@ PHONE_WRITES: tuple[tuple[str, re.Pattern[str]], ...] = tuple(
         ("POST", r"/api/push/(subscribe|unsubscribe|test)"),
         ("PUT", r"/api/push/prefs"),
         ("POST", r"/api/garmin/sync"),
+        ("POST", r"/api/activities/[0-9]+/fetch"),
         ("PUT", rf"/api/journal/{_SEG}"),
         ("POST", r"/api/journal/behaviours"),
         ("PATCH", rf"/api/journal/behaviours/{_SEG}"),
