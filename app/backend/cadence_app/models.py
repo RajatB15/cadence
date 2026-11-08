@@ -280,6 +280,22 @@ class TimeOff(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime)
 
 
+class FocusPlan(Base):
+    """A four-week focus you accepted from the Improve page (analytics/focus.py). Only what you accepted is stored: the
+    priorities (JSON), the target metric's baseline at the start, and its status. Keyed by date, never by vault rows."""
+
+    __tablename__ = "focus_plans"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    metric: Mapped[str] = mapped_column(String(12), index=True)  # hrv | resting_hr | vo2max
+    start_date: Mapped[date] = mapped_column(Date, index=True)
+    end_date: Mapped[date] = mapped_column(Date)  # the check-in day
+    priorities: Mapped[str] = mapped_column(Text, default="[]")
+    baseline: Mapped[str] = mapped_column(Text, default="{}")
+    status: Mapped[str] = mapped_column(String(12), default="active")  # active | dismissed | completed
+    created_at: Mapped[datetime] = mapped_column(DateTime)
+
+
 class FoodDish(Base):
     """A dish in your own library: nutrition for one serving unit (a roti, a katori of dal, a plate of poha)."""
 

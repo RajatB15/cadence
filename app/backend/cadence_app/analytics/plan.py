@@ -229,8 +229,10 @@ def key_sessions(ph: dict, count: int, goal: dict | None, zones: dict | None, cs
     return options[:count]
 
 
-def weekly_plan(c: dict) -> dict | None:
-    """This week's prescription from phase, fitness, recovery signals and goal."""
+def weekly_plan(c: dict, focus_hints: dict | None = None) -> dict | None:
+    """This week's prescription from phase, fitness, recovery signals and goal.
+
+    `focus_hints` (an accepted Improve focus, see focus.py) can only keep or reduce what this function computed."""
     weeks = [w for w in c["weeks"] if w["complete"]][-4:]
     if len(weeks) < 2:
         return None
@@ -388,7 +390,7 @@ def weekly_plan(c: dict) -> dict | None:
                       "why": (f"Your sleep score averages {late_effect.reference_mean:.0f} when asleep before 23:30 vs "
                               f"{late_effect.exposed_mean:.0f} after 00:30." if late_effect else "Regular timing supports sleep quality.")})
 
-    return {
+    out = {
         "focus": ph["label"],
         "phase": ph,
         "goal": _goal_view(active_goal(c)),
@@ -401,6 +403,11 @@ def weekly_plan(c: dict) -> dict | None:
         },
         "time_off": {**wk, "entries": [p for p in periods if p["id"] in wk["entries"]]},
     }
+    if focus_hints:
+        from cadence_app.analytics import focus as F  # noqa: PLC0415 - optional input, kept out of the import graph
+
+        out = F.apply_hints(out, focus_hints)
+    return out
 
 
 def _clock(minutes: float) -> str:

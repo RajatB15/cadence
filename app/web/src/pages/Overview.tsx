@@ -29,6 +29,7 @@ import { Ring, SEVERITY, VerdictChip, readyColor } from "../components/CoachNote
 import { CountUp } from "../components/CountUp";
 import { RefreshChip } from "../components/RefreshButton";
 import { EmptyState } from "../components/EmptyState";
+import { ImproveHomeCard } from "../components/Improve";
 import { WhatIfCard } from "../components/WhatIfCard";
 import { RecoveryWinsCard, WellbeingCard } from "../components/Wellbeing";
 import { Sheet } from "../components/Sheet";
@@ -174,6 +175,8 @@ function Dashboard({ data }: { data: Extract<Overview, { has_data: true }> }) {
       {coach?.tonight && <TonightRow t={coach.tonight} />}
 
       {coach && coach.recent.items.length > 0 && <RecentSessions recent={coach.recent} />}
+
+      <ImproveHomeCard />
 
       {coach && <WhatIfCard card={coach.what_if} />}
 
