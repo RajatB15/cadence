@@ -8,6 +8,8 @@ import { calendarAverage } from "../lib/series";
 import { Chart, chartBase, type ChartOption } from "../components/Chart";
 import { NoteGrid, NoteLines, readyColor } from "../components/CoachNotes";
 import { humanize } from "../components/DataViews";
+import { ImproveSection } from "../components/Improve";
+import { supportsImprove } from "../lib/improve";
 import { MetricDayPanels } from "../components/DayPanels";
 import { ErrorBlock, LoadingBlock, PageHeader, Segmented } from "../components/Shell";
 import { READ_ONLY, api } from "../lib/api";
@@ -58,6 +60,7 @@ export function MetricPage() {
         <div className="space-y-6">
           <DayView metric={metric} day={selected} color={style.color} onSelect={select} />
           <Trend data={query.data} color={style.color} selected={selected} onSelect={select} />
+          {supportsImprove(metric) && <ImproveSection metric={metric} />}
           <DayDetails metric={metric} day={selected} />
         </div>
       )}

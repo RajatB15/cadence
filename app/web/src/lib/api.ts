@@ -1,6 +1,8 @@
 import type { CustomSpec } from "./customSession";
 import { phoneMayWrite } from "./phoneWrites";
 import type {
+  ImproveReport,
+  ImproveSummary,
   ActivityDetail,
   PlanSettings,
   SeriesTrend,
@@ -218,6 +220,8 @@ export const api = {
   score: (days = 90) => request<ScoreReport>(`/api/score?days=${days}`),
   metric: (metric: string, days: number) =>
     request<MetricSeries>(`/api/metrics/${encodeURIComponent(metric)}?days=${days}`),
+  improve: (metric: string) => request<ImproveReport>(`/api/improve/${encodeURIComponent(metric)}`),
+  improveSummary: () => request<ImproveSummary>("/api/improve"),
   activities: (limit: number, offset: number, family?: string) => {
     const params = new URLSearchParams({ limit: String(limit), offset: String(offset) });
     if (family) params.set("family", family);

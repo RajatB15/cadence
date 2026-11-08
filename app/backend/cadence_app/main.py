@@ -16,12 +16,13 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from cadence_app import food_label, garmin_connect, garmin_workout, backup, days, events, food_crawl, foodlog, goal_store, journal, ocr, phases, planner_store, profile as profile_store, push, reading, reading_feed, strength, timeoff_store, weather, weightlog, wellbeing_store
+from cadence_app import focus_store, food_label, garmin_connect, garmin_workout, backup, days, events, food_crawl, foodlog, goal_store, journal, ocr, phases, planner_store, profile as profile_store, push, reading, reading_feed, strength, timeoff_store, weather, weightlog, wellbeing_store
 from cadence_app.analytics import accuracy as accuracy_analytics
 from cadence_app.analytics import banister as banister_analytics
 from cadence_app.analytics import channels as channels_analytics
 from cadence_app.analytics import exercises
 from cadence_app.analytics import goals as goal_analytics
+from cadence_app.analytics import improve as improve_analytics
 from cadence_app.analytics import outcomes as outcome_analytics
 from cadence_app.analytics import routes as route_analytics
 from cadence_app.analytics import whatif as whatif_analytics
@@ -114,6 +115,10 @@ class Clock:
 
 class TimezoneRequest(BaseModel):
     timezone: str | None = Field(default=None, max_length=64)
+
+
+class FocusRequest(BaseModel):
+    metric: Literal["hrv", "resting_hr", "vo2max"]
 
 
 class DismissRequest(BaseModel):
@@ -1780,6 +1785,56 @@ def create_app(
             return {"has_data": False}
         out = outcome_analytics.summarise(ctx, _plan_history(session, source_id))
         return {"has_data": True, **out, **coach_notes.outcomes_text(out)}
+
+    # ---- improve: per-metric what to start / watch (read-only GETs; phones may read, never accept) ----
+
+    def _improve_inputs(session: Session):
+        ctx = insights_service.context(session, _active_source(session), clock.today())
+        prof = profile_store.load(session)
+        age = profile_store.age_years(prof["birth_date"], clock.today()) if prof else None
+        return ctx, focus_store.rows(session), prof, age
+
+    @app.get("/api/improve")
+    def improve_summary(session: Session = Depends(get_session)) -> dict:
+        ctx, rows, _, _ = _improve_inputs(session)
+        if ctx is None:
+            return {"as_of": clock.today(), "state": "unsupported", "focus": None, "watch": []}
+        try:
+            return improve_analytics.summary(ctx, rows)
+        except Exception:  # noqa: BLE001 - the Home card must never take the page down
+            return {"as_of": ctx["as_of"], "state": "error", "message": "Improve could not be computed.", "focus": None, "watch": []}
+
+    @app.get("/api/improve/{metric}")
+    def improve_metric(metric: Literal["hrv", "resting_hr", "vo2max"], session: Session = Depends(get_session)) -> dict:
+        ctx, rows, prof, age = _improve_inputs(session)
+        if ctx is None:
+            return {"metric": metric, "as_of": clock.today(), "state": "unsupported", "message": "No data yet.", "drivers": [], "progress": [], "start": [], "watch": [],
+                    "focus": None, "review": None, "benchmarks": {}, "methods": [], "citations": {}}
+        try:
+            return improve_analytics.public(improve_analytics.build(ctx, metric, rows, prof, age))
+        except Exception:  # noqa: BLE001
+            return {"metric": metric, "as_of": ctx["as_of"], "state": "error", "message": "Improve could not be computed. Try again.", "drivers": [], "progress": [],
+                    "start": [], "watch": [], "focus": None, "review": None, "benchmarks": {}, "methods": [], "citations": {}}
+
+    @app.post("/api/focus")
+    def focus_accept(body: FocusRequest, session: Session = Depends(get_session)) -> dict:
+        ctx, rows, prof, age = _improve_inputs(session)
+        payload = improve_analytics.build(ctx, body.metric, rows, prof, age) if ctx else None
+        focus = payload and payload["focus"]
+        if not focus or not focus.get("proposed"):
+            raise HTTPException(409, "There is no proposed focus for this metric")
+        try:
+            row = focus_store.accept(session, body.metric, focus["start"], focus["check_on"], focus["priorities"], payload["baseline"], clock.now())
+        except focus_store.FocusError as err:
+            raise HTTPException(409, str(err)) from err
+        return row
+
+    @app.post("/api/focus/{focus_id}/dismiss")
+    def focus_dismiss(focus_id: int, session: Session = Depends(get_session)) -> dict:
+        row = focus_store.dismiss(session, focus_id)
+        if row is None:
+            raise HTTPException(404, "Unknown focus")
+        return row
 
     # ---- goals ----
 

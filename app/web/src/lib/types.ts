@@ -2012,3 +2012,131 @@ export type SeriesTrend =
       buckets: { start: string; avg: number; n: number }[];
       values: { day: string; value: number }[];
     };
+
+// ---- Improve (GET /api/improve/{metric}, GET /api/improve). Every field is optional-safe: the backend may omit any of them. ----
+export type ImproveMetric = "hrv" | "resting_hr" | "vo2max";
+export type ImproveState = "ready" | "collecting" | "unsupported" | "error";
+
+export interface ImproveCitation {
+  id: string;
+  short?: string; // e.g. "Seiler 2010"
+  title?: string;
+  authors?: string;
+  year?: number;
+  journal?: string;
+  doi?: string;
+  url?: string;
+  quality?: string; // e.g. "observational, small samples"; "unrated" when the backend has not rated it
+  verified?: boolean; // false: bibliographic details not yet checked against the source
+  summary?: string; // own-words one-liner of what the source found
+}
+
+export interface ImproveDriver {
+  id: string;
+  exposure?: string;
+  reference?: string;
+  lag_days?: number;
+  diff?: number | null;
+  unit?: string;
+  pct?: number | null;
+  ci?: [number, number] | null;
+  n_exposed?: number;
+  n_reference?: number;
+  n_effective?: number;
+  q?: number | null;
+  grade?: "clear" | "hint";
+  adjusted_for?: string[];
+  statement?: string; // ready-made non-causal sentence from the backend
+  note?: string;
+}
+
+export type ImproveNumber = number | string | boolean | null | (number | string)[];
+
+export interface ImproveStart {
+  id: string;
+  finding?: string;
+  numbers?: Record<string, ImproveNumber>;
+  why?: string;
+  citations?: string[];
+  action?: string;
+  timescale?: string;
+  impact?: number;
+  confidence?: number; // 1 low, 2 medium, 3 high
+  ease?: number;
+  score?: number;
+  tags?: string[];
+}
+
+export interface ImproveWatch {
+  id: string;
+  severity?: "look" | "act";
+  title?: string;
+  numbers?: Record<string, ImproveNumber>;
+  citations?: string[];
+  suggestion?: string;
+}
+
+export interface ImproveFocusPriority {
+  rank?: number;
+  title?: string;
+  behaviour?: string;
+  target_metrics?: string[];
+  planner_hint?: Record<string, unknown>;
+}
+
+export interface ImproveFocus {
+  id?: number | null;
+  proposed?: boolean;
+  start?: string;
+  check_on?: string;
+  priorities?: ImproveFocusPriority[];
+  blocked_by?: string | null;
+}
+
+export interface ImproveReview {
+  focus_id?: number;
+  window?: { n_before?: number; n_after?: number };
+  change?: number | null;
+  ci?: [number, number] | null;
+  unit?: string;
+  verdict?: "no_clear_change" | "higher" | "lower";
+  statement?: string; // ready-made sentence; also set (without a verdict) when there are too few readings
+  context?: string[];
+}
+
+export interface ImproveBenchmark {
+  value?: number;
+  band?: string | null;
+  personal_band?: [number, number] | null; // your own usual range (HRV / resting HR)
+  percentile?: [number, number] | null;
+  source?: string;
+  estimate?: boolean;
+  caveat?: string; // why this comparison is rough (device estimate, different measurement, no reference)
+}
+
+export interface ImproveReport {
+  metric: string;
+  as_of?: string;
+  state?: ImproveState;
+  message?: string; // reason for unsupported/error
+  baseline?: { mean?: number; sd?: number; cv_7d?: number | null; mean_7d?: number | null; n_7d?: number; band?: [number, number]; n?: number; window_days?: number; unit?: string } | null;
+  trend?: { direction?: "up" | "down" | "steady" | "too_early"; change?: number | null; ci?: [number, number] | null; n?: number } | null;
+  data?: { nights?: number; needed?: number; missing_signals?: string[] } | null;
+  drivers?: ImproveDriver[];
+  progress?: { key: string; label?: string; have: number; needed: number }[];
+  start?: ImproveStart[];
+  watch?: ImproveWatch[];
+  focus?: ImproveFocus | null;
+  review?: ImproveReview | null;
+  benchmarks?: { vo2max?: ImproveBenchmark; resting_hr?: ImproveBenchmark; hrv?: ImproveBenchmark; profile_missing?: boolean } | null;
+  citations?: Record<string, ImproveCitation> | ImproveCitation[];
+  context?: { id: string; numbers?: Record<string, ImproveNumber>; text: string }[]; // confounder notes (weight change, warm runs for VO2max)
+  methods?: string[];
+}
+
+export interface ImproveSummary {
+  as_of?: string;
+  state?: ImproveState;
+  focus?: { check_on?: string; metric?: string; priority?: ImproveFocusPriority | null } | null;
+  watch?: { metric?: string; id?: string; severity?: "look" | "act"; title?: string }[];
+}

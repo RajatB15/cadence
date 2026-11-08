@@ -1558,3 +1558,168 @@ def outcomes_text(o: dict) -> dict:
         worse = [names[m["key"]] for m in o["markers"] if m["key"] not in ("fitness", "efficiency", "critical_speed", "vo2max") and m["state"] == "worse"]
         lines.append(f"Recovery markers have slipped: {join(worse)}.")
     return {"headline": {"tone": tone, "text": head}, "lines": lines}
+
+
+# ---- Improve (per-metric "what to start / what to watch") -------------------------------------------------------------
+# Non-causal wording only: "tends to", "was lower on", "may", "worth a look". Forbidden (tested): causes, because of, proves,
+# diagnos*, you have/are, overtrain*, sick, RED-S, will improve, you should take. Every number is shown with its sample size.
+
+IMPROVE_LABEL = {"hrv": "overnight HRV", "resting_hr": "resting heart rate", "vo2max": "Garmin's VO2max estimate"}
+IMPROVE_ASSOC = "This is an association in your own history, not proof."
+IMPROVE_VO2 = ("Garmin's VO2max is an estimate from heart rate and pace, with wide individual error (limits of agreement of roughly "
+               "10 mL/kg/min against lab tests in a meta-analysis; Molina-Garcia 2022), so small changes may not show.")
+
+
+def _updown(x: float) -> str:
+    return "higher" if x > 0 else "lower"
+
+
+def _fmt(x: float) -> str:
+    return f"{abs(x):.1f}".rstrip("0").rstrip(".")
+
+
+def improve_driver(row: dict) -> dict:
+    unit = f" {row['unit']}" if row["unit"] else ""
+    lo, hi = row["ci"]
+    early = " Early, based on a small sample." if min(row["n_exposed"], row["n_reference"]) < 12 else ""
+    text = (f"On {row['n_exposed']} days with {row['exposure'].lower()} (vs {row['n_reference']} days with {row['reference'].lower()}) your "
+            f"{row['_outcome'].lower()} was {_fmt(row['diff'])}{unit} {_updown(row['diff'])} (95% range {lo:+g} to {hi:+g}). {IMPROVE_ASSOC}{early}")
+    if "vo2max" in row["_outcome"].lower():
+        text += " " + IMPROVE_VO2
+    return {"statement": text, "note": "Association in your data, not proof."}
+
+
+def improve_start(rec: dict, metric: str) -> dict:
+    n, rid = rec["numbers"], rec["id"]
+    label = IMPROVE_LABEL[metric]
+    if rid == "easy_share_low":
+        f = f"Over {n['window_days']} days, {n['easy_pct']}% of your {n['minutes']} zone-tracked minutes ({n['sessions']} sessions) were easy and {n['moderate_pct']}% moderate."
+        why = (f"Elite endurance athletes have been described as spending about {n['target_pct']}% of sessions at low intensity (Seiler 2010); small trials and a preliminary "
+               f"meta-analysis of four low-quality trials favour that split over threshold-heavy training (Stoggl and Sperlich 2014; Rosenblat 2019). The effect on {label} is not "
+               f"guaranteed, and the 70% easy and 25% moderate cut-offs here are Cadence's own rule of thumb.")
+        a = "keep easy sessions in heart-rate zones 1-2, with the hard days clearly hard"
+    elif rid == "too_few_hard":
+        f = f"{n['hard_sessions']} hard sessions in {n['window_days']} days ({n['per_week']} a week) across {n['sessions']} sessions with zone data."
+        why = ("Trials in healthy adults tend to find interval training raises measured VO2max somewhat more than moderate continuous training, with a wide spread between people "
+               "(Helgerud 2007; Milanovic 2015). Fewer than 4 hard sessions in 28 days is Cadence's own threshold." + (" " + IMPROVE_VO2 if metric == "vo2max" else ""))
+        a = "one structured interval session a week, for example 4 x 4 minutes at hard effort (zones 4-5) with easy recovery between"
+    elif rid == "too_many_hard":
+        f = (f"{n['hard_share_pct']}% of your last {n['sessions']} sessions were hard ({n['hard_days_7d']} hard days in the last 7), "
+             f"while your 7-day HRV average ({n['hrv_7d']} ms) sits below your usual range (from {n['hrv_band_low']} ms).")
+        why = ("Consensus guidance describes heavy training with too little recovery as the pattern to watch, and says no single marker settles it (Meeusen 2013); in nine rowers HRV "
+               "tended to be lower in phases with more high-intensity training (Plews 2014). The 25% hard share and 3 hard days thresholds are Cadence's own rule of thumb.")
+        a = "swap one hard session for an easy one this week"
+    elif rid == "sleep_pattern":
+        bits = []
+        if n["short"]:
+            bits.append(f"averaged {n['avg_hours']} h against a need of {n['need_hours']} h over {n['nights']} nights")
+        if n["erratic"]:
+            bits.append("had an irregular sleep schedule" + (f" (bedtime varied by about {n['bedtime_sd_min']} min)" if n["bedtime_sd_min"] else ""))
+        f = "Your sleep " + " and ".join(bits) + "."
+        why = ("In a large observational cohort, sleep regularity predicted mortality risk more strongly than sleep duration (Windred 2024); the regularity index itself comes from "
+               "Phillips 2017. Neither shows an effect on HRV or resting HR, and the 45 min gap and 60 min bedtime spread are Cadence's own cut-offs.")
+        a = "fix your wake time first, then let bedtime follow"
+    elif rid == "alcohol_nights":
+        unit = f" {n['unit']}" if n["unit"] else ""
+        gaps = f" Your journal covers {n['logged_days_28']} of the last 28 days, so some days are unknown." if n["logged_days_28"] < 20 else ""
+        f = (f"On {n['n_exposed']} days with 2+ drinks (vs {n['n_reference']} without) your {n['outcome'].lower()} was {_fmt(n['diff'])}{unit} {_updown(n['diff'])} "
+             f"(95% range {n['ci'][0]:+g} to {n['ci'][1]:+g}). {IMPROVE_ASSOC}{gaps}")
+        why = ("A large observational study of drinking nights found a dose-related reduction in overnight parasympathetic recovery (Pietila 2018), and a small experiment in 12 adults saw "
+               "lower HF power after two drinks but not one (Spaak 2010); yours is one person's pattern.")
+        a = "alcohol-free nights before key sessions"
+    elif rid.startswith("habit_"):
+        unit = f" {n['unit']}" if n["unit"] else ""
+        f = (f"On {n['n_exposed']} days with {n['exposure'].lower()} (vs {n['n_reference']} days with {n['reference'].lower()}) your {n['outcome'].lower()} was "
+             f"{_fmt(n['diff'])}{unit} {_updown(n['diff'])} (95% range {n['ci'][0]:+g} to {n['ci'][1]:+g}). {IMPROVE_ASSOC}")
+        why = "This comes from your own journal only; the literature is smaller and less consistent for this habit."
+        a = f"fewer days with {n['exposure'].lower()}, and see whether the pattern holds"
+    elif rid == "volume_fallen":
+        f = f"Your weekly training time was {n['minutes_per_week']} min over the last {n['weeks']} weeks, {abs(n['change_pct'])}% lower than the {n['previous_minutes_per_week']} min before, with no time off logged."
+        why = "Training adaptations tend to fade over weeks when training time stays lower (Mujika and Padilla 2000); a fall of 20% or more is Cadence's own threshold."
+        a = "add about 10% to weekly time, inside the weekly load range the plan already gives you"
+    elif rid == "no_deload":
+        f = f"{n['weeks_without_easier_week']} weeks in a row without a clearly easier week."
+        why = ("Consensus guidance describes heavy load without enough recovery as what to avoid, and lighter weeks are common coaching practice (Meeusen 2013); "
+               "five building weeks in a row is Cadence's own rule of thumb, not a published limit.")
+        a = "make next week a lighter one (about two thirds of your usual load)"
+    elif rid == "long_gap":
+        f = f"{n['days_without_training']} days without a training session and no time off logged."
+        why = "Training adaptations fade over weeks of inactivity (Mujika and Padilla 2000)."
+        a = "restart with the easing-back ramp: short and easy first, building over 2-3 weeks"
+    elif rid == "no_aerobic_base":
+        f = f"About {n['easy_minutes_per_week']} min a week in easy zones (1-3) over {n['window_days']} days, {n['sessions']} sessions with zone data."
+        why = ("A systematic review reports that endurance training lowers resting heart rate, more so when it starts higher; the size varies between people (Reimers 2018). "
+               "150 easy minutes a week is a common rule of thumb and Cadence's own threshold here.")
+        a = "add easy minutes, aiming towards 150 a week"
+    else:  # recover_first and anything new fall back to ids only
+        f, why, a = rid.replace("_", " "), "", rid.replace("_", " ")
+    suggestion = f"Worth trying for 4 weeks: {a}. People in studies often see small, gradual changes over {rec['timescale']}; your own result may differ."
+    if metric == "vo2max" and IMPROVE_VO2 not in why:
+        why = (why + " " + IMPROVE_VO2).strip()
+    return {"finding": f, "why": why, "action": suggestion, "behaviour": a[0].upper() + a[1:] + "."}
+
+
+def improve_watch(flag: dict) -> dict:
+    n, fid = flag["numbers"], flag["id"]
+    if fid == "overreach_pattern":
+        sig = (f"Your 7-day HRV average was below your usual range on {n['hrv_days_below_band']} of the last 7 days, resting HR averaged {n['rhr_7d']} bpm "
+               f"({n['rhr_delta']:+g} vs usual)" + (f" and recent load ran at {n['load_ratio']} x your 4-week average" if n["load_ratio"] else "") + (", with a low feel score." if n["low_feel"] else "."))
+        s = "Easy day or two, and see how the numbers settle. Consider a rest day if you feel flat."
+    elif fid == "illness_signature":
+        sig = ("Your overnight numbers look unusually off" + (f": resting HR {n['rhr_delta']:+g} bpm and HRV {n['hrv_pct']:+d}% against your usual, for {n['nights']} nights" if n["nights"] and n["rhr_delta"] is not None and n["hrv_pct"] is not None else "")
+               + (", and you logged feeling run down." if n["run_down_logged"] else "."))
+        s = "Consider an easy day and see how you feel; if you feel unwell or symptoms persist, speak to a clinician."
+    elif fid == "sleep_debt":
+        sig = f"You slept under {n['need_hours'] - 1:g} h for {n['nights']} nights in a row (average {n['avg_hours']} h against a need of {n['need_hours']} h)."
+        s = "Protect tonight's sleep and keep the next session easy."
+    else:
+        sig = f"No run, ride, swim or walk for {n['days_without_aerobic']} days, and resting HR averaged {n['rhr_7d']} bpm ({n['rhr_delta']:+g} vs usual)."
+        s = "Restart gently with short easy sessions."
+    return {"title": "Worth a look", "suggestion": f"{sig} That is worth a look: how do you feel? {s} The cut-offs are Cadence's own rule of thumb, not a test. This is not medical advice."}
+
+
+def improve_priority(p: dict, metric: str) -> dict:
+    if p["_rule"] == "recover_first":
+        return {"title": "Recover first", "behaviour": "Keep sessions easy and protect sleep until your overnight numbers settle."}
+    s = improve_start({"id": p["_rule"], "numbers": p["_numbers"], "timescale": ""}, metric)
+    titles = {"easy_share_low": "Make easy days easier", "too_few_hard": "Add one interval session a week", "too_many_hard": "Swap a hard day for an easy one",
+              "sleep_pattern": "Steadier, longer sleep", "alcohol_nights": "Alcohol-free nights before key sessions", "volume_fallen": "Rebuild weekly time gently",
+              "no_deload": "Take a lighter week", "long_gap": "Restart with an easing-back ramp", "no_aerobic_base": "Add easy aerobic minutes"}
+    return {"title": titles.get(p["_rule"], "Try a small habit change"), "behaviour": s["behaviour"]}
+
+
+def improve_review(metric: str, rev: dict, ctx: dict) -> dict:
+    u = f" {rev['unit']}" if rev["unit"] else ""
+    nb, na = rev["window"]["n_before"], rev["window"]["n_after"]
+    if not rev["enough"]:
+        text = f"Not enough readings to compare yet ({nb} before, {na} after; at least 14 each side)."
+    else:
+        word = {"higher": "higher", "lower": "lower", "no_clear_change": None}[rev["verdict"]]
+        lo, hi = rev["ci"]
+        text = (f"In the 4 weeks after the focus started, your {IMPROVE_LABEL[metric]} was {_fmt(rev['change'])}{u} {word} (95% range {lo:+g} to {hi:+g}, n={nb} before vs {na} after). "
+                if word else f"In the 4 weeks after the focus started, there was no clear change in your {IMPROVE_LABEL[metric]} ({rev['change']:+g}{u}, 95% range {lo:+g} to {hi:+g}, n={nb} before vs {na} after). ")
+        text += "Whether the focus was followed is not measured, and other things changed too."
+        if metric == "vo2max":
+            text += " " + IMPROVE_VO2
+    lines = []
+    if ctx.get("load_change_pct") is not None:
+        lines.append(f"Load {ctx['load_change_pct']:+d}%")
+    if ctx.get("run_down_days"):
+        lines.append(f"{ctx['run_down_days']} run-down day{'s' if ctx['run_down_days'] != 1 else ''} logged")
+    if ctx.get("time_off_days"):
+        lines.append(f"{ctx['time_off_days']} days of logged time off")
+    return {"statement": text, "context": lines}
+
+
+def improve_context(note: dict) -> str:
+    n = note["numbers"]
+    if note["id"] == "vo2_weight":
+        return f"Your weight changed {n['change_pct']:+g}% over {n['window_days'] // 7} weeks ({n['weigh_ins']} weigh-ins). VO2max in mL/kg/min moves with body weight even when fitness is unchanged."
+    return f"{n['hot_runs']} of your last {n['runs']} runs were in warm conditions, which tend to lower Garmin's estimate."
+
+
+def improve_message(state: str, metric: str, have: int, needed: int) -> str:
+    label = IMPROVE_LABEL[metric]
+    if state == "unsupported":
+        return f"No {label} data yet: your device or the vault has not reported it."
+    return f"Collecting: {have} of {needed} {'readings' if metric == 'vo2max' else 'nights'} of {label} so far."
