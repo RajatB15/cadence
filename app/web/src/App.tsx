@@ -1,5 +1,6 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { lazy, Suspense, type ComponentType, type ReactNode } from "react";
+import { MotionConfig } from "motion/react";
+import { lazy, Suspense, useEffect, useRef, type ComponentType, type ReactNode } from "react";
 import { BrowserRouter, Route, Routes } from "react-router-dom";
 import { LoadingBlock, Shell } from "./components/Shell";
 import { shouldRetry } from "./lib/api";
@@ -39,11 +40,28 @@ function Lifecycle() {
   return null;
 }
 
-const wrap = (node: ReactNode, height = 520) => <Suspense fallback={<LoadingBlock height={height} />}>{node}</Suspense>;
+// The page fades in over the spot its skeleton held once the chunk has loaded.
+function Pending({ height, onShown }: { height: number; onShown: () => void }) {
+  useEffect(onShown, [onShown]);
+  return <LoadingBlock height={height} />;
+}
+function Gate({ children, height }: { children: ReactNode; height: number }) {
+  const waited = useRef(false);
+  const mark = useRef(() => { waited.current = true; }).current;
+  // Only a page whose chunk actually had to load fades in; an already-loaded one just takes the route transition.
+  return (
+    <Suspense fallback={<Pending height={height} onShown={mark} />}>
+      <div className={waited.current ? "fade-in" : undefined}>{children}</div>
+    </Suspense>
+  );
+}
+const wrap = (node: ReactNode, height = 520) => <Gate height={height}>{node}</Gate>;
 
 export function App() {
   return (
     <QueryClientProvider client={queryClient}>
+      {/* "user": motion drops transform and layout animations when the system asks for reduced motion. */}
+      <MotionConfig reducedMotion="user">
       <Lifecycle />
       <BrowserRouter>
         <Routes>
@@ -72,6 +90,7 @@ export function App() {
           </Route>
         </Routes>
       </BrowserRouter>
+      </MotionConfig>
     </QueryClientProvider>
   );
 }

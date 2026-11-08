@@ -1,11 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Check, ChevronLeft, ChevronRight, CloudOff, Minus, Plus, WifiOff } from "lucide-react";
+import { Check, ChevronLeft, Tag, ChevronRight, CloudOff, Minus, Plus, WifiOff } from "lucide-react";
 import { useMemo, useRef, useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
 import { Card } from "../components/Card";
 import { NoteCard } from "../components/CoachNotes";
 import { BarcodeSheet } from "../components/FoodBarcode";
 import { ScanLabel } from "../components/FoodLabel";
+import { DishTitle, FindByOtherName, MyNameSheet, NameChip } from "../components/FoodNames";
 import { SavedMeals, SaveMealSheet, useSavedMeals } from "../components/FoodMeals";
 import { NutrientsCard } from "../components/FoodNutrients";
 import { EnergyCard, PlanNeeds, ProteinCard, WeekCard } from "../components/FoodPlan";
@@ -16,10 +17,12 @@ import { Toast, useToast } from "../components/FoodToast";
 import { Sheet } from "../components/Sheet";
 import { ErrorBlock, LoadingBlock, PageHeader, Skeleton } from "../components/Shell";
 import { api, ApiError, keyFor, newIdempotencyKey } from "../lib/api";
-import { BASIS_NOTE, browseList, grams1, kcalRange, matchedAlias, MEALS, portionPreview, searchList, servingsLabel, shiftDay, SOURCE_NOTE, type PortionMode } from "../lib/food";
+import { BASIS_NOTE, browseList, MAX_SEARCH_RESULTS, grams1, kcalRange, MEALS, portionPreview, servingsLabel, shiftDay, SOURCE_NOTE, type PortionMode } from "../lib/food";
 import { chipsFromServer, localChips } from "../lib/foodChips";
 import { frecencyScores, logsFromRecent, portionMemory, readHistory } from "../lib/foodFrecency";
-import { buildIndex } from "../lib/foodIndex";
+import { ACCEPT_SCORE, buildIndex, rank } from "../lib/foodIndex";
+import { alsoLine, displayName } from "../lib/foodNames";
+import { useFoodDishes } from "../lib/foodNamesHook";
 import { useOutbox } from "../lib/foodOutbox";
 import type { FoodQuick } from "../lib/foodTypes";
 import { formatDate } from "../lib/format";
@@ -53,7 +56,7 @@ export function FoodPage() {
   const { ops } = useOutbox();
   const query = useQuery({ queryKey: ["food", day], queryFn: () => api.food(day) });
   const yesterdayQuery = useQuery({ queryKey: ["food", shiftDay(day, -1)], queryFn: () => api.food(shiftDay(day, -1)), staleTime: 60_000 });
-  const dishes = useQuery({ queryKey: ["food-dishes"], queryFn: api.foodDishes, staleTime: 10 * 60_000 });
+  const dishes = useFoodDishes();
   const savedMeals = useSavedMeals();
   const refresh = () => client.invalidateQueries({ queryKey: ["food"] });
   const copy = useMutation({ mutationFn: () => api.copyFoodDay(shiftDay(day, -1), day), onSuccess: refresh });
@@ -312,8 +315,11 @@ const STEPS = [0.5, 1, 1.5, 2, 3, 4];
 const portionOptions = (d: FoodDish) => (d.portions.length ? d.portions : d.unit_g ? [{ unit: d.unit, grams: d.unit_g }] : []);
 
 function Library({ meal, day, recentIds, search, setSearch, onSaved, onAdded, onAddNew }: { meal: Meal; day: string; recentIds: number[]; search: string; setSearch: (s: string) => void; onSaved: () => void; onAdded: (name: string) => void; onAddNew: () => void }) {
-  const dishes = useQuery({ queryKey: ["food-dishes"], queryFn: api.foodDishes });
-  const [picked, setPicked] = useState<FoodDish | null>(null);
+  const dishes = useFoodDishes();
+  const [nameFor, setNameFor] = useState<{ id: number; initial: string } | null>(null);
+  const [otherFor, setOtherFor] = useState<string | null>(null);
+  const [pickedRaw, setPicked] = useState<FoodDish | null>(null);
+  const picked = pickedRaw ? (dishes.data?.dishes.find((d) => d.id === pickedRaw.id) ?? pickedRaw) : null;
   const [servings, setServings] = useState(1);
   const [mode, setMode] = useState<PortionMode>("servings");
   const [portionIdx, setPortionIdx] = useState(0);
@@ -355,13 +361,30 @@ function Library({ meal, day, recentIds, search, setSearch, onSaved, onAdded, on
     setPortionIdx(0);
     setGramsText(d.unit_g ? String(Math.round(d.unit_g)) : "");
   };
+  const list = dishes.data?.dishes;
+  const index = useMemo(() => (list ? buildIndex(list) : null), [list]);
+  const frecency = useMemo(() => frecencyScores([...logsFromRecent(recentIds, day, meal), ...readHistory()], day, meal), [recentIds, day, meal]);
   const shown = useMemo(() => {
-    const all = dishes.data?.dishes ?? [];
-    return search.trim() ? searchList(all, search) : browseList(all, recentIds);
-  }, [dishes.data, search, recentIds]);
+    if (!search.trim()) return (list ? browseList(list, recentIds) : []).map((dish) => ({ dish, via: undefined, score: 0 }));
+    return index ? rank(index, search, frecency, MAX_SEARCH_RESULTS).map((r) => ({ ...r, dish: r.dish as FoodDish })) : [];
+  }, [list, index, search, recentIds, frecency]);
+  const goodMatch = shown.some((r) => r.score >= ACCEPT_SCORE * 3);
 
   if (dishes.isPending) return <LoadingBlock height={240} />;
   if (dishes.isError) return <ErrorBlock error={dishes.error} retry={() => dishes.refetch()} />;
+
+  const sheets = (
+    <>
+      <MyNameSheet dishId={nameFor?.id ?? null} initial={nameFor?.initial ?? ""} onClose={() => setNameFor(null)} />
+      <FindByOtherName
+        text={otherFor}
+        index={index}
+        recentIds={recentIds}
+        onClose={() => setOtherFor(null)}
+        onPicked={(d, name) => { setOtherFor(null); setSearch(name); pick(d); }}
+      />
+    </>
+  );
 
   if (picked) {
     const opts = portionOptions(picked);
@@ -374,8 +397,11 @@ function Library({ meal, day, recentIds, search, setSearch, onSaved, onAdded, on
           : portionPreview(picked, "servings", servings);
     return (
       <div>
+        {sheets}
         <button type="button" className="text-xs text-mute hover:text-paper" onClick={() => setPicked(null)}>← Back to dishes</button>
-        <p className="mt-3 font-display text-3xl text-cream">{picked.name}</p>
+        <p className="mt-3 font-display text-3xl text-cream">{displayName(picked)}</p>
+        {alsoLine(picked) && <p className="text-sm text-mute">{alsoLine(picked)}</p>}
+        <div className="mt-2"><NameChip dish={picked} label onOpen={() => setNameFor({ id: picked.id, initial: "" })} /></div>
         <p className="text-xs text-dim">{SOURCE_NOTE[picked.source]} · {BASIS_NOTE[picked.basis]}</p>
         <p className="num mt-2 text-sm text-mute">
           per {picked.unit}: {Math.round(picked.kcal)} kcal · protein {grams1(picked.protein_g)} · carbs {grams1(picked.carbs_g)} · fat {grams1(picked.fat_g)}
@@ -466,36 +492,40 @@ function Library({ meal, day, recentIds, search, setSearch, onSaved, onAdded, on
         aria-label="Search dishes"
         className="w-full border-b-2 border-line-strong bg-transparent py-2 text-lg text-paper outline-none focus:border-gold"
       />
-      {shown.length === 0 && (
-        <p className="mt-6 text-sm text-mute">No dish called “{search.trim()}” in your library.</p>
+      {shown.length === 0 && search.trim() === "" && <p className="mt-6 text-sm text-mute">No dishes in your library yet. Add one under New dish.</p>}
+      {search.trim() !== "" && !goodMatch && (
+        <div className="surface mt-4 space-y-2 p-4" role="status">
+          <p className="text-sm text-paper">{shown.length === 0 ? `No dish called “${search.trim()}” in your library.` : `Nothing close to “${search.trim()}”.`}</p>
+          <p className="text-xs text-mute">Know it by another name? Pick the dish and tag it with your name, so this search works next time.</p>
+          <div className="flex flex-wrap gap-2">
+            <button type="button" className="chip press min-h-11 !text-gold" onClick={() => setOtherFor(search.trim())}>
+              <Tag size={13} /> Find it by another name
+            </button>
+            <button type="button" className="chip press min-h-11" onClick={onAddNew}>
+              <Plus size={12} className="text-gold" /> Add “{search.trim()}” as a new dish
+            </button>
+          </div>
+        </div>
       )}
-      {search.trim() !== "" && !shown.some((d) => [d.name, ...(d.aliases ?? [])].some((n) => n.toLowerCase() === search.trim().toLowerCase())) && (
-        <button type="button" className="chip mt-4 pointer-coarse:py-2.5" onClick={onAddNew}>
-          <Plus size={12} className="text-gold" /> Add “{search.trim()}” as a new dish
-        </button>
-      )}
+      {sheets}
       {quick.isError && <p className="mt-3 text-xs text-coral">{(quick.error as Error).message}</p>}
       {shown.length > 0 && (
         <ul className="mt-3 divide-y divide-line">
-          {shown.map((d) => (
-            <li key={d.id} className="flex items-center gap-2">
+          {shown.map(({ dish: d, via }) => (
+            <li key={d.id} className="flex items-center gap-1">
               <button type="button" className="flex min-w-0 flex-1 items-baseline justify-between gap-3 py-3 text-left hover:text-cream pointer-coarse:py-3.5" onClick={() => pick(d)}>
                 <span className="min-w-0">
-                  <span className="block truncate text-sm text-paper">
-                    {!search && recentIds.includes(d.id) && <span className="mr-2 text-[11px] tracking-widest text-gold uppercase">Recent</span>}
-                    {d.name}
-                  </span>
-                  <span className="block text-xs text-dim">
-                    {search.trim() && matchedAlias(d, search) && <>also called {matchedAlias(d, search)} · </>}
-                    {d.unit}
-                  </span>
+                  {!search && recentIds.includes(d.id) && <span className="block text-[11px] tracking-widest text-gold uppercase">Recent</span>}
+                  <DishTitle dish={d} via={via} />
+                  <span className="block text-xs text-dim">{d.unit}</span>
                 </span>
                 <span className="num shrink-0 text-right text-xs text-mute">{Math.round(d.kcal)} kcal<span className="block">{d.protein_g == null ? "protein unknown" : `${Math.round(d.protein_g)} g protein`}</span></span>
               </button>
+              <NameChip dish={d} onOpen={() => setNameFor({ id: d.id, initial: search.trim() && !via ? search.trim() : "" })} />
               <button
                 type="button"
-                className="grid h-9 w-9 shrink-0 place-items-center border border-line text-gold hover:border-gold disabled:opacity-40 pointer-coarse:h-11 pointer-coarse:w-11"
-                aria-label={`Add one ${d.unit} of ${d.name}`}
+                className="grid h-11 w-11 shrink-0 place-items-center rounded-full border border-line text-gold hover:border-gold disabled:opacity-40"
+                aria-label={`Add one ${d.unit} of ${displayName(d)}`}
                 disabled={quick.isPending}
                 onClick={() => quick.mutate(d)}
               >

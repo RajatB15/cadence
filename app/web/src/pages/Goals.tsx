@@ -8,7 +8,9 @@ import { Link } from "react-router-dom";
 import { Chart, chartBase, type ChartOption } from "../components/Chart";
 import { ErrorBlock, PageSkeleton, PageHeader, Segmented } from "../components/Shell";
 import { READ_ONLY, api } from "../lib/api";
+import { CheckHalo } from "../components/Halo";
 import { formatDate } from "../lib/format";
+import { isFreshDay } from "../lib/motion";
 import { clockTime as hms, countdown, distanceLabel as km, pacePer, parseTime, signed } from "../lib/goals";
 import type { GoalBand, GoalInput, GoalKind, GoalSport, GoalsResponse, GoalView } from "../lib/types";
 import { C } from "../lib/theme";
@@ -62,7 +64,7 @@ function Body({ d, edit }: { d: GoalsResponse; edit: (g: GoalView) => void }) {
     );
   }
   return (
-    <div className="space-y-6">
+    <div className="stagger space-y-6">
       {!d.has_training && <EmptyCard compact title="No training data yet">Run, ride and swim goals can't be assessed until sessions sync. Weight goals can.</EmptyCard>}
       {active.map((g) => <GoalCard key={g.id} g={g} planGoal={g.id === d.plan_goal_id} edit={edit} />)}
       {!active.length && <p className="text-sm text-mute">No active goals.</p>}
@@ -97,7 +99,7 @@ function ClosedRow({ g }: { g: GoalView }) {
   const m = useGoalMutations();
   return (
     <li className="flex flex-wrap items-center justify-between gap-3 border-b border-line/60 pb-2">
-      <span className="text-paper">{g.title} <span className="text-xs text-dim">{g.status === "achieved" ? "achieved" : "dropped"}{g.closed_on ? ` ${formatDate(g.closed_on)}` : ""}</span></span>
+      <span className="flex items-center gap-2 text-paper">{g.status === "achieved" && <CheckHalo size={18} color={isFreshDay(g.closed_on) ? C.lime : C.dim} />}<span>{g.title} <span className="text-xs text-dim">{g.status === "achieved" ? "achieved" : "dropped"}{g.closed_on ? ` ${formatDate(g.closed_on)}` : ""}</span></span></span>
       {!READ_ONLY && (
         <span className="flex gap-4 text-xs">
           <button type="button" className="text-mute hover:text-paper" onClick={() => m.patch.mutate({ id: g.id, status: "active" })}>Reopen</button>
@@ -150,7 +152,7 @@ function GoalCard({ g, planGoal, edit }: { g: GoalView; planGoal: boolean; edit:
       )}
       {!READ_ONLY && (
         <div className="mt-6 flex flex-wrap gap-x-6 gap-y-2 border-t border-line pt-4 text-xs font-semibold tracking-widest uppercase">
-          <button type="button" className={clsx("flex items-center gap-1.5", g.achieved_hint ? "text-lime" : "text-mute hover:text-paper")} onClick={() => m.patch.mutate({ id: g.id, status: "achieved" })}><Check size={14} /> Mark achieved</button>
+          <button type="button" className={clsx("flex items-center gap-1.5", g.achieved_hint ? "text-lime" : "text-mute hover:text-paper")} onClick={() => m.patch.mutate({ id: g.id, status: "achieved" })}>{g.achieved_hint ? <CheckHalo size={16} /> : <Check size={14} />} Mark achieved</button>
           <button type="button" className="text-mute hover:text-paper" onClick={() => edit(g)}>Edit</button>
           <button type="button" className="text-mute hover:text-paper" onClick={() => m.patch.mutate({ id: g.id, status: "dropped" })}>Drop</button>
           <button type="button" className="flex items-center gap-1.5 text-mute hover:text-coral" onClick={() => m.remove.mutate(g.id)}><Trash2 size={14} /> Delete</button>

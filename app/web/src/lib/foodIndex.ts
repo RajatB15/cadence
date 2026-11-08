@@ -10,8 +10,18 @@ interface Entry {
   dish: RowDish;
   nameKey: string;
   aliasKeys: string[];
+  /** Names the user gave the dish: matched first, ahead of the library's own. */
+  mine: { text: string; key: string; words: string[]; sorted: string }[];
+  /** Library aliases as written, with their keys, for the "matched: x" hint. */
+  aliasInfo: { text: string; key: string; words: string[] }[];
   words: string[];
   trigrams: Set<string>[];
+}
+
+/** Why a dish matched: your own name, a library alias, or the dish's name itself. */
+export interface MatchVia {
+  kind: "mine" | "alias";
+  text: string;
 }
 
 export interface FoodIndex {
@@ -39,10 +49,15 @@ export function buildIndex(dishes: RowDish[]): FoodIndex {
     const nameKey = foldKey(dish.name);
     if (!nameKey) continue;
     const aliasKeys = (dish.aliases ?? []).map(foldKey).filter((k) => k && k !== nameKey);
-    const ws = new Set([...foldWords(dish.name), ...(dish.aliases ?? []).flatMap(foldWords)]);
+    const mine = (dish.my_names ?? [])
+      .map((m) => ({ text: m?.name ?? "", words: foldWords(m?.name ?? "") }))
+      .filter((m) => m.words.length)
+      .map((m) => ({ ...m, key: m.words.join(""), sorted: [...m.words].sort().join("") }));
+    const aliasInfo = (dish.aliases ?? []).map((text) => ({ text, words: foldWords(text) })).map((a) => ({ ...a, key: a.words.join("") })).filter((a) => a.key && a.key !== nameKey);
+    const ws = new Set([...foldWords(dish.name), ...(dish.aliases ?? []).flatMap(foldWords), ...mine.flatMap((m) => m.words)]);
     const at = entries.length;
-    const tg = [nameKey, ...aliasKeys].map(trigramsOf);
-    entries.push({ dish, nameKey, aliasKeys, words: [...ws], trigrams: tg });
+    const tg = [nameKey, ...aliasKeys, ...mine.map((m) => m.key)].map(trigramsOf);
+    entries.push({ dish, nameKey, aliasKeys, mine, aliasInfo, words: [...ws], trigrams: tg });
     const seen = new Set<string>();
     for (const t of tg) for (const g of t) if (!seen.has(g)) {
       seen.add(g);
@@ -83,6 +98,21 @@ const jaccard = (a: Set<string>, b: Set<string>): number => {
 export interface Scored {
   dish: RowDish;
   score: number;
+  /** Set when your own name or a library alias, not the dish's name, is what matched. */
+  via?: MatchVia;
+}
+
+/** How well one key (a name of yours or an alias) matches the query; 0 when it does not. Order of words does not matter. */
+function keyStrength(q: string, qWords: string[], qSorted: string, k: { key: string; words: string[]; sorted?: string }, limitEd: number): number {
+  const sorted = k.sorted ?? [...k.words].sort().join("");
+  if (k.key === q || sorted === qSorted) return 4;
+  if (q.length >= 2 && k.key.startsWith(q)) return 3;
+  if (qWords.every((qw) => k.words.some((w) => w.startsWith(qw)))) return 3;
+  // Half-typed "meeth" folds to "mith" (th before a vowel folds to t); the finished word is "mita".
+  const open = q.replace(/([bdgkt])h$/, "$1");
+  if (open !== q && open.length >= 2 && k.key.startsWith(open)) return 3;
+  const ed = Math.min(editDistance(q, k.key, limitEd), editDistance(qSorted, sorted, limitEd));
+  return ed >= 1 && ed <= limitEd ? 1 : 0;
 }
 
 export const ACCEPT_SCORE = 20;
@@ -93,7 +123,8 @@ export function rank(index: FoodIndex, query: string, frecency?: Map<number, num
   const q = qWords.join("");
   if (!q) return [];
   const cand = new Set<number>();
-  for (const [w, at] of index.words) if (qWords.some((qw) => w.startsWith(qw))) for (const i of at) cand.add(i);
+  const openWords = qWords.map((w) => w.replace(/([bdgkt])h$/, "$1"));
+  for (const [w, at] of index.words) if (qWords.some((qw, i) => w.startsWith(qw) || (openWords[i] !== qw && w.startsWith(openWords[i])))) for (const i of at) cand.add(i);
   if (q.length >= 3) {
     const qt = trigramsOf(q);
     const hits = new Map<number, number>();
@@ -101,12 +132,13 @@ export function rank(index: FoodIndex, query: string, frecency?: Map<number, num
     const need = Math.max(2, Math.floor(qt.size * 0.3));
     for (const [i, n] of hits) if (n >= need) cand.add(i);
   }
+  const qSorted = [...qWords].sort().join("");
   const limitEd = q.length <= 5 ? 1 : 2;
   // A swapped or dropped letter can share no trigram with the right dish: when nothing close was found, scan names of similar length.
-  const hasStrong = [...cand].some((i) => index.entries[i].nameKey.startsWith(q) || index.entries[i].nameKey === q);
+  const hasStrong = [...cand].some((i) => index.entries[i].nameKey.startsWith(q) || index.entries[i].mine.some((m) => m.key.startsWith(q)));
   if (!hasStrong && q.length >= 3) {
     index.entries.forEach((e, i) => {
-      if (!cand.has(i) && [e.nameKey, ...e.aliasKeys].some((k) => Math.abs(k.length - q.length) <= limitEd && editDistance(q, k, limitEd) <= limitEd)) cand.add(i);
+      if (!cand.has(i) && [e.nameKey, ...e.aliasKeys, ...e.mine.map((m) => m.key), ...e.mine.map((m) => m.sorted)].some((k) => Math.abs(k.length - q.length) <= limitEd && editDistance(q, k, limitEd) <= limitEd)) cand.add(i);
     });
   }
   const qTri = q.length >= 3 ? trigramsOf(q) : null;
@@ -127,10 +159,36 @@ export function rank(index: FoodIndex, query: string, frecency?: Map<number, num
     let ed = limitEd + 1;
     if (!matched || score < 100) for (const k of keys) ed = Math.min(ed, k === q ? 0 : editDistance(q, k, limitEd));
     if (ed >= 1 && ed <= limitEd && score < 100) { score += 30 - 8 * ed; matched = true; }
+    // Your own name outranks everything the library calls the dish.
+    let via: MatchVia | undefined;
+    const base = score;
+    let bestMine = 0;
+    for (const m of e.mine) {
+      const st = keyStrength(q, qWords, qSorted, m, limitEd);
+      if (st > bestMine) {
+        bestMine = st;
+        via = { kind: "mine", text: m.text };
+      }
+    }
+    if (bestMine) {
+      const mineScore = [0, 90, 0, 190, 260][bestMine];
+      if (mineScore > base) { score = mineScore; matched = true; } else via = undefined;
+    }
     if (!matched) continue;
+    if (!via) {
+      // Say which library alias matched, only when the dish's own name did not.
+      const nameHit = e.nameKey === q || e.nameKey.startsWith(q) || qWords.every((qw) => foldWords(e.dish.name).some((w) => w.startsWith(qw))) || editDistance(q, e.nameKey, limitEd) <= limitEd;
+      if (!nameHit) {
+        let best = 0;
+        for (const a of e.aliasInfo) {
+          const st = keyStrength(q, qWords, qSorted, a, limitEd);
+          if (st > best) { best = st; via = { kind: "alias", text: a.text }; }
+        }
+      }
+    }
     if (e.dish.source === "mine" || e.dish.basis === "label") score += 18;
     score += 30 * (frecency?.get(e.dish.id) ?? 0);
-    out.push({ dish: e.dish, score });
+    out.push({ dish: e.dish, score, via });
   }
   out.sort((a, b) => b.score - a.score || a.dish.name.length - b.dish.name.length || a.dish.name.localeCompare(b.dish.name));
   return out.slice(0, limit);
@@ -149,9 +207,9 @@ export function parseLine(line: string, index: FoodIndex, ctx: ParseContext = {}
   for (const item of parseRaw(line)) {
     if (!foldKey(item.name)) continue;
     const cands = rank(index, item.name, ctx.frecency, 3);
-    const candidates = cands.map((c) => ({ id: c.dish.id, name: c.dish.name, score: Math.round(c.score) }));
+    const candidates = cands.map((c) => ({ id: c.dish.id, name: c.dish.name, score: Math.round(c.score), via: c.via }));
     const top = cands[0];
-    const base = { id: newRowId(), text: item.name, qty: item.qty, unit: item.unit, candidates, grams: null, servings: null, out: ctx.eatingOut };
+    const base = { id: newRowId(), text: item.name, qty: item.qty, unit: item.unit, candidates, via: top?.via, grams: null, servings: null, out: ctx.eatingOut };
     if (top && top.score >= ACCEPT_SCORE) {
       rows.push(settle({ ...base, kind: "dish", dish: top.dish, dishId: top.dish.id, ...resolveAmount(top.dish, item.qty, item.unit, ctx.memory?.[top.dish.id]) }));
     } else if (item.qty != null && item.qty >= 50 && item.unit == null) {
@@ -166,7 +224,7 @@ export function parseLine(line: string, index: FoodIndex, ctx: ParseContext = {}
 
 /** Re-resolve one row against another dish (a "Did you mean" tap), keeping the typed amount. */
 export function rowForDish(row: FoodRow, dish: RowDish): FoodRow {
-  return settle({ ...row, kind: "dish", dish, dishId: dish.id, kcal: undefined, ...resolveAmount(dish, row.qty, row.unit) });
+  return settle({ ...row, via: undefined, kind: "dish", dish, dishId: dish.id, kcal: undefined, ...resolveAmount(dish, row.qty, row.unit) });
 }
 
 export const KCAL_SPREAD = KCAL_ONLY_SPREAD_PCT;

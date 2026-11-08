@@ -25,7 +25,7 @@ from sqlalchemy.orm import Session
 
 from cadence_app import nutrients
 from cadence_app.analytics import foodrank
-from cadence_app.models import FoodDish, FoodEntry, FoodMeal, FoodMealItem, FoodPortionMemory
+from cadence_app.models import FoodDish, FoodEntry, FoodMeal, FoodMealItem, FoodPortionMemory, FoodUserAlias
 
 MEALS = ("breakfast", "lunch", "snack", "dinner")
 SOURCES = ("manual", "quick", "chip", "scan", "copy")
@@ -121,8 +121,11 @@ def _ensure_catalogue(session: Session, now: datetime, food_data_dir: Path | Non
             if r.edited:
                 r.source, r.builtin, r.ref_code = "mine", False, None
             else:
-                session.delete(r)
                 removed.add(r.id)
+    detach_aliases(session, removed)  # your own names wait with their ref_code; they never go with the row
+    for r in rows:
+        if r.id in removed:
+            session.delete(r)
     session.flush()
     rows = [r for r in rows if r.id not in removed]
     library = sorted((r for r in rows if r.source == "library"), key=lambda r: (not r.edited, r.id))
@@ -149,6 +152,9 @@ def _ensure_catalogue(session: Session, now: datetime, food_data_dir: Path | Non
                 extra.source, extra.builtin, extra.ref_code = "mine", False, None
             else:
                 session.execute(update(FoodEntry).where(FoodEntry.dish_id == extra.id).values(dish_id=keep.id))
+                detach_aliases(session, {extra.id})
+                session.execute(update(FoodUserAlias).where(FoodUserAlias.dish_id.is_(None), FoodUserAlias.ref_code == extra.ref_code)
+                                .values(ref_code=d["ref_code"]))
                 session.delete(extra)
         if keep:
             used.add(keep.id)
@@ -158,6 +164,7 @@ def _ensure_catalogue(session: Session, now: datetime, food_data_dir: Path | Non
             if r.edited:
                 r.source, r.builtin, r.ref_code = "mine", False, None
             else:
+                detach_aliases(session, {r.id})
                 session.delete(r)
     session.flush()
     for d, row in plan:  # names are unique: free the ones about to change so two dishes can swap
@@ -178,8 +185,43 @@ def _ensure_catalogue(session: Session, now: datetime, food_data_dir: Path | Non
         row.ref_code = d["ref_code"]
         _apply(row, d)
         taken.add(d["name"].lower())
+    session.flush()
+    reattach_aliases(session)
     session.commit()
     _APPLIED[key] = stamp
+
+
+def alias_dict(a: FoodUserAlias) -> dict:
+    return {"id": a.id, "name": a.alias, "preferred": bool(a.preferred), "use_count": a.use_count,
+            "last_used_at": a.last_used_at.isoformat(timespec="seconds") if a.last_used_at else None}
+
+
+def my_names(d: FoodDish) -> list[dict]:
+    return [alias_dict(a) for a in d.user_aliases]
+
+
+def detach_aliases(session: Session, dish_ids: set[int]) -> None:
+    """Before a catalogue re-seed deletes dishes: your names for them wait (dish_id null) with their ref_code."""
+    if dish_ids:
+        session.execute(update(FoodUserAlias).where(FoodUserAlias.dish_id.in_(dish_ids)).values(dish_id=None))
+
+
+def reattach_aliases(session: Session, codes: dict[str, str] | None = None) -> None:
+    """Points waiting names at the dish that now has their code (`codes` maps an earlier page code to the current one).
+    A name whose dish is not in the catalogue now is kept for when it returns; a duplicate on the same dish is dropped."""
+    waiting = list(session.scalars(select(FoodUserAlias).where(FoodUserAlias.dish_id.is_(None))))
+    if not waiting:
+        return
+    by_code = {d.ref_code: d for d in session.scalars(select(FoodDish).where(FoodDish.ref_code.is_not(None)))}
+    for a in waiting:
+        d = by_code.get((codes or {}).get(a.ref_code, a.ref_code)) if a.ref_code else None
+        if d is None:
+            continue
+        if session.scalar(select(FoodUserAlias.id).where(FoodUserAlias.dish_id == d.id, FoodUserAlias.folded == a.folded)) is not None:
+            session.delete(a)
+        else:
+            a.dish_id = d.id
+    session.flush()
 
 
 def dish_dict(d: FoodDish) -> dict:
@@ -191,7 +233,9 @@ def dish_dict(d: FoodDish) -> dict:
             "micros_per_100g": json.loads(d.micros_100g) if d.micros_100g else None,
             "aliases": json.loads(d.aliases) if d.aliases else [],
             "portions": json.loads(d.portions) if d.portions else [],
-            "grams_ok": d.unit_g is not None and d.kcal_100g is not None, "barcode": d.barcode, "pinned": bool(d.pinned)}
+            "grams_ok": d.unit_g is not None and d.kcal_100g is not None, "barcode": d.barcode, "pinned": bool(d.pinned),
+            "my_names": my_names(d), "display_name": next((a.alias for a in d.user_aliases if a.preferred), d.name),
+            "also": d.name if any(a.preferred for a in d.user_aliases) else None}
 
 
 def dishes(session: Session, include_inactive: bool = False) -> list[dict]:

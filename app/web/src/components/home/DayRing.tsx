@@ -1,15 +1,18 @@
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { Check } from "lucide-react";
-import { useCallback, useState, type CSSProperties } from "react";
+import { useCallback, useRef, useState, type CSSProperties } from "react";
 import { Link } from "react-router-dom";
 import { CountUp } from "../CountUp";
 import { dayRingSummary, type DayRingItem } from "../../lib/dayRing";
 import { withAlpha } from "../../lib/color";
+import { fitNumeral, holeRadius, labelWidthPx, numeralWidthEm } from "../../lib/ringFit";
+import { useElementWidth } from "../../lib/useElementWidth";
 import { C } from "../../lib/theme";
 
-// Ring radii in a 200 box, outer to inner. 12px strokes with a 6px gap.
-const RINGS = [90, 72, 54, 36];
-const STROKE = 12;
+// Ring radii in a 200 box, outer to inner. 10px strokes with a 5px gap leave a hole of radius 45 for the centre text.
+const RINGS = [92, 77, 62, 47];
+const STROKE = 10;
+const MAX_SIZE = 240;
 
 /** Digits-only values count up; anything else ("7h 39m", "—") is shown as is. */
 function numericOf(v: string): number | null {
@@ -61,6 +64,13 @@ export function DayRing({ rings, accent, asOf, demo }: { rings: DayRingItem[]; a
   const [focus, setFocus] = useState(0);
   const cycle = useCallback(() => setFocus((f) => (f + 1) % rings.length), [rings.length]);
   const cur = rings[focus] ?? rings[0];
+  const box = useRef<HTMLButtonElement>(null);
+  const width = useElementWidth(box, MAX_SIZE);
+  // Size the numeral from the hole inside the innermost ring, against the longest value and label that can show.
+  const hole = holeRadius(width, RINGS[RINGS.length - 1], STROKE);
+  const longest = rings.reduce((a, r) => (numeralWidthEm(r.value) > numeralWidthEm(a) ? r.value : a), "0");
+  const longestLabel = rings.reduce((a, r) => (r.label.length > a.length ? r.label : a), "");
+  const font = fitNumeral({ radius: hole, text: longest, label: { width: labelWidthPx(longestLabel, 11, { upper: true, trackingEm: 0.1 }), height: 13 }, gap: 3, pad: 4, min: 15, max: 32 });
   const closedCount = rings.filter((r) => r.closed).length;
   return (
     <section aria-label="Today's rings" className="surface relative overflow-hidden p-5 sm:p-7">
@@ -74,10 +84,12 @@ export function DayRing({ rings, accent, asOf, demo }: { rings: DayRingItem[]; a
       <div className="relative grid items-center gap-6 sm:grid-cols-[auto_1fr] sm:gap-10">
         <button
           type="button"
+          ref={box}
+          data-ring-fit="dayring" data-inner="45"
           onClick={cycle}
           aria-label={`Showing ${cur.label}. Tap to show the next ring.`}
-          className="press relative mx-auto block h-[212px] w-[212px] rounded-full sm:h-[248px] sm:w-[248px]"
-          style={{ filter: `drop-shadow(0 0 22px ${withAlpha(accent, 0.22)})` } as CSSProperties}
+          className="press relative mx-auto block aspect-square w-full rounded-full"
+          style={{ maxWidth: MAX_SIZE, filter: `drop-shadow(0 0 18px ${withAlpha(accent, 0.2)})` } as CSSProperties}
         >
           <svg viewBox="0 0 200 200" className="h-full w-full -rotate-90" role="img" aria-label={dayRingSummary(rings)}>
             {rings.map((it, i) => (
@@ -94,10 +106,10 @@ export function DayRing({ rings, accent, asOf, demo }: { rings: DayRingItem[]; a
                 transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
                 className="text-center"
               >
-                <p className="numeral text-[34px]" style={{ color: cur.missing ? C.dim : C[cur.accent] }}>
+                <p className="numeral whitespace-nowrap" style={{ fontSize: font, color: cur.missing ? C.dim : C[cur.accent] }}>
                   <Value item={cur} />
                 </p>
-                <p className="eyebrow mt-1.5 !text-[11px]">{cur.label}</p>
+                <p className="eyebrow mt-[3px] whitespace-nowrap !text-[11px] !leading-[13px] !tracking-[0.1em]">{cur.label}</p>
               </motion.div>
             </AnimatePresence>
           </div>

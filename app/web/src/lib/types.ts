@@ -1421,6 +1421,13 @@ export interface ChannelsFit {
 
 export type Meal = "breakfast" | "lunch" | "snack" | "dinner";
 
+/** One name the user gave a dish. `id` is the alias id; negative ids are local, not yet saved. */
+export interface MyName {
+  id: number;
+  name: string;
+  preferred?: boolean;
+}
+
 export interface FoodDish {
   id: number;
   name: string;
@@ -1452,6 +1459,10 @@ export interface FoodDish {
   /** Pinned dishes show as suggestion chips (server support is optional). */
   pinned?: boolean;
   barcode?: string | null;
+  /** Names you gave this dish (server support optional; every field may be missing). */
+  my_names?: MyName[];
+  /** What to show first: your preferred name when set, else the library name. */
+  display_name?: string;
 }
 
 export interface FoodEntry {

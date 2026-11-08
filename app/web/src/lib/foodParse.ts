@@ -80,7 +80,8 @@ const SYNONYM_PAIRS: [string, string][] = [
   ["daal", "dal"], ["dhal", "dal"], ["lentils", "dal"], ["bhindi", "okra"], ["gobi", "cauliflower"], ["gobhi", "cauliflower"],
   ["mirch", "chilli"], ["nimbu", "lemon"], ["shakkar", "sugar"], ["cheeni", "sugar"], ["namak", "salt"], ["saunf", "fennel"],
   ["badam", "almonds"], ["almond", "almonds"], ["kela", "banana"], ["seb", "apple"], ["aam", "mango"], ["murgh", "chicken"],
-  ["machli", "fish"],
+  ["machli", "fish"], ["dosai", "dosa"], ["panir", "paneer"], ["pannir", "paneer"], ["idly", "idli"], ["idlee", "idli"],
+  ["vadai", "vada"], ["wada", "vada"], ["sabji", "sabzi"], ["subji", "sabzi"], ["sabzee", "sabzi"],
 ];
 const SYN = new Map<string, string>(SYNONYM_PAIRS.map(([a, c]) => [foldWord(a), foldWord(c)]));
 

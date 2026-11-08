@@ -17,7 +17,7 @@ from sqlalchemy import (
     Time,
     UniqueConstraint,
 )
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
 class Base(DeclarativeBase):
@@ -331,6 +331,27 @@ class FoodDish(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime)
     barcode: Mapped[str | None] = mapped_column(String(20))  # your own saved product's code (digits); unique where set. Never looked up online
     pinned: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
+    user_aliases: Mapped[list["FoodUserAlias"]] = relationship(
+        "FoodUserAlias", primaryjoin="FoodDish.id == FoodUserAlias.dish_id", viewonly=True, lazy="selectin",
+        order_by="FoodUserAlias.id")
+
+
+class FoodUserAlias(Base):
+    """A name you gave a dish ("my name"). Library dishes are re-seeded from the catalogue, so a library alias also keeps the
+    dish's `ref_code` and is re-attached to the new row; `dish_id` is null only between a re-seed removing a row and that."""
+
+    __tablename__ = "food_user_alias"
+    __table_args__ = (UniqueConstraint("dish_id", "folded", name="ux_food_user_alias_dish_folded"), Index("ix_food_user_alias_ref_code", "ref_code"))
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    dish_id: Mapped[int | None] = mapped_column(ForeignKey("food_dishes.id", ondelete="SET NULL"))
+    ref_code: Mapped[str | None] = mapped_column(String(24))
+    alias: Mapped[str] = mapped_column(String(60))
+    folded: Mapped[str] = mapped_column(String(120))
+    preferred: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
+    created_at: Mapped[datetime] = mapped_column(DateTime)
+    use_count: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    last_used_at: Mapped[datetime | None] = mapped_column(DateTime)
 
 
 class FoodEntry(Base):

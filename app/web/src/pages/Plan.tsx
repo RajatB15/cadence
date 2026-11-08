@@ -43,7 +43,7 @@ export function PlanPage() {
           <span className="num text-sky">{p.fitness_4w.toFixed(0)}</span> in 4 weeks.
         </p>
       )}
-      <div className="mb-8 grid grid-cols-7 gap-1.5 sm:gap-3">
+      <div className="stagger mb-8 grid grid-cols-7 gap-1.5 sm:gap-3">
         {upcoming.map((d) => {
           const active = d.day === selected;
           return (
@@ -82,7 +82,7 @@ function DayPlans({ day, plans, today }: { day: string; plans: PlannedSessionVie
   });
   if (!plans.length) return null;
   return (
-    <section className="mb-8 space-y-3">
+    <section className="stagger mb-8 space-y-3">
       <p className="eyebrow">{day === today ? "Planned today" : `Planned for ${formatDate(day)}`}</p>
       {plans.map((p) => {
         const Icon = SPORT_ICON[p.sport];
@@ -197,7 +197,7 @@ function AddSession({ day, today }: { day: string; today: string }) {
       ) : options.isError ? (
         <ErrorBlock error={options.error} retry={() => options.refetch()} />
       ) : options.data ? (
-        <div className="grid gap-4 lg:grid-cols-2">
+        <div className="stagger grid gap-4 lg:grid-cols-2">
           {options.data.options.map((o, i) => <OptionCard key={o.key} o={o} day={day} index={i} extra={extra} />)}
         </div>
       ) : null}

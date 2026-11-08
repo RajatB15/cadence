@@ -114,7 +114,7 @@ function GroupRing({ score, color }: { score: number; color: string }) {
   const r = 34;
   const circ = 2 * Math.PI * r;
   return (
-    <div className="relative h-24 w-24">
+    <div data-ring-fit="score-group" data-inner="77" className="relative h-24 w-24">
       <svg viewBox="0 0 80 80" className="h-full w-full -rotate-90">
         <circle cx="40" cy="40" r={r} fill="none" stroke={C.grid} strokeWidth="6" />
         <motion.circle
