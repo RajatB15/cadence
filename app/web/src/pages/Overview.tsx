@@ -20,13 +20,17 @@ import {
   Wind,
 } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { Link, useSearchParams } from "react-router-dom";
+import { CaloriesCard } from "../components/home/CaloriesCard";
+import { NowCard } from "../components/home/NowCard";
+import { PhaseHeader } from "../components/home/PhaseHeader";
+import { VitalsRail } from "../components/home/VitalsRail";
+import { isDimmed, localHour, nowView, sectionLayout, type SectionId } from "../lib/home";
 import { PhaseBanner } from "../components/PhaseBanner";
 import { CheckInCard } from "../components/Journal";
 import { TodayReadCard } from "../components/Reading";
 import { Ring, SEVERITY, VerdictChip, readyColor } from "../components/CoachNotes";
-import { CountUp } from "../components/CountUp";
 import { RefreshChip } from "../components/RefreshButton";
 import { EmptyState } from "../components/EmptyState";
 import { ImproveHomeCard } from "../components/Improve";
@@ -39,9 +43,10 @@ import { KIND_LABEL, STATUS_STYLE } from "../lib/trends";
 import { DemoChip, ErrorBlock, LoadingBlock } from "../components/Shell";
 import { Sparkline } from "../components/Sparkline";
 import { api } from "../lib/api";
-import { deltaTone, formatDelta, formatDuration, formatMetric, formatShortDate, formatWeekday, greeting } from "../lib/format";
-import { METRIC_STYLES, activityStyle, fallbackStyle } from "../lib/metrics";
+import { deltaTone, formatDuration, formatShortDate, formatWeekday, greeting } from "../lib/format";
+import { activityStyle } from "../lib/metrics";
 import type { Brief, MetricSummary, Overview, ReadinessComponent, ScoreSummary } from "../lib/types";
+import { C } from "../lib/theme";
 
 const stagger = {
   hidden: {},
@@ -89,106 +94,111 @@ function Dashboard({ data }: { data: Extract<Overview, { has_data: true }> }) {
   const isDemo = data.source_id === "demo";
   const wide = useWide();
   const [sheet, setSheet] = useState<null | "readiness" | "score" | "week" | "status" | "timeoff">(null);
+  const [moreOpen, setMoreOpen] = useState(false);
   const r = coach?.readiness;
   const fallback = headline(data.metrics);
   const [params] = useSearchParams();
+  const phase = data.phase ?? null;
+  const phaseId = phase?.phase;
+  const hourNow = localHour(phase?.now_local, now.getHours());
+  const view = nowView(phase);
+  const dim = isDimmed(phase, "scores");
+  const sessionState = phase?.session_state;
+  const quiet = sessionState === "deferred" || sessionState === "window_closed";
+  const dialSize = wide ? 190 : 112;
+
+  const blocks: Partial<Record<SectionId, ReactNode>> = {};
+  if (view) blocks.now = <NowCard view={view} phase={phaseId} hour={hourNow} />;
+  else if (coach) blocks.now = <TodayCall coach={coach} />;
+  // Late evening: the Now card already says "not today" in the backend's words, so the call card is not repeated.
+  if (view && coach && !quiet) blocks.planned = (<div className="space-y-6"><TodayCall coach={coach} /><PlannedToday plans={data.planned_today ?? []} /></div>);
+  else if (coach || (data.planned_today ?? []).length) blocks.planned = <PlannedToday plans={data.planned_today ?? []} quietTitle={quiet ? phase?.copy?.session?.title : undefined} />;
+  blocks.vitals = <VitalsRail metrics={data.metrics} weight={data.weight} today={data.today} phase={phaseId} order={phase?.vitals_order} />;
+  blocks.calories = <CaloriesCard energy={data.energy} phase={phase ?? null} isDemo={isDemo} />;
+  if (coach) blocks.status = <StatusCard coach={coach} onStatus={() => setSheet("status")} onTimeOff={() => setSheet("timeoff")} />;
+  if (r || data.score) {
+    blocks.scores = (
+      <section aria-label="Scores" className={clsx("grid grid-cols-2 gap-3 sm:gap-4", dim && "opacity-60")}>
+        {r && coach?.call && (
+          <Dial label="Readiness" score={r.score} ring={r.live ? "live" : "today"} size={dialSize} title={coach.call.headline}
+            foot={r.live && r.morning_score != null && r.morning_score !== r.score ? `${r.morning_score} this morning` : "Updates through the day"} onClick={() => setSheet("readiness")} />
+        )}
+        {data.score && (
+          <Dial label="Cadence score" score={data.score.score} ring="cadence" size={dialSize} title={data.score.label}
+            foot={data.score.delta_7d != null ? `${data.score.delta_7d >= 0 ? "+" : "−"}${Math.abs(data.score.delta_7d)} vs last week` : "Train · Recover · Sleep · Move"} onClick={() => setSheet("score")} />
+        )}
+      </section>
+    );
+  }
+  blocks.checkin = (
+    <div className="space-y-6">
+      {data.journal && <CheckInCard day={data.journal.day} done={data.journal.done} count={data.journal.behaviours.length} autoOpen={params.get("checkin") === "1"} />}
+      {coach && <WellbeingCard day={data.today} block={coach.wellbeing} />}
+    </div>
+  );
+  if (coach?.tonight) blocks.tonight = <TonightRow t={coach.tonight} />;
+  if (coach?.weather && (coach.weather.hot || coach.weather.better_hour != null)) blocks.weather = <WeatherRow w={coach.weather} />;
+  if (coach?.strain) blocks.strain = <StrainRow s={coach.strain} />;
+  if (coach && coach.recent.items.length > 0) blocks.recent = <RecentSessions recent={coach.recent} />;
+  if (coach && coach.week.items.length > 0) blocks.week = <WeekStrip coach={coach} onOpen={() => setSheet("week")} />;
+  blocks.read = <TodayReadCard />;
+  blocks.improve = <ImproveHomeCard />;
+  if (coach) blocks.whatif = <WhatIfCard card={coach.what_if} />;
+  if (data.score && data.score.top_gaps.length > 0) blocks.gain = <BiggestGain gap={data.score.top_gaps[0]} />;
+  if (coach && coach.streaks.length > 0) blocks.streaks = <StreakChips streaks={coach.streaks} />;
+  if (coach) blocks.wins = <RecoveryWinsCard wins={coach.recovery_wins} />;
+
+  const available = new Set(Object.keys(blocks) as SectionId[]);
+  const { primary, more } = sectionLayout(phase, available);
+  const wrap = (id: SectionId) => <motion.div key={id} variants={rise}>{blocks[id]}</motion.div>;
 
   return (
-    <motion.div variants={stagger} initial="hidden" animate="show" className="space-y-10">
-      <motion.section variants={rise}>
-        <div className="eyebrow mb-4 flex flex-wrap items-center gap-3">
-          <span>{formatWeekday(toDay(now))}</span>
-          {isDemo ? <DemoChip /> : <RefreshChip />}
-        </div>
-        <h1 className="font-display text-5xl leading-[0.95] tracking-tight text-cream sm:text-7xl">{greeting(now.getHours())}.</h1>
-        {!r && <p className={clsx("mt-4 font-display text-2xl italic", fallback.tone)}>{fallback.text}</p>}
-      </motion.section>
+    <motion.div variants={stagger} initial="hidden" animate="show" className="space-y-6">
+      <motion.div variants={rise}>
+        <PhaseHeader
+          day={formatWeekday(toDay(now))}
+          greeting={greeting(hourNow)}
+          subtitle={!view && !r ? fallback.text : null}
+          phase={phaseId}
+          hour={hourNow}
+          chip={isDemo ? <DemoChip /> : <RefreshChip />}
+        />
+      </motion.div>
+
+      {primary.map(wrap)}
 
       <motion.div variants={rise}><PhaseBanner /></motion.div>
-
-      {(r || data.score) && (
-        <motion.section variants={rise} aria-label="Scores" className="grid grid-cols-2 gap-3 sm:gap-4">
-          {r && coach?.call && (
-            <Dial
-              label="Readiness"
-              score={r.score}
-              ring={r.live ? "live" : "today"}
-              size={wide ? 190 : 128}
-              title={coach.call.headline}
-              foot={r.live && r.morning_score != null && r.morning_score !== r.score ? `${r.morning_score} this morning` : "Updates through the day"}
-              onClick={() => setSheet("readiness")}
-            />
-          )}
-          {data.score && (
-            <Dial
-              label="Cadence score"
-              score={data.score.score}
-              ring="cadence"
-              size={wide ? 190 : 128}
-              title={data.score.label}
-              foot={data.score.delta_7d != null ? `${data.score.delta_7d >= 0 ? "+" : "−"}${Math.abs(data.score.delta_7d)} vs last week` : "Train · Recover · Sleep · Move"}
-              onClick={() => setSheet("score")}
-            />
-          )}
-        </motion.section>
-      )}
-
-      <motion.section variants={rise}><TodayReadCard /></motion.section>
-
-      {coach && <StatusCard coach={coach} onStatus={() => setSheet("status")} onTimeOff={() => setSheet("timeoff")} />}
-
-      {data.journal && (
-        <motion.section variants={rise}>
-          <CheckInCard day={data.journal.day} done={data.journal.done} count={data.journal.behaviours.length} autoOpen={params.get("checkin") === "1"} />
-        </motion.section>
-      )}
-
-      {coach && <motion.section variants={rise}><WellbeingCard day={data.today} block={coach.wellbeing} /></motion.section>}
-
       <ReviewPrompt />
 
-      <motion.section variants={rise} className="flex flex-wrap gap-3">
-        {!data.weight.weighed_today && (
-          <Link to="/weight?log=1" className="chip text-mute hover:text-paper pointer-coarse:py-2">
-            <Scale size={12} className="text-gold" /> Log weight
-          </Link>
+      <motion.section variants={rise} aria-label="More">
+        <button
+          type="button"
+          onClick={() => setMoreOpen(!moreOpen)}
+          aria-expanded={moreOpen}
+          aria-controls="home-more"
+          className="surface surface-hover flex w-full items-center justify-between gap-3 px-5 py-4 text-left"
+        >
+          <span>
+            <span className="block text-lg font-extrabold text-cream">More</span>
+            <span className="block text-[12px] text-mute">Reading, ideas to improve, what-ifs, streaks and shortcuts</span>
+          </span>
+          <ChevronDown size={18} className={clsx("shrink-0 text-mute transition-transform", moreOpen && "rotate-180")} aria-hidden />
+        </button>
+        {moreOpen && (
+          <div id="home-more" className="mt-6 space-y-6">
+            {more.map((id) => <div key={id}>{blocks[id]}</div>)}
+            <div className="flex flex-wrap gap-3">
+              {!data.weight.weighed_today && (
+                <Link to="/weight?log=1" className="chip text-mute hover:text-paper pointer-coarse:py-2"><Scale size={12} className="text-gold" /> Log weight</Link>
+              )}
+              <Link to="/food" className="chip text-mute hover:text-paper pointer-coarse:py-2"><Utensils size={12} className="text-gold" /> Log food</Link>
+              <Link to="/reading" className="chip text-mute hover:text-paper pointer-coarse:py-2"><BookOpen size={12} className="text-gold" /> Reading</Link>
+              <Link to="/phases" className="chip text-mute hover:text-paper pointer-coarse:py-2"><Flame size={12} className="text-gold" /> Phases</Link>
+              <Link to="/plan" className="chip text-mute hover:text-paper pointer-coarse:py-2"><CalendarCheck size={12} className="text-gold" /> Plan</Link>
+            </div>
+          </div>
         )}
-        <Link to="/food" className="chip text-mute hover:text-paper pointer-coarse:py-2">
-          <Utensils size={12} className="text-gold" /> Log food
-        </Link>
-        <Link to="/reading" className="chip text-mute hover:text-paper pointer-coarse:py-2">
-          <BookOpen size={12} className="text-gold" /> Reading
-        </Link>
-        <Link to="/phases" className="chip text-mute hover:text-paper pointer-coarse:py-2">
-          <Flame size={12} className="text-gold" /> Phases
-        </Link>
       </motion.section>
-
-      <PlannedToday plans={data.planned_today ?? []} />
-
-      {coach && <TodayCall coach={coach} />}
-
-      {coach?.strain && <StrainRow s={coach.strain} />}
-
-      {coach?.weather && (coach.weather.hot || coach.weather.better_hour != null) && <WeatherRow w={coach.weather} />}
-
-      {coach?.tonight && <TonightRow t={coach.tonight} />}
-
-      {coach && coach.recent.items.length > 0 && <RecentSessions recent={coach.recent} />}
-
-      <ImproveHomeCard />
-
-      {coach && <WhatIfCard card={coach.what_if} />}
-
-      {coach && coach.week.items.length > 0 && <WeekStrip coach={coach} onOpen={() => setSheet("week")} />}
-
-      {data.score && data.score.top_gaps.length > 0 && <BiggestGain gap={data.score.top_gaps[0]} />}
-
-      <VitalsStrip data={data} />
-
-      {coach && coach.streaks.length > 0 && <StreakChips streaks={coach.streaks} />}
-
-      {coach && <RecoveryWinsCard wins={coach.recovery_wins} />}
 
       {coach && r && (
         <Sheet open={sheet === "readiness"} onOpenChange={(o) => setSheet(o ? "readiness" : null)} title="Readiness" eyebrow={r.live ? "Live · updates through the day" : "This morning"}>
@@ -475,13 +485,13 @@ function StatusCard({ coach, onStatus, onTimeOff }: { coach: Brief; onStatus: ()
 function MiniRing({ done, target, low }: { done: number; target: number; low?: number }) {
   const goal = low ?? target;
   const pct = Math.min(1, done / Math.max(1, target));
-  const color = low != null && done > target ? "#ffbe55" : done >= goal ? "#c8f560" : "#d9b26a";
+  const color = low != null && done > target ? C.amber : done >= goal ? C.lime : C.gold;
   const r = 22;
   const circ = 2 * Math.PI * r;
   return (
     <div className="relative h-14 w-14">
       <svg viewBox="0 0 52 52" className="h-full w-full -rotate-90">
-        <circle cx="26" cy="26" r={r} fill="none" stroke="#1c1c1f" strokeWidth="4" />
+        <circle cx="26" cy="26" r={r} fill="none" stroke={C.grid} strokeWidth="4" />
         <motion.circle
           cx="26" cy="26" r={r} fill="none" stroke={color} strokeWidth="4" strokeLinecap="round" strokeDasharray={circ}
           initial={{ strokeDashoffset: circ }}
@@ -545,7 +555,7 @@ function ReviewPrompt() {
   );
 }
 
-function PlannedToday({ plans }: { plans: NonNullable<Extract<Overview, { has_data: true }>["planned_today"]> }) {
+function PlannedToday({ plans, quietTitle }: { quietTitle?: string; plans: NonNullable<Extract<Overview, { has_data: true }>["planned_today"]> }) {
   if (!plans.length) {
     return (
       <motion.section variants={rise}>
@@ -559,10 +569,10 @@ function PlannedToday({ plans }: { plans: NonNullable<Extract<Overview, { has_da
     <motion.section variants={rise} className="space-y-3">
       {plans.map((p) => (
         <Link key={p.id} to={p.activity ? `/activities/${p.activity.id}` : "/plan"} className="surface surface-hover flex items-center gap-4 p-5"
-          style={{ borderLeft: `3px solid ${p.status === "done" ? "#c8f560" : "#d9b26a"}` }}>
+          style={{ borderLeft: `3px solid ${p.status === "done" ? C.lime : C.gold}` }}>
           <CalendarCheck size={20} className={clsx("shrink-0", p.status === "done" ? "text-lime" : "text-gold")} />
           <div className="min-w-0 flex-1">
-            <p className="eyebrow mb-0.5">{p.status === "done" ? "Planned · done" : "Planned today"}</p>
+            <p className="eyebrow mb-0.5">{p.status === "done" ? "Planned · done" : quietTitle ? `Planned · ${quietTitle.toLowerCase()}` : "Planned today"}</p>
             <p className="truncate text-paper">{p.title}</p>
             <p className="text-xs text-dim">
               Predicted load {p.predicted.load}
@@ -580,7 +590,7 @@ function StrainRow({ s }: { s: NonNullable<Brief["strain"]> }) {
   const b = s.band;
   const top = Math.max(b ? b.high * 1.35 : 0, s.total * 1.1, 1);
   const pct = (v: number) => `${Math.min(100, (v / top) * 100)}%`;
-  const color = s.status === "above" ? "#ffbe55" : s.status === "in" ? "#c8f560" : "#6cc7ff";
+  const color = s.status === "above" ? C.amber : s.status === "in" ? C.lime : C.sky;
   return (
     <motion.section variants={rise} className="surface p-5">
       <div className="flex items-baseline justify-between gap-3">
@@ -602,7 +612,7 @@ function StrainRow({ s }: { s: NonNullable<Brief["strain"]> }) {
 function WeatherRow({ w }: { w: NonNullable<Brief["weather"]> }) {
   const h = (n: number) => `${String(n).padStart(2, "0")}:00`;
   return (
-    <motion.section variants={rise} className="surface flex items-center gap-4 p-5" style={{ borderLeft: "3px solid #ffbe55" }}>
+    <motion.section variants={rise} className="surface flex items-center gap-4 p-5" style={{ borderLeft: `3px solid ${C.amber}` }}>
       <Sun size={20} className="shrink-0 text-amber" />
       <div className="min-w-0 flex-1">
         <p className="eyebrow mb-0.5">Heat today</p>
@@ -619,7 +629,7 @@ function TonightRow({ t }: { t: NonNullable<Brief["tonight"]> }) {
   const extras = [t.extra_load_min ? `+${t.extra_load_min} min for today's training` : null, t.repay_min ? `+${t.repay_min} min toward ${t.debt_h} h of debt` : null].filter(Boolean);
   return (
     <motion.section variants={rise}>
-      <Link to="/coach#sleep" className="surface surface-hover group flex items-center gap-4 p-5" style={{ borderLeft: "3px solid #6cc7ff" }}>
+      <Link to="/coach#sleep" className="surface surface-hover group flex items-center gap-4 p-5" style={{ borderLeft: `3px solid ${C.sky}` }}>
         <BedDouble size={20} className="shrink-0 text-sky" />
         <div className="min-w-0 flex-1">
           <p className="eyebrow mb-0.5">Tonight</p>
@@ -641,7 +651,7 @@ function TonightRow({ t }: { t: NonNullable<Brief["tonight"]> }) {
 function BiggestGain({ gap }: { gap: ScoreSummary["top_gaps"][number] }) {
   return (
     <motion.section variants={rise}>
-      <Link to="/score" className="surface surface-hover group flex items-center gap-4 p-5" style={{ borderLeft: "3px solid #ffbe55" }}>
+      <Link to="/score" className="surface surface-hover group flex items-center gap-4 p-5" style={{ borderLeft: `3px solid ${C.amber}` }}>
         <TrendingUp size={20} className="shrink-0 text-amber" />
         <div className="min-w-0 flex-1">
           <p className="eyebrow mb-0.5">Biggest gain available</p>
@@ -653,57 +663,6 @@ function BiggestGain({ gap }: { gap: ScoreSummary["top_gaps"][number] }) {
         <ChevronRight size={16} className="shrink-0 text-dim transition-transform group-hover:translate-x-0.5" />
       </Link>
     </motion.section>
-  );
-}
-
-// ---- vitals strip -----------------------------------------------------------------------
-
-function VitalsStrip({ data }: { data: Extract<Overview, { has_data: true }> }) {
-  const w = data.weight;
-  return (
-    <motion.section variants={rise} aria-label="Vitals">
-      <div className="mb-3 flex items-baseline justify-between">
-        <p className="eyebrow">Vitals · 7-day vs 60-day</p>
-        <p className="eyebrow !text-dim">Tap to explore</p>
-      </div>
-      <div className="-mx-5 flex snap-x gap-3 overflow-x-auto px-5 pb-2 sm:mx-0 sm:grid sm:grid-cols-3 sm:overflow-visible sm:px-0 lg:grid-cols-5">
-        {data.metrics.map((m) => (
-          <VitalTile key={m.metric} m={m} />
-        ))}
-        {w.latest_trend_kg != null && (
-          <Link to="/weight" className="surface surface-hover flex w-40 shrink-0 snap-start flex-col p-4 sm:w-auto">
-            <span className="eyebrow flex items-center gap-1.5 !text-[11px]"><Scale size={12} className="text-gold" /> Weight</span>
-            <span className="num mt-3 text-2xl text-paper">{(w.latest_reading?.weight_kg ?? w.latest_trend_kg).toFixed(1)}<span className="ml-1 text-xs text-mute">kg</span></span>
-            {w.latest_reading && <span className="mt-0.5 text-[11px] text-dim">last weigh-in · trend {w.latest_trend_kg.toFixed(1)}</span>}
-            <Sparkline values={w.spark.map((s) => s.value)} color="#d9b26a" height={28} className="mt-auto pt-2" />
-          </Link>
-        )}
-      </div>
-    </motion.section>
-  );
-}
-
-function VitalTile({ m }: { m: MetricSummary }) {
-  const style = METRIC_STYLES[m.metric] ?? fallbackStyle;
-  const Icon = style.icon;
-  const tone = deltaTone(m.delta_pct, m.higher_is_better);
-  const fmt = useCallback((v: number) => formatMetric(v, m.metric), [m.metric]);
-  return (
-    <Link to={`/metrics/${m.metric}`} className="surface surface-hover flex w-40 shrink-0 snap-start flex-col p-4 sm:w-auto">
-      <span className="eyebrow flex items-center justify-between gap-1.5 !text-[11px]">
-        <span className="flex items-center gap-1.5 truncate"><Icon size={12} style={{ color: style.color }} /> {m.label}</span>
-        {m.delta_pct != null && (
-          <span className={clsx("num shrink-0 normal-case", tone === "good" ? "text-lime" : tone === "bad" ? "text-amber" : "text-dim")}>
-            {formatDelta(m.delta_pct)}
-          </span>
-        )}
-      </span>
-      <span className="mt-3 text-paper">
-        <CountUp value={m.latest} format={fmt} className="num text-2xl" />
-        <span className="ml-1 text-xs text-mute">{m.unit}</span>
-      </span>
-      <Sparkline values={m.spark.map((p) => p.value)} color={style.color} height={28} className="mt-auto pt-2" />
-    </Link>
   );
 }
 
@@ -731,22 +690,24 @@ function toDay(d: Date): string {
 // ---- coach brief ------------------------------------------------------------------
 
 const TODAY_KIND: Record<Brief["today"]["kind"], { icon: typeof Flame; color: string; label: string }> = {
-  key: { icon: Flame, color: "#d9b26a", label: "Quality day" },
-  easy: { icon: Wind, color: "#5be3b0", label: "Easy day" },
-  long: { icon: Mountain, color: "#6cc7ff", label: "Long day" },
-  rest: { icon: BedDouble, color: "#9b8cff", label: "Recovery day" },
-  strength: { icon: Dumbbell, color: "#ff6a55", label: "Strength day" },
-  done: { icon: CheckCircle2, color: "#c8f560", label: "Done" },
-  unknown: { icon: Compass, color: "#f2e8cf", label: "By feel" },
+  key: { icon: Flame, color: C.gold, label: "Quality day" },
+  easy: { icon: Wind, color: C.mint, label: "Easy day" },
+  long: { icon: Mountain, color: C.sky, label: "Long day" },
+  rest: { icon: BedDouble, color: C.violet, label: "Recovery day" },
+  strength: { icon: Dumbbell, color: C.coral, label: "Strength day" },
+  done: { icon: CheckCircle2, color: C.lime, label: "Done" },
+  unknown: { icon: Compass, color: C.cream, label: "By feel" },
 };
 const COMPONENT_LABEL: Record<string, string> = {
   sleep: "Sleep", sleep_history: "Sleep history", hrv: "HRV", rhr: "Resting HR", load: "Load", battery: "Body Battery",
 };
 const STATUS: Record<NonNullable<Brief["today"]["status"]>, { label: string; color: string }> = {
-  matched: { label: "Plan done", color: "#c8f560" },
-  open: { label: "Still open", color: "#ffbe55" },
-  over: { label: "Harder than planned", color: "#ff6a55" },
-  extra: { label: "Bonus session", color: "#6cc7ff" },
+  matched: { label: "Plan done", color: C.lime },
+  open: { label: "Still open", color: C.amber },
+  over: { label: "Harder than planned", color: C.coral },
+  extra: { label: "Bonus session", color: C.sky },
+  deferred: { label: "Not today", color: C.violet },
+  window_closed: { label: "Probably not today", color: C.violet },
 };
 
 const timeFmt = new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" });
@@ -800,9 +761,9 @@ function RecentSessions({ recent }: { recent: Brief["recent"] }) {
               </dl>
               {s.intensity && (
                 <div className="mt-4 flex h-1.5 overflow-hidden" title={`Easy ${s.intensity.easy_pct}% · Z3 ${s.intensity.moderate_pct}% · Hard ${s.intensity.hard_pct}%`}>
-                  <span style={{ width: `${s.intensity.easy_pct}%`, background: "#5be3b0" }} />
-                  <span style={{ width: `${s.intensity.moderate_pct}%`, background: "#c8f560" }} />
-                  <span style={{ width: `${s.intensity.hard_pct}%`, background: "#ff6a55" }} />
+                  <span style={{ width: `${s.intensity.easy_pct}%`, background: C.mint }} />
+                  <span style={{ width: `${s.intensity.moderate_pct}%`, background: C.lime }} />
+                  <span style={{ width: `${s.intensity.hard_pct}%`, background: C.coral }} />
                 </div>
               )}
               {s.note && sev && (
@@ -843,7 +804,7 @@ function WeekTargets({ coach, bare = false }: { coach: Brief; bare?: boolean }) 
           const goal = item.low ?? item.target;
           const done = item.done >= goal;
           const over = item.low != null && item.done > item.target;
-          const color = over ? "#ffbe55" : done ? "#c8f560" : "#d9b26a";
+          const color = over ? C.amber : done ? C.lime : C.gold;
           const pct = Math.min(100, (item.done / Math.max(1, item.target)) * 100);
           const togo = Math.max(0, goal - item.done);
           return (

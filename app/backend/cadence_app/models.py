@@ -523,6 +523,20 @@ class AppSetting(Base):
     value: Mapped[str] = mapped_column(Text)
 
 
+class EnergySnapshot(Base):
+    """Garmin's burn-so-far for a day as it was at a time of day. Derived and safe to drop: it only feeds the
+    end-of-day burn projection (what share of the final total is usually burned by this time), never a rebuild."""
+
+    __tablename__ = "energy_snapshots"
+
+    source_id: Mapped[str] = mapped_column(ForeignKey("sources.id"), primary_key=True)
+    day: Mapped[date] = mapped_column(Date, primary_key=True)
+    taken_at_local_min: Mapped[int] = mapped_column(Integer, primary_key=True)  # minutes after local midnight, in the user's zone
+    total_kcal: Mapped[float] = mapped_column(Float)
+    active_kcal: Mapped[float | None] = mapped_column(Float)
+    steps: Mapped[float | None] = mapped_column(Float)
+
+
 class ReminderDismissal(Base):
     __tablename__ = "reminder_dismissals"
 

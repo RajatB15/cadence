@@ -6,13 +6,14 @@ import { Link } from "react-router-dom";
 import { api } from "../lib/api";
 import { formatDate } from "../lib/format";
 import type { ActivityDetail, StrengthBlock, StrengthContent, StrengthLabel } from "../lib/types";
+import { C } from "../lib/theme";
 
 export const PATTERN_LABEL: Record<string, string> = {
   squat: "Squat", hinge: "Hinge", lunge: "Single-leg", push: "Push", pull: "Pull", carry: "Carry", core: "Core", plyometric: "Plyo",
   olympic: "Olympic", calves: "Calves", hips: "Hips", cardio: "Cardio", drill: "Drills", mobility: "Mobility",
 };
 const KIND_COLOR: Record<string, string> = {
-  warmup: "#5c5a55", cooldown: "#5c5a55", strength: "#ff6a55", conditioning: "#ffbe55", core: "#9b8cff", mixed: "#6cc7ff",
+  warmup: C.faint, cooldown: C.faint, strength: C.coral, conditioning: C.amber, core: C.violet, mixed: C.sky,
 };
 const mins = (s: number) => `${Math.round(s / 60)} min`;
 
@@ -59,7 +60,7 @@ function LabelView({ label }: { label: StrengthLabel }) {
             {seg.segments.map((s) => (
               <div key={s.name + s.start_s} title={`${s.name} · ${mins(s.end_s - s.start_s)} · avg ${s.avg_hr} bpm`}
                 className="flex items-center justify-center overflow-hidden border-r border-ink/60 px-1 text-[11px] font-semibold text-ink uppercase"
-                style={{ width: `${((s.end_s - s.start_s) / total) * 100}%`, background: KIND_COLOR[s.kind] ?? "#8d8a82" }}>
+                style={{ width: `${((s.end_s - s.start_s) / total) * 100}%`, background: KIND_COLOR[s.kind] ?? C.mute }}>
                 <span className="truncate">{s.name}</span>
               </div>
             ))}

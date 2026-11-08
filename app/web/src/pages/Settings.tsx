@@ -10,8 +10,10 @@ import { ErrorBlock, LoadingBlock, PageHeader, Segmented } from "../components/S
 import { READ_ONLY, api } from "../lib/api";
 import { formatDate, parseDay, timeAgo } from "../lib/format";
 import { currentSubscription, disablePush, enablePush, pushSupport } from "../lib/push";
+import { applyChoice, readChoice, type ThemeChoice } from "../lib/theme";
 import { useCredentialStatus } from "../lib/useCredentialStatus";
 import type { CredentialStatus, ShareStatus, SourceInfo } from "../lib/types";
+import { C } from "../lib/theme";
 
 const LEVEL_LABEL: Record<CredentialStatus["level"], { text: string; className: string }> = {
   ok: { text: "Within expiry", className: "!border-lime/40 !text-lime" },
@@ -33,6 +35,9 @@ export function SettingsPage() {
         </div>
         <div className="lg:col-span-2">
           <PrivacyCard />
+        </div>
+        <div className="lg:col-span-5">
+          <AppearanceCard />
         </div>
         <div className="lg:col-span-5">
           <NotificationsCard />
@@ -62,6 +67,37 @@ export function SettingsPage() {
         </div>
       </div>
     </>
+  );
+}
+
+function AppearanceCard() {
+  const [choice] = useState<ThemeChoice>(() => readChoice());
+  const options: { id: ThemeChoice; label: string }[] = [
+    { id: "system", label: "Match device" },
+    { id: "dark", label: "Dark" },
+    { id: "light", label: "Light" },
+  ];
+  return (
+    <section className="surface flex flex-wrap items-start justify-between gap-6 p-8" aria-label="Appearance">
+      <div className="max-w-xl">
+        <p className="eyebrow mb-2">Appearance</p>
+        <p className="text-mute">Dark or light. The default follows your device. Changing it reloads the page once, and it is remembered on this device only.</p>
+      </div>
+      <div role="radiogroup" aria-label="Theme" className="flex flex-wrap gap-2">
+        {options.map((o) => (
+          <button
+            key={o.id}
+            type="button"
+            role="radio"
+            aria-checked={choice === o.id}
+            onClick={() => choice !== o.id && applyChoice(o.id)}
+            className={clsx("chip pointer-coarse:py-2", choice === o.id ? "!border-gold !text-gold" : "hover:text-paper")}
+          >
+            {o.label}
+          </button>
+        ))}
+      </div>
+    </section>
   );
 }
 
@@ -687,7 +723,7 @@ function QrCode({ matrix, label }: { matrix: number[][]; label: string }) {
     .join("");
   return (
     <svg viewBox={`0 0 ${size} ${size}`} role="img" aria-label={label} className="h-56 w-56 bg-white" shapeRendering="crispEdges">
-      <path d={path} fill="#0b0b0c" />
+      <path d={path} fill={C.ink} />
     </svg>
   );
 }

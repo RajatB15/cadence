@@ -6,6 +6,7 @@ from datetime import date, datetime, timedelta, timezone
 from statistics import fmean, median
 
 from cadence_app.analytics import athlete as A
+from cadence_app.analytics import dayphase as DP
 from cadence_app.analytics import habits as H
 from cadence_app.analytics import heat as W
 from cadence_app.analytics import nutrition as N
@@ -829,9 +830,11 @@ def week_progress(c: dict, plan: dict | None) -> dict:
 def today_session(c: dict, r: dict | None, week: dict, plan: dict | None, now_hour: int | None = None, strain_state: str | None = None) -> dict:
     """`strain_state` is today's strain status (below / in / above); once the day's budget is used, open work moves to tomorrow."""
     as_of = c["as_of"]
+    hour = now_hour if now_hour is not None else (datetime.now(timezone.utc).replace(tzinfo=None) + c.get("utc_offset", timedelta(0))).hour  # the user's wall clock
+    budget_used = strain_state in ("in", "above")
     done_today = [a for a in c["acts"] if a.day == as_of and A.is_training(a)]
     if not done_today:
-        return _suggest(c, r, week, plan)
+        return _late_reframe(_suggest(c, r, week, plan), c, r, hour, budget_used)
 
     t = plan["targets"] if plan else {}
     hard_today = any(is_hard(a) for a in done_today)
@@ -850,7 +853,6 @@ def today_session(c: dict, r: dict | None, week: dict, plan: dict | None, now_ho
            "sessions": [{"id": a.id, "name": a.name, "verdict": verdict(a, hard)} for a in done_today], "second": None}
 
     kind = planned["kind"] if planned else None
-    budget_used = strain_state in ("in", "above")
     if kind is None or (kind == "key" and hard_today) or (kind == "long" and long_today) or (kind == "easy" and cardio_today and not hard_today):
         status, title = "matched", "Today's work is done"
         detail = f"You did {did}." + (f" That covers what today called for ({planned['title'].lower()})." if planned else "")
@@ -880,13 +882,48 @@ def today_session(c: dict, r: dict | None, week: dict, plan: dict | None, now_ho
         detail = f"Today was earmarked for rest; you did {did}."
         nxt = f"Keep {tomorrow} easy so the extra work doesn't cost the week."
 
-    hour = now_hour if now_hour is not None else (datetime.now(timezone.utc).replace(tzinfo=None) + c.get("utc_offset", timedelta(0))).hour  # the user's wall clock
+    window = _window_state(c, r, hour, budget_used) if status == "open" else None
+    if window == "deferred":
+        status, title = "deferred", "Not today"
+        what = {"key": "quality session", "long": "long run", "easy": "aerobic work"}[kind]
+        detail = f"You did {did}. The {what} can wait; the week still works."
+        nxt = "Tomorrow's plan starts from where the week stands. Refuel, hydrate and sleep well."
+    elif window == "window_closed":
+        status, title = "window_closed", "Probably not today"
+        detail = f"You did {did}, which doesn't replace the {'quality session' if kind == 'key' else 'long run' if kind == 'long' else 'aerobic work'} today called for."
+        nxt = "Not enough of the day is left for it; tomorrow's plan starts from where the week stands."
     room = typical == 0 or load < 0.7 * typical
     if status == "open" and r and r["score"] >= 70 and hour < 19 and room and not hard_today and not budget_used:
         cap = t.get("easy_cap") or easy_cap(c)
         out["second"] = {"title": "Optional: easy 30–40 min this evening",
                          "detail": f"Conversational aerobic work{f' under {cap} bpm' if cap else ''}. Never a second hard session on the same day."}
     return {**out, "status": status, "title": title, "detail": detail, "next": nxt}
+
+
+def _window_state(c: dict, r: dict | None, hour: int, budget_used: bool) -> str:
+    """open | window_closed | deferred for a session still to do (rules in analytics/dayphase.py)."""
+    _, st = _today_state(c)
+    f = DP.Facts(now=datetime(2000, 1, 1, hour % 24), plan_kind="easy", plan_status="not_done", readiness=r["score"] if r else None,
+                 strain_used=budget_used, says_less=bool(st and st["level"] in ("rest", "easy")))
+    state = DP.session_state(f, "morning")
+    return "deferred" if state == "upcoming" else state  # 00:00-03:59 is never "open" either
+
+
+def _late_reframe(s: dict, c: dict, r: dict | None, hour: int, budget_used: bool) -> dict:
+    """A session still to do: never 'open' once the day is ending. From 20:00 (or when the day says hold back) it is deferred,
+    in the evening before that it is window_closed, and nothing is a miss."""
+    if s["kind"] not in ("key", "long", "easy", "strength"):
+        return s
+    state = _window_state(c, r, hour, budget_used)
+    if state == "open":
+        return s
+    if state == "deferred":
+        return {**s, "status": "deferred", "title": "Not today",
+                "detail": f"{s['title']} isn't needed tonight. The week still works; tomorrow's plan starts from where it stands.",
+                "next": "Wind down, eat and sleep well."}
+    return {**s, "status": "window_closed", "title": "Probably not today",
+            "detail": f"Not much of the day is left for {s['title'].lower()}. Skip it freely; tomorrow's plan starts from where the week stands.",
+            "next": "A walk or some mobility is plenty if you want something."}
 
 
 def _suggest(c: dict, r: dict | None, week: dict, plan: dict | None, long_done_today: bool = False) -> dict:  # noqa: C901
@@ -1723,3 +1760,120 @@ def improve_message(state: str, metric: str, have: int, needed: int) -> str:
     if state == "unsupported":
         return f"No {label} data yet: your device or the vault has not reported it."
     return f"Collecting: {have} of {needed} {'readings' if metric == 'vo2max' else 'nights'} of {label} so far."
+
+
+# ---- Home: day phase and energy wording ---------------------------------------------------------------------------
+
+PHASE_LINES = {
+    "dawn": "An early start. Ease into the day.",
+    "morning": "Here is where your body is this morning.",
+    "midday": "Midday: how the day is going so far.",
+    "afternoon": "Afternoon. For some people, hard sessions late in the day make it harder to fall asleep.",
+    "evening": "Winding down: tonight's sleep and tomorrow's plan.",
+    "late": "The day is done. Sleep when you can; tomorrow's plan is ready.",
+    "post_workout": "Nice work. A meal with carbs and protein within a couple of hours helps recovery.",
+    "rest_day": "Rest is the plan today. Sleep and an easy walk both help.",
+    "race_week": "Race week: keep things familiar and easy.",
+    "race_day": "Race day: fuel, weather and a calm warm-up.",
+    "time_off": "Time off: nothing is missed.",
+    "sick": "Rest and fluids today; nothing is expected of you. If symptoms are unusual or last, ask a clinician.",
+}
+SESSION_LINES = {
+    "open": ("Today's session is still ahead", "There is time for it; pick the moment that suits you."),
+    "window_closed": ("Probably not today", "Not much of the day is left for it. Skipping is fine; tomorrow's plan starts from where the week stands."),
+    "deferred": ("Not today", "The week still works; tomorrow's plan starts from where it stands."),
+    "upcoming": ("Today's plan starts after you have slept", "Nothing is expected overnight."),
+    "done": ("Today's work is done", "Refuel, hydrate and get to bed on time."),
+    "rest": ("Rest is the plan", "Easy movement is fine; sleep does the real work."),
+    "race": ("Race day", "No new load today beyond the race."),
+}
+FLAG_LINES = {
+    "no_garmin_data": "No Garmin data for today yet.",
+    "low_readiness": "Readiness is on the low side today; an easy day fits.",
+    "pain": "You logged some pain; rest, or something that does not load it, is fine.",
+    "feeling_off": "You said you feel a little off; an easy day is fine.",
+    "strain_used": "Today's strain budget is already used.",
+    "bonus": "A bonus session today; keep tomorrow easy.",
+}
+
+
+def phase_copy(ph: dict) -> dict:
+    """Sentences for a `dayphase.phase` result. Facts and gentle suggestions only; a session left undone is never a failure."""
+    h = ph["hints"]
+    session = SESSION_LINES.get(ph["session_state"])
+    return {
+        "headline": PHASE_LINES[ph["phase"]],
+        "session": {"title": session[0], "detail": session[1]} if session else None,
+        "sleep": "Sleep not synced yet" if h["sleep"] == "not_synced" else None,
+        "calories": "Day total so far" if h["calories"] == "day_total" else None,
+        "steps": "Your step goal is within reach with an easy walk." if h["steps"] == "prompt" else None,
+        "protein_check": "Evening check: protein is worth a glance if you are aiming for a daily amount." if h["protein_check"] else None,
+        "recap": "A new day has just started; yesterday's totals are shown for reference." if h["yesterday_recap"] else None,
+        "flags": [FLAG_LINES[f] for f in ph["flags"] if f in FLAG_LINES],
+    }
+
+
+ENERGY_FOOTNOTE = "Garmin burn and food-log kcal are both estimates; individual error can be 10 to 20% or more. Trends over weeks mean more than any single day."
+
+
+def _k(x: float | int) -> str:
+    return f"{round(x):,}"
+
+
+def energy_copy(e: dict, now_min: int | None = None) -> dict:
+    """Sentences for an `energy.assemble` block. Estimates are labelled, nothing logged is not zero, and going past the
+    estimate is stated flatly (never framed as over budget or a failure)."""
+    out: dict = {"footnote": ENERGY_FOOTNOTE}
+    st, b, eaten, t = e["status"], e["burned"], e["eaten"], e["target"]
+    out["status"] = {"no_garmin_kcal": "Your Garmin has not reported calories for today yet.",
+                     "just_started": "Today has just started; burn and food totals begin from here.",
+                     "insufficient": "Not enough history yet for a projection (it needs about a week of days).",
+                     }.get(st)
+    out["burned"] = f"About {_k(b['total'])} kcal burned so far (estimate, as of {b['as_of']})" if b else None
+    out["eaten"] = (f"About {_k(eaten['kcal'])} kcal logged" if eaten["logged"] else "Nothing logged yet")
+    if t is None:
+        out["target"] = "Add height, birth date and sex in Settings, or wait for two weeks of Garmin data, to estimate a target."
+    else:
+        out["target"] = f"Target about {_k(t['kcal'])} kcal"
+    if e["left"] is not None:
+        out["left"] = f"About {_k(e['left'])} kcal to go toward today's estimate"
+    elif e["above_by"] is not None:
+        out["left"] = f"About {_k(e['above_by'])} kcal above today's estimate; one day does not matter."
+    else:
+        out["left"] = None
+    p = e["projected"]
+    if p:
+        n = e["projection_history_days"]
+        if p["method"] == "curve":
+            out["projection"] = f"Around {_k(p['value'])} kcal by the end of the day (range {_k(p['lo'])} to {_k(p['hi'])}); typical for this time, {n} past days."
+        else:
+            out["projection"] = f"Rough projection: around {_k(p['value'])} kcal (range {_k(p['lo'])} to {_k(p['hi'])}), from only {n} days of history."
+    else:
+        out["projection"] = None
+    notes_ = []
+    if t:
+        src = t["source"]
+        notes_.append({"manual": "Your own target.", "history": f"Estimated from your last {t['n_days']} days of Garmin burn.",
+                       "formula": "A formula guess from your profile and weight, not measured."}[src])
+        if t["adjustment_kcal"] and t.get("pace"):
+            gentle = t["pace"]["state"] == "gentle"
+            sign = "less" if t["adjustment_kcal"] < 0 else "more"
+            tail = f" At this gentle pace the goal takes about {t['pace']['weeks_at_gentle_pace']} weeks." if gentle and t["pace"].get("weeks_at_gentle_pace") else ""
+            notes_.append(f"Includes a gentle adjustment of about {_k(abs(t['adjustment_kcal']))} kcal a day {sign} toward your weight goal.{tail}")
+        if t.get("hold"):
+            notes_.append({"time_off": "No weight-goal adjustment while you are on time off.", "unwell": "No weight-goal adjustment while you are unwell or injured.",
+                           "hard_block": "No weight-goal adjustment during a hard training block."}.get(t["hold"], "No weight-goal adjustment today."))
+        if t["floor_applied"]:
+            notes_.append(f"Held at a floor of {_k(t['floor_kcal'])} kcal.")
+        if t["below_floor"]:
+            notes_.append("Below your estimated resting burn; consider checking with a professional.")
+        if t.get("protein"):
+            notes_.append(f"Protein for people who train is often put at {t['protein']['low_g']} to {t['protein']['high_g']} g a day (1.4 to 2.0 g per kg).")
+    out["target_notes"] = notes_
+    wk = e["workout_active_kcal"]
+    out["workout"] = f"Plus about {_k(wk)} kcal from today's training" + (f"; {e['eat_back_pct']}% of it is added to your target." if e["eat_back_pct"] and t else ".") if wk else None
+    out["refuel"] = ("A session like that usually calls for a refuel: a meal with carbs and protein within a couple of hours helps recovery."
+                     if wk and wk >= 200 else None)
+    out["partial_log"] = (f"Only {eaten['entries']} {'entry' if eaten['entries'] == 1 else 'entries'} logged so far, so the total may be partial."
+                          if eaten["logged"] and eaten["entries"] <= 2 and now_min is not None and now_min >= 18 * 60 else None)
+    return out

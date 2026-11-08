@@ -7,6 +7,7 @@ import { NavLink, Outlet, useLocation, useMatch } from "react-router-dom";
 import { RefreshRailButton } from "./RefreshButton";
 import { ReminderBanner } from "./ReminderBanner";
 import { StatusBanners } from "./StatusBanners";
+import { C } from "../lib/theme";
 
 const NAV = [
   { to: "/", label: "Overview", icon: LayoutGrid },
@@ -30,8 +31,8 @@ function Monogram() {
     <div className="h-11 w-11 rounded-[10px] shadow-[0_8px_18px_-8px_rgba(0,0,0,0.95)]" aria-label="Cadence">
       <svg viewBox="0 0 32 32" className="h-full w-full" aria-hidden>
         <defs>
-<radialGradient id="cm-t1" gradientUnits="userSpaceOnUse" cx="8" cy="6" r="15"><stop offset="0" stopColor="#7c6bff" stopOpacity=".75"/><stop offset="1" stopColor="#7c6bff" stopOpacity="0"/>{!reduce && (<><animate attributeName="cx" values="6;26;24;8;6" dur="9s" repeatCount="indefinite"/><animate attributeName="cy" values="6;10;27;24;6" dur="9s" repeatCount="indefinite"/></>)}</radialGradient>
-<radialGradient id="cm-t2" gradientUnits="userSpaceOnUse" cx="26" cy="26" r="13"><stop offset="0" stopColor="#3fd0ff" stopOpacity=".6"/><stop offset="1" stopColor="#3fd0ff" stopOpacity="0"/>{!reduce && (<><animate attributeName="cx" values="26;6;8;26;26" dur="11s" repeatCount="indefinite"/><animate attributeName="cy" values="26;24;6;8;26" dur="11s" repeatCount="indefinite"/></>)}</radialGradient>
+<radialGradient id="cm-t1" gradientUnits="userSpaceOnUse" cx="8" cy="6" r="15"><stop offset="0" stopColor={C.violet} stopOpacity=".75"/><stop offset="1" stopColor={C.violet} stopOpacity="0"/>{!reduce && (<><animate attributeName="cx" values="6;26;24;8;6" dur="9s" repeatCount="indefinite"/><animate attributeName="cy" values="6;10;27;24;6" dur="9s" repeatCount="indefinite"/></>)}</radialGradient>
+<radialGradient id="cm-t2" gradientUnits="userSpaceOnUse" cx="26" cy="26" r="13"><stop offset="0" stopColor={C.sky} stopOpacity=".6"/><stop offset="1" stopColor={C.sky} stopOpacity="0"/>{!reduce && (<><animate attributeName="cx" values="26;6;8;26;26" dur="11s" repeatCount="indefinite"/><animate attributeName="cy" values="26;24;6;8;26" dur="11s" repeatCount="indefinite"/></>)}</radialGradient>
 <radialGradient id="cm-bg" cx="50%" cy="-10%" r="120%"><stop offset="0" stopColor="#30333a"/><stop offset=".45" stopColor="#14151a"/><stop offset="1" stopColor="#020203"/></radialGradient>
 <radialGradient id="cm-vg" cx="50%" cy="55%" r="60%"><stop offset=".6" stopColor="#000" stopOpacity="0"/><stop offset="1" stopColor="#000" stopOpacity=".55"/></radialGradient>
 <linearGradient id="cm-gl" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#fff" stopOpacity=".17"/><stop offset="1" stopColor="#fff" stopOpacity=".01"/></linearGradient>

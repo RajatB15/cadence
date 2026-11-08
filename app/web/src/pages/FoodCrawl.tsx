@@ -7,6 +7,7 @@ import { ErrorBlock, LoadingBlock, PageHeader } from "../components/Shell";
 import { api } from "../lib/api";
 import { CRAWL_COLOR, crawlSegments, librarySegments, percent, roughDuration, type Segment } from "../lib/foodCrawl";
 import type { FoodCrawlProgress } from "../lib/types";
+import { C } from "../lib/theme";
 
 const POLL_MS = 15_000;
 const nf = new Intl.NumberFormat();
@@ -37,7 +38,7 @@ function StackedBar({ segments, label }: { segments: Segment[]; label: string })
 }
 
 function timelineOptions(tl: FoodCrawlProgress["timeline"]): { total: ChartOption; rate: ChartOption } {
-  const tip = (rows: string[][]) => (rows.map(([k, v]) => `<div style="display:flex;justify-content:space-between;gap:16px"><span style="color:#8d8a82">${k}</span><b>${v}</b></div>`).join(""));
+  const tip = (rows: string[][]) => (rows.map(([k, v]) => `<div style="display:flex;justify-content:space-between;gap:16px"><span style="color:${C.mute}">${k}</span><b>${v}</b></div>`).join(""));
   const when = (v: number) => new Date(v).toLocaleString([], { weekday: "short", hour: "2-digit", minute: "2-digit" });
   const base = { ...chartBase, animation: false, grid: { ...chartBase.grid, left: 4, right: 12 } };
   return {

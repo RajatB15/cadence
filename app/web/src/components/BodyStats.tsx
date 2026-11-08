@@ -2,14 +2,15 @@ import { Info, Ruler } from "lucide-react";
 import { motion } from "motion/react";
 import { Link } from "react-router-dom";
 import type { BodyEstimate } from "../lib/types";
+import { C } from "../lib/theme";
 
 const ZONES = [
-  { from: 15, to: 18.5, color: "#6cc7ff", label: "Under" },
-  { from: 18.5, to: 25, color: "#c8f560", label: "Normal" },
-  { from: 25, to: 30, color: "#ffbe55", label: "Over" },
-  { from: 30, to: 40, color: "#ff6a55", label: "Obese" },
+  { from: 15, to: 18.5, color: C.sky, label: "Under" },
+  { from: 18.5, to: 25, color: C.lime, label: "Normal" },
+  { from: 25, to: 30, color: C.amber, label: "Over" },
+  { from: 30, to: 40, color: C.coral, label: "Obese" },
 ];
-const CATEGORY_COLOR: Record<string, string> = { underweight: "#6cc7ff", normal: "#c8f560", overweight: "#ffbe55", obese: "#ff6a55" };
+const CATEGORY_COLOR: Record<string, string> = { underweight: C.sky, normal: C.lime, overweight: C.amber, obese: C.coral };
 const GAUGE_MIN = 15;
 const GAUGE_MAX = 40;
 const pct = (v: number, lo: number, hi: number) => Math.max(0, Math.min(100, ((v - lo) / (hi - lo)) * 100));
@@ -128,7 +129,7 @@ function RangeCard({ body, weightKg, goalKg }: { body: BodyEstimate; weightKg: n
         <span className="num text-4xl text-paper">{body.healthy_min_kg.toFixed(1)}–{body.healthy_max_kg.toFixed(1)}</span>
         <span className="text-mute">kg</span>
       </div>
-      <p className="mt-1 text-sm" style={{ color: d === 0 ? "#c8f560" : "#ffbe55" }}>{verdict}</p>
+      <p className="mt-1 text-sm" style={{ color: d === 0 ? C.lime : C.amber }}>{verdict}</p>
       <div className="relative mt-7 h-2.5 rounded-full bg-line">
         <div
           className="absolute h-full rounded-full bg-lime/70"
@@ -179,10 +180,10 @@ function CompositionCard({ body, weightKg }: { body: BodyEstimate; weightKg: num
 
 function EnergyCard({ body }: { body: BodyEstimate }) {
   const rows: { label: string; hint: string; kcal: number; color: string }[] = [
-    { label: "At rest (BMR)", hint: "just staying alive", kcal: body.bmr_kcal, color: "#9b8cff" },
-    { label: "Light day", hint: "mostly seated · ×1.4", kcal: body.energy_kcal.light, color: "#6cc7ff" },
-    { label: "Active day", hint: "regular training · ×1.7", kcal: body.energy_kcal.active, color: "#c8f560" },
-    { label: "Vigorous day", hint: "hard training · ×2.0", kcal: body.energy_kcal.vigorous, color: "#d9b26a" },
+    { label: "At rest (BMR)", hint: "just staying alive", kcal: body.bmr_kcal, color: C.violet },
+    { label: "Light day", hint: "mostly seated · ×1.4", kcal: body.energy_kcal.light, color: C.sky },
+    { label: "Active day", hint: "regular training · ×1.7", kcal: body.energy_kcal.active, color: C.lime },
+    { label: "Vigorous day", hint: "hard training · ×2.0", kcal: body.energy_kcal.vigorous, color: C.gold },
   ];
   const max = body.energy_kcal.vigorous;
   return (

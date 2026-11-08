@@ -13,6 +13,7 @@ import { LogWeightDialog } from "../components/LogWeightDialog";
 import { api } from "../lib/api";
 import { formatDate, formatShortDate, projectionCopy } from "../lib/format";
 import type { WeightResponse } from "../lib/types";
+import { C } from "../lib/theme";
 
 const RANGES = [
   { value: 90, label: "90D" },
@@ -71,8 +72,8 @@ function WeightBody({ data }: { data: WeightResponse }) {
           const p = data.points[items[0]?.dataIndex ?? 0];
           if (!p) return "";
           return `<div style="font-weight:600;margin-bottom:6px">${formatDate(p.day)}</div>
-            <div>Trend <b style="color:#d9b26a">${p.trend_kg.toFixed(2)} kg</b> ± ${p.band_kg.toFixed(2)}</div>
-            <div style="color:#8d8a82">Logged ${p.weight_kg.toFixed(2)} kg</div>`;
+            <div>Trend <b style="color:${C.gold}">${p.trend_kg.toFixed(2)} kg</b> ± ${p.band_kg.toFixed(2)}</div>
+            <div style="color:${C.mute}">Logged ${p.weight_kg.toFixed(2)} kg</div>`;
         },
       },
       series: [
@@ -83,7 +84,7 @@ function WeightBody({ data }: { data: WeightResponse }) {
           stack: "band",
           symbol: "none",
           lineStyle: { opacity: 0 },
-          areaStyle: { color: "rgba(217,178,106,0.14)" },
+          areaStyle: { color: `${C.gold}24` },
           silent: true,
         },
         {
@@ -91,7 +92,7 @@ function WeightBody({ data }: { data: WeightResponse }) {
           type: "scatter",
           data: data.points.map((p) => [p.day, p.weight_kg]),
           symbolSize: 5,
-          itemStyle: { color: "rgba(236,235,230,0.35)" },
+          itemStyle: { color: `${C.paper}59` },
         },
         {
           name: "Trend",
@@ -99,14 +100,14 @@ function WeightBody({ data }: { data: WeightResponse }) {
           data: data.points.map((p) => [p.day, p.trend_kg]),
           symbol: "none",
           smooth: 0.3,
-          lineStyle: { color: "#d9b26a", width: 2.5, shadowColor: "rgba(217,178,106,0.5)", shadowBlur: 12 },
+          lineStyle: { color: C.gold, width: 2.5, shadowColor: `${C.gold}80`, shadowBlur: 12 },
           markLine:
             data.goal_kg != null
               ? {
                   symbol: "none",
                   silent: true,
-                  lineStyle: { color: "#c8f560", type: "dashed", width: 1 },
-                  label: { color: "#c8f560", formatter: `Goal ${data.goal_kg} kg`, position: "insideEndTop" },
+                  lineStyle: { color: C.lime, type: "dashed", width: 1 },
+                  label: { color: C.lime, formatter: `Goal ${data.goal_kg} kg`, position: "insideEndTop" },
                   data: [{ yAxis: data.goal_kg }],
                 }
               : undefined,
@@ -186,10 +187,10 @@ function WeightBody({ data }: { data: WeightResponse }) {
 
       <section className="surface p-4 sm:p-6">
         <div className="mb-2 flex flex-wrap items-center gap-5 px-2 text-xs text-mute">
-          <Legend color="#d9b26a" label="Trend" line />
-          <Legend color="rgba(217,178,106,0.35)" label="95% band" />
-          <Legend color="rgba(236,235,230,0.6)" label="Reading" dot />
-          {data.goal_kg != null && <Legend color="#c8f560" label="Goal" line dashed />}
+          <Legend color={C.gold} label="Trend" line />
+          <Legend color={`${C.gold}59`} label="95% band" />
+          <Legend color={`${C.paper}99`} label="Reading" dot />
+          {data.goal_kg != null && <Legend color={C.lime} label="Goal" line dashed />}
         </div>
         <Chart option={option} height={420} label="Weight trend chart" />
       </section>

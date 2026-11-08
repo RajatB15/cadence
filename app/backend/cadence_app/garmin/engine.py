@@ -129,6 +129,17 @@ class SyncEngine:
         finally:
             self._refresh_derived()
             self._mark_synced()
+            self._snapshot_energy()
+
+    def _snapshot_energy(self) -> None:
+        """Keeps today's burn-so-far for the calorie projection; derived from rows already stored, so it makes no API call and never fails a sync."""
+        try:
+            from cadence_app import energy_store, localtime
+
+            with self.factory() as session:
+                energy_store.record_snapshot(session, SOURCE_ID, localtime.load(session))
+        except Exception:  # pylint: disable=broad-exception-caught  # derived, optional data
+            log.exception("Recording the energy snapshot failed")
 
     def fetch_activity(self, client: GarminClient, activity_id: str) -> list[str]:
         """Fetch any per-activity assets not yet in the vault; each is requested at most once ever."""

@@ -7,6 +7,7 @@ import { api } from "../lib/api";
 import { formatDate } from "../lib/format";
 import type { Behaviour, HabitEffect, HabitProgress } from "../lib/types";
 import { Sheet } from "./Sheet";
+import { C } from "../lib/theme";
 
 const shiftDay = (day: string, by: number) => {
   const d = new Date(`${day}T12:00:00`);
@@ -251,7 +252,7 @@ export function HabitsPanel({ effects, progress }: { effects: HabitEffect[]; pro
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
           {shown.map((e) => {
             const bad = e.higher_is_better ? e.diff < 0 : e.diff > 0;
-            const color = !e.significant ? "#8d8a82" : bad ? "#ff6a55" : "#c8f560";
+            const color = !e.significant ? C.mute : bad ? C.coral : C.lime;
             return (
               <motion.div key={e.id} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="border border-line bg-ink/40 p-5">
                 <p className="eyebrow mb-2">{e.cause} → {e.outcome}</p>
@@ -290,7 +291,7 @@ export function HabitsPanel({ effects, progress }: { effects: HabitEffect[]; pro
                 <div className="mt-1.5 grid grid-cols-2 gap-1">
                   {[p.yes, p.no].map((n, i) => (
                     <div key={i} className="h-1 bg-line-strong">
-                      <div className="h-full" style={{ width: `${Math.min(1, n / p.needed) * 100}%`, background: i ? "#8d8a82" : "#9b8cff" }} />
+                      <div className="h-full" style={{ width: `${Math.min(1, n / p.needed) * 100}%`, background: i ? C.mute : C.violet }} />
                     </div>
                   ))}
                 </div>

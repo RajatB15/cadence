@@ -10,6 +10,7 @@ describe("phoneMayWrite", () => {
     expect(phoneMayWrite("PUT", "/api/reading/card-1")).toBe(true);
     expect(phoneMayWrite("POST", "/api/food/meals/3/log")).toBe(true);
     expect(phoneMayWrite("PUT", "/api/settings/plan")).toBe(true);
+    expect(phoneMayWrite("PUT", "/api/settings/calories")).toBe(true);
     expect(phoneMayWrite("POST", "/api/garmin/sync")).toBe(true);
     expect(phoneMayWrite("POST", "/api/activities/12/fetch")).toBe(true);
   });
@@ -28,6 +29,8 @@ describe("phoneMayWrite", () => {
     expect(phoneMayWrite("POST", "/api/push/subscribe/extra")).toBe(false);
     expect(phoneMayWrite("POST", "/api/planner-evil")).toBe(false);
     expect(phoneMayWrite("POST", "/api/settings/weatherx")).toBe(false);
+    expect(phoneMayWrite("POST", "/api/settings/calories")).toBe(false);
+    expect(phoneMayWrite("PUT", "/api/settings/calories/extra")).toBe(false);
     expect(phoneMayWrite("DELETE", "/api/push/subscribe")).toBe(false);
     expect(phoneMayWrite("GET", "/api/planner")).toBe(false);
     expect(phoneMayWrite("PUT", "/api/journal/")).toBe(false);

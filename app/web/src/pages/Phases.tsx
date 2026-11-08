@@ -12,6 +12,7 @@ import { formatDuration, formatKm, formatShortDate, parseDay } from "../lib/form
 import { ACTIVITY_FAMILIES } from "../lib/metrics";
 import { MEASURES, STATUS, clock, dayLine, goalValue, describePillar, isoDay, onTrackLine, passesLine, pillarHeadline, totalPaceLine } from "../lib/phases";
 import type { HabitOption, PhaseCell, PhaseDetail, PhaseFamilyTotals, PhaseSummary, PillarResult } from "../lib/types";
+import { C } from "../lib/theme";
 
 const CELL: Record<PhaseCell["status"], string> = {
   hit: "bg-[var(--phase)]",
@@ -130,7 +131,7 @@ function TotalChart({ p, phase }: { p: PillarResult; phase: PhaseDetail }) {
       xAxis: { ...chartBase.xAxis, min: phase.start, max: phase.end },
       series: [
         { name: "You", type: "line", showSymbol: false, smooth: false, data: p.series ?? [], lineStyle: { color: phase.color, width: 2.5 }, areaStyle: { color: phase.color, opacity: 0.12 } },
-        { name: "Even pace", type: "line", showSymbol: false, silent: true, data: [[phase.start, 0], [phase.end, p.target]], lineStyle: { color: "#8d8a82", width: 1.5, type: "dashed" } },
+        { name: "Even pace", type: "line", showSymbol: false, silent: true, data: [[phase.start, 0], [phase.end, p.target]], lineStyle: { color: C.mute, width: 1.5, type: "dashed" } },
       ],
     }),
     [p, phase],
@@ -236,7 +237,7 @@ function Heatmap({ phase }: { phase: PhaseDetail }) {
     return key > today ? `${formatShortDate(key)}: to come` : `${formatShortDate(key)}: ${m ? `${m} min · ${n} session${n === 1 ? "" : "s"}` : "no activity"}`;
   };
   const tone = (m: number) => (m <= 0 ? 0 : m < 20 ? 0.28 : m < 45 ? 0.5 : m < 90 ? 0.75 : 1);
-  const shade = (t: number) => (t ? `color-mix(in srgb, var(--phase) ${t * 100}%, #1c1c1f)` : "#1c1c1f");
+  const shade = (t: number) => (t ? `color-mix(in srgb, var(--phase) ${t * 100}%, var(--color-slate))` : C.grid);
   const at = (w: number, r: number) => new Date(first.getFullYear(), first.getMonth(), first.getDate() + w * 7 + r - lead);
   const labels = Array.from({ length: weeks }, (_, w) => {
     const d = at(w, 0 < lead && w === 0 ? lead : 0);
@@ -293,12 +294,12 @@ function WeekChart({ phase }: { phase: PhaseDetail }) {
     () => ({
       ...chartBase,
       tooltip: { ...chartBase.tooltip, trigger: "axis", valueFormatter: (v: number) => `${v} min` },
-      xAxis: { type: "category", data: phase.weeks.map((w) => formatShortDate(w.start)), axisLabel: { color: "#5c5a55", fontSize: 11, hideOverlap: true }, axisLine: { lineStyle: { color: "#262629" } }, axisTick: { show: false } },
-      yAxis: { ...chartBase.yAxis, scale: false, min: 0, axisLabel: { color: "#5c5a55", fontSize: 11, formatter: (v: number) => `${v}m` } },
+      xAxis: { type: "category", data: phase.weeks.map((w) => formatShortDate(w.start)), axisLabel: { color: C.faint, fontSize: 11, hideOverlap: true }, axisLine: { lineStyle: { color: C.line } }, axisTick: { show: false } },
+      yAxis: { ...chartBase.yAxis, scale: false, min: 0, axisLabel: { color: C.faint, fontSize: 11, formatter: (v: number) => `${v}m` } },
       series: [
         {
           name: "Minutes", type: "bar", data: phase.weeks.map((w) => w.minutes), itemStyle: { color: phase.color, borderRadius: 0 }, barMaxWidth: 28,
-          markLine: perWeek != null ? { silent: true, symbol: "none", lineStyle: { color: "#8d8a82", type: "dashed" }, label: { color: "#8d8a82", formatter: "before" }, data: [{ yAxis: Math.round(perWeek) }] } : undefined,
+          markLine: perWeek != null ? { silent: true, symbol: "none", lineStyle: { color: C.mute, type: "dashed" }, label: { color: C.mute, formatter: "before" }, data: [{ yAxis: Math.round(perWeek) }] } : undefined,
         },
       ],
     }),

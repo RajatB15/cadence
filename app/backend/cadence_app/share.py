@@ -73,6 +73,7 @@ PHONE_WRITES: tuple[tuple[str, re.Pattern[str]], ...] = tuple(
         ("DELETE", rf"/api/food/(entries|meals)/{_SEG}"),
         ("POST", rf"/api/food/meals/{_SEG}/log"),
         ("PUT", r"/api/settings/(weather|profile|plan)"),
+        ("PUT", r"/api/settings/calories"),
         ("POST", r"/api/time-off"),
         ("PUT", rf"/api/time-off/{_SEG}"),
         ("DELETE", rf"/api/time-off/{_SEG}"),

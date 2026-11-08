@@ -9,6 +9,7 @@ import { PATTERN_LABEL } from "../components/StrengthClass";
 import { api } from "../lib/api";
 import { formatDate } from "../lib/format";
 import type { Review } from "../lib/types";
+import { C } from "../lib/theme";
 
 const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 const at = (s: string) => new Date(`${s}T12:00:00`);
@@ -63,7 +64,7 @@ function Body({ r, go }: { r: Review; go: (k: "week" | "month", s?: string) => v
           className="grid h-10 w-10 place-items-center border border-line-strong text-mute hover:text-paper disabled:opacity-30"><ChevronRight size={18} /></button>
       </section>
 
-      <section className="surface flex items-start gap-4 p-5 sm:p-6" style={{ borderLeft: "3px solid #c8f560" }}>
+      <section className="surface flex items-start gap-4 p-5 sm:p-6" style={{ borderLeft: `3px solid ${C.lime}` }}>
         <Target size={20} className="mt-0.5 shrink-0 text-lime" />
         <div>
           <p className="eyebrow mb-1">Focus {r.kind === "week" ? "for next week" : "for next month"}</p>

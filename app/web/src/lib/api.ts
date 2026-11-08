@@ -1,6 +1,8 @@
 import type { CustomSpec } from "./customSession";
 import { phoneMayWrite } from "./phoneWrites";
 import type {
+  CalorieSettings,
+  CalorieSettingsView,
   ImproveReport,
   ImproveSummary,
   ActivityDetail,
@@ -165,7 +167,9 @@ async function failure(res: Response): Promise<ApiError> {
     }
     if (res.status === 401) return new ApiError(401, NOT_PAIRED);
   }
-  return new ApiError(res.status, typeof body?.detail === "string" ? body.detail : res.statusText || `Request failed (${res.status})`);
+  // FastAPI validation errors (422) send a list of {msg, loc}; show the first one's message.
+  const detail = typeof body?.detail === "string" ? body.detail : Array.isArray(body?.detail) && typeof body.detail[0]?.msg === "string" ? body.detail[0].msg : null;
+  return new ApiError(res.status, detail ?? (res.statusText || `Request failed (${res.status})`));
 }
 
 // The phone share server injects this meta tag; it only accepts reads.
@@ -217,6 +221,10 @@ export const api = {
       body: JSON.stringify({ key }),
     }),
   overview: () => request<Overview>("/api/overview"),
+  calorieSettings: () => request<CalorieSettingsView>("/api/settings/calories"),
+  /** Any subset of mode, manual_kcal, eat_back_pct, pace; the server validates and returns the full settings. */
+  saveCalorieSettings: (patch: Partial<CalorieSettings>) =>
+    request<CalorieSettingsView>("/api/settings/calories", { method: "PUT", body: JSON.stringify(patch) }),
   score: (days = 90) => request<ScoreReport>(`/api/score?days=${days}`),
   metric: (metric: string, days: number) =>
     request<MetricSeries>(`/api/metrics/${encodeURIComponent(metric)}?days=${days}`),

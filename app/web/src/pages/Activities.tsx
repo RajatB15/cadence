@@ -12,6 +12,7 @@ import { READ_ONLY, api } from "../lib/api";
 import { formatDuration, parseDay } from "../lib/format";
 import { ACTIVITY_FAMILIES } from "../lib/metrics";
 import type { ActivityItem, ActivityLog } from "../lib/types";
+import { C } from "../lib/theme";
 
 const PAGE = 25;
 type Log = Extract<ActivityLog, { has_data: true }>;
@@ -249,7 +250,7 @@ function Heatmap({ log }: { log: Log }) {
                     onMouseLeave={() => setHover(null)}
                     onClick={() => d.sessions && navigate(`/metrics/training_load?day=${d.day}`)}
                     className={clsx("aspect-square w-full transition-transform hover:scale-125", d.sessions ? "cursor-pointer" : "cursor-default")}
-                    style={{ background: lv ? `${familyColor(d.family)}${ALPHA[lv]}` : "#1c1c1f" }}
+                    style={{ background: lv ? `${familyColor(d.family)}${ALPHA[lv]}` : C.grid }}
                   />
                 );
               })}

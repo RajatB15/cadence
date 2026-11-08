@@ -16,6 +16,7 @@ import { READ_ONLY, api } from "../lib/api";
 import { deltaTone, formatMetric, parseDay } from "../lib/format";
 import { METRIC_STYLES, fallbackStyle } from "../lib/metrics";
 import type { DayCoach as DayCoachData, DayMetric, MetricSeries } from "../lib/types";
+import { C } from "../lib/theme";
 
 const RANGES = [
   { value: 30, label: "30D" },
@@ -283,7 +284,7 @@ function Trend({
             symbol: "none",
             silent: true,
             label: { show: false },
-            lineStyle: { color: "#f2e8cf", type: "solid", width: 1 },
+            lineStyle: { color: C.cream, type: "solid", width: 1 },
             data: [{ xAxis: selected }],
           },
         },

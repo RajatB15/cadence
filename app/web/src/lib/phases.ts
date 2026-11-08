@@ -1,7 +1,8 @@
 import { ACTIVITY_FAMILIES } from "./metrics";
 import type { HabitOption, PhaseBody, PhaseSummary, PillarResult, PillarSpec, PillarStatus } from "./types";
+import { C } from "./theme";
 
-export const PHASE_COLORS = ["#6cc7ff", "#ff6a55", "#c8f560", "#ffbe55", "#9b8cff", "#5be3b0", "#d9b26a"];
+export const PHASE_COLORS = [C.sky, C.coral, C.lime, C.amber, C.violet, C.mint, C.gold];
 export const PHASE_EMOJI = ["❄️", "🔥", "🏔️", "🌱", "☀️", "⚡", "🌙", "🎯"];
 
 export const isoDay = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -100,13 +101,13 @@ export function describePillar(p: PillarSpec, habits: HabitOption[] = []): strin
 }
 
 export const STATUS: Record<PillarStatus, { label: string; color: string }> = {
-  early: { label: "Just started", color: "#8d8a82" },
-  upcoming: { label: "Not started", color: "#8d8a82" },
-  on: { label: "On track", color: "#5be3b0" },
-  ahead: { label: "Ahead", color: "#c8f560" },
-  complete: { label: "Done", color: "#c8f560" },
-  slipping: { label: "Slipping", color: "#ffbe55" },
-  behind: { label: "Behind", color: "#ff6a55" },
+  early: { label: "Just started", color: C.mute },
+  upcoming: { label: "Not started", color: C.mute },
+  on: { label: "On track", color: C.mint },
+  ahead: { label: "Ahead", color: C.lime },
+  complete: { label: "Done", color: C.lime },
+  slipping: { label: "Slipping", color: C.amber },
+  behind: { label: "Behind", color: C.coral },
 };
 
 const unitOf = (p: PillarResult) => (p.kind === "total" || p.kind === "weekly" ? MEASURES[p.kind][p.metric ?? ""]?.unit ?? "" : "");
@@ -193,11 +194,11 @@ export function templates(today: Date): PhaseTemplate[] {
   });
   const monday = addDays(today, (8 - today.getDay()) % 7 || 7);
   return [
-    mk("winter", "Winter Arc", "❄️", "#6cc7ff", "Build quietly through the dark months.", nextWindow(today, [10, 1], [12, 31]), [daily("moved", 20, 12), { kind: "weekly", metric: "sessions", target: 4 }, daily("sleep_h", 7, 15)]),
-    mk("nobreak", "No Break November", "🔥", "#ff6a55", "Move every single day.", nextWindow(today, [11, 1], [11, 30]), [daily("moved", 20, 0)]),
-    mk("dry", "Dry January", "🌱", "#5be3b0", "A month without alcohol.", nextWindow(today, [1, 1], [1, 31]), [{ kind: "habit", behaviour: "alcohol", want: "no", passes: 0 }], "alcohol"),
-    mk("steps", "30 days of steps", "👟", "#ffbe55", "Ten thousand, every day.", [isoDay(today), isoDay(addDays(today, 29))], [daily("steps", 10000, 3)]),
-    mk("block", "Eight-week block", "🎯", "#c8f560", "Show up four times a week.", [isoDay(monday), isoDay(addDays(monday, 55))], [{ kind: "weekly", metric: "sessions", target: 4 }, { kind: "total", metric: "duration_h", target: 40 }]),
+    mk("winter", "Winter Arc", "❄️", C.sky, "Build quietly through the dark months.", nextWindow(today, [10, 1], [12, 31]), [daily("moved", 20, 12), { kind: "weekly", metric: "sessions", target: 4 }, daily("sleep_h", 7, 15)]),
+    mk("nobreak", "No Break November", "🔥", C.coral, "Move every single day.", nextWindow(today, [11, 1], [11, 30]), [daily("moved", 20, 0)]),
+    mk("dry", "Dry January", "🌱", C.mint, "A month without alcohol.", nextWindow(today, [1, 1], [1, 31]), [{ kind: "habit", behaviour: "alcohol", want: "no", passes: 0 }], "alcohol"),
+    mk("steps", "30 days of steps", "👟", C.amber, "Ten thousand, every day.", [isoDay(today), isoDay(addDays(today, 29))], [daily("steps", 10000, 3)]),
+    mk("block", "Eight-week block", "🎯", C.lime, "Show up four times a week.", [isoDay(monday), isoDay(addDays(monday, 55))], [{ kind: "weekly", metric: "sessions", target: 4 }, { kind: "total", metric: "duration_h", target: 40 }]),
   ];
 }
 

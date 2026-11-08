@@ -6,6 +6,7 @@ import { VerdictChip } from "./CoachNotes";
 import { formatDuration, formatKm, formatPace, parseDay } from "../lib/format";
 import { activityStyle } from "../lib/metrics";
 import type { ActivityItem } from "../lib/types";
+import { C } from "../lib/theme";
 
 const monthFmt = new Intl.DateTimeFormat(undefined, { month: "short" });
 const weekdayFmt = new Intl.DateTimeFormat(undefined, { weekday: "short" });
@@ -17,9 +18,9 @@ function IntensityStrip({ i }: { i: NonNullable<ActivityItem["intensity"]> }) {
       title={`Easy ${i.easy_pct}% · Z3 ${i.moderate_pct}% · Hard ${i.hard_pct}%`}
       aria-label={`Easy ${i.easy_pct}%, zone 3 ${i.moderate_pct}%, hard ${i.hard_pct}%`}
     >
-      <span style={{ width: `${i.easy_pct}%`, background: "#5be3b0" }} />
-      <span style={{ width: `${i.moderate_pct}%`, background: "#c8f560" }} />
-      <span style={{ width: `${i.hard_pct}%`, background: "#ff6a55" }} />
+      <span style={{ width: `${i.easy_pct}%`, background: C.mint }} />
+      <span style={{ width: `${i.moderate_pct}%`, background: C.lime }} />
+      <span style={{ width: `${i.hard_pct}%`, background: C.coral }} />
     </span>
   );
 }

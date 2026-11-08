@@ -5,13 +5,14 @@ import { useState } from "react";
 import { api } from "../lib/api";
 import type { BriefWellbeing, RecoveryWins, WellbeingEntry } from "../lib/types";
 import { NoteGrid } from "./CoachNotes";
+import { C } from "../lib/theme";
 
 const FEEL = ["Awful", "Flat", "Okay", "Good", "Great"];
 const SORE = ["None", "Mild", "Moderate", "Severe"];
 const PAIN = ["None", "Niggle", "Hurts", "Stops me"];
 const ILL = ["Well", "Run down", "Properly ill"];
 const STRESS = ["Light", "Normal", "Heavy"];
-const LEVEL_COLOR = { rest: "#ff6a55", easy: "#ffbe55", watch: "#6cc7ff" } as const;
+const LEVEL_COLOR = { rest: C.coral, easy: C.amber, watch: C.sky } as const;
 
 function Choice({ label, options, value, offset = 0, onPick }: { label: string; options: string[]; value: number | null | undefined; offset?: number; onPick: (v: number) => void }) {
   return (
@@ -47,7 +48,7 @@ export function WellbeingCard({ day, block }: { day: string; block: BriefWellbei
     },
   });
   const level = block.level;
-  const color = level ? LEVEL_COLOR[level] : "#c8f560";
+  const color = level ? LEVEL_COLOR[level] : C.lime;
   const summary = entry
     ? [
         entry.feel != null && `Feeling ${FEEL[entry.feel - 1].toLowerCase()}`,
@@ -106,7 +107,7 @@ export function WellbeingCard({ day, block }: { day: string; block: BriefWellbei
 export function RecoveryWinsCard({ wins }: { wins: RecoveryWins | null | undefined }) {
   if (!wins) return null;
   return (
-    <section className="surface p-5 sm:p-6" style={{ borderLeft: "3px solid #5be3b0" }}>
+    <section className="surface p-5 sm:p-6" style={{ borderLeft: `3px solid ${C.mint}` }}>
       <p className="eyebrow mb-2 flex items-center gap-2"><Sparkles size={14} className="text-mint" /> {wins.title} · last {wins.window} days</p>
       <p className="text-sm text-mute">{wins.text}</p>
       <ul className="mt-3 space-y-1.5 text-sm text-paper">

@@ -14,6 +14,7 @@ import { Sparkline } from "../components/Sparkline";
 import { api } from "../lib/api";
 import { formatDate } from "../lib/format";
 import type { OutcomeMarker as Outcomes_Marker, Effect, Finding, GoalDistance, Insights, TrainingGoal, TrainingMode } from "../lib/types";
+import { C } from "../lib/theme";
 
 type Data = Extract<Insights, { has_data: true }>;
 
@@ -224,7 +225,7 @@ function Readiness({ d }: { d: Data }) {
       <div className="grid items-center gap-10 lg:grid-cols-[auto_1fr_minmax(0,22rem)]">
         <div className="relative mx-auto h-48 w-48">
           <svg viewBox="0 0 160 160" className="h-full w-full -rotate-90">
-            <circle cx="80" cy="80" r="70" fill="none" stroke="#1c1c1f" strokeWidth="10" />
+            <circle cx="80" cy="80" r="70" fill="none" stroke={C.grid} strokeWidth="10" />
             <motion.circle
               cx="80" cy="80" r="70" fill="none" stroke={color} strokeWidth="10" strokeLinecap="round"
               strokeDasharray={circ}
@@ -286,8 +287,8 @@ function Readiness({ d }: { d: Data }) {
 // ---- weekly plan ----------------------------------------------------------------
 
 const PHASE_COLOR: Record<string, string> = {
-  maintain: "#5be3b0",
-  base: "#6cc7ff", build: "#c8f560", specific: "#d9b26a", recovery: "#9b8cff", absorb: "#ffbe55", taper: "#5be3b0", race: "#ff6a55",
+  maintain: C.mint,
+  base: C.sky, build: C.lime, specific: C.gold, recovery: C.violet, absorb: C.amber, taper: C.mint, race: C.coral,
 };
 
 const MODE_HELP: Record<TrainingMode, string> = {
@@ -324,7 +325,7 @@ function Plan({ d }: { d: Data }) {
       </Card>
     );
   }
-  const color = PHASE_COLOR[plan.phase.phase] ?? "#f2e8cf";
+  const color = PHASE_COLOR[plan.phase.phase] ?? C.cream;
   return (
     <Card
       id="plan"
@@ -469,18 +470,18 @@ function Performance({ d }: { d: Data }) {
   const curveOption = useMemo<ChartOption>(
     () => ({
       ...chartBase,
-      xAxis: { ...chartBase.xAxis, type: "value", name: "", axisLabel: { color: "#5c5a55", fontSize: 10, formatter: (v: number) => `${Math.round(v / 60)} min` } },
-      yAxis: { ...chartBase.yAxis, inverse: true, axisLabel: { color: "#5c5a55", fontSize: 10, formatter: (v: number) => pace(1000 / v) } },
+      xAxis: { ...chartBase.xAxis, type: "value", name: "", axisLabel: { color: C.faint, fontSize: 10, formatter: (v: number) => `${Math.round(v / 60)} min` } },
+      yAxis: { ...chartBase.yAxis, inverse: true, axisLabel: { color: C.faint, fontSize: 10, formatter: (v: number) => pace(1000 / v) } },
       tooltip: {
         ...chartBase.tooltip,
         trigger: "item",
-        formatter: (q: { data: [number, number, string, string] }) => `${Math.round(q.data[0] / 60)} min best<br/><b>${pace(1000 / q.data[1])}/km</b><br/><span style="color:#8d8a82">${q.data[2]} · ${formatDate(q.data[3])}</span>`,
+        formatter: (q: { data: [number, number, string, string] }) => `${Math.round(q.data[0] / 60)} min best<br/><b>${pace(1000 / q.data[1])}/km</b><br/><span style="color:${C.mute}">${q.data[2]} · ${formatDate(q.data[3])}</span>`,
       },
       series: [
-        { type: "scatter", data: cs.points.map((x) => [x.seconds, x.speed, x.name, x.day]), symbolSize: 9, itemStyle: { color: "#c8f560" } },
+        { type: "scatter", data: cs.points.map((x) => [x.seconds, x.speed, x.name, x.day]), symbolSize: 9, itemStyle: { color: C.lime } },
         ...(cs.valid && cs.cs_mps != null && cs.d_prime_m != null
           ? [{
-              type: "line", symbol: "none", lineStyle: { color: "#d9b26a", width: 2 },
+              type: "line", symbol: "none", lineStyle: { color: C.gold, width: 2 },
               data: Array.from({ length: 40 }, (_, i) => 150 + i * 30).map((t) => [t, cs.cs_mps! + cs.d_prime_m! / t]),
             }]
           : []),
@@ -491,9 +492,9 @@ function Performance({ d }: { d: Data }) {
   const histOption = useMemo<ChartOption>(
     () => ({
       ...chartBase,
-      yAxis: { ...chartBase.yAxis, inverse: true, axisLabel: { color: "#5c5a55", fontSize: 10, formatter: (v: number) => pace(v) } },
+      yAxis: { ...chartBase.yAxis, inverse: true, axisLabel: { color: C.faint, fontSize: 10, formatter: (v: number) => pace(v) } },
       tooltip: { ...chartBase.tooltip, trigger: "axis" },
-      series: [{ name: "Critical speed", type: "line", data: p.history.map((h) => [h.day, h.pace_s]), symbol: "circle", symbolSize: 6, lineStyle: { color: "#d9b26a", width: 2.5 }, itemStyle: { color: "#d9b26a" } }],
+      series: [{ name: "Critical speed", type: "line", data: p.history.map((h) => [h.day, h.pace_s]), symbol: "circle", symbolSize: 6, lineStyle: { color: C.gold, width: 2.5 }, itemStyle: { color: C.gold } }],
     }),
     [p.history],
   );
@@ -611,14 +612,14 @@ function Recovery({ d }: { d: Data }) {
       series: g
         ? [
             { name: "Normal low", type: "line", stack: "band", data: g.history.map((h) => [h.day, h.low]), symbol: "none", lineStyle: { opacity: 0 } },
-            { name: "Normal range", type: "line", stack: "band", data: g.history.map((h) => [h.day, +(h.high - h.low).toFixed(1)]), symbol: "none", lineStyle: { opacity: 0 }, areaStyle: { color: "rgba(91,227,176,0.12)" } },
-            { name: "7-day HRV", type: "line", data: g.history.map((h) => [h.day, h.mean7]), symbol: "none", lineStyle: { color: "#5be3b0", width: 2.5 } },
+            { name: "Normal range", type: "line", stack: "band", data: g.history.map((h) => [h.day, +(h.high - h.low).toFixed(1)]), symbol: "none", lineStyle: { opacity: 0 }, areaStyle: { color: `${C.mint}1f` } },
+            { name: "7-day HRV", type: "line", data: g.history.map((h) => [h.day, h.mean7]), symbol: "none", lineStyle: { color: C.mint, width: 2.5 } },
           ]
         : [],
     }),
     [g],
   );
-  const statusColor = !g ? "#8d8a82" : g.status === "below" ? "#ff6a55" : g.coping === "strained" ? "#ffbe55" : "#c8f560";
+  const statusColor = !g ? C.mute : g.status === "below" ? C.coral : g.coping === "strained" ? C.amber : C.lime;
   return (
     <Card id="recovery" title="Recovery" eyebrow="HRV-guided training and how long your body takes to absorb work">
       {d.warnings && (
@@ -636,7 +637,7 @@ function Recovery({ d }: { d: Data }) {
                   <p className="font-display text-4xl" style={{ color: statusColor }}>{g.green_light ? "Green light" : "Keep it easy"}</p>
                   <p className="text-xs text-dim">7-day {g.mean7_ms} ms · normal {g.range_ms[0]}–{g.range_ms[1]} ms</p>
                 </div>
-                <Big label="Day-to-day swing" value={g.cv7} unit="%" color={g.cv7 > g.cv_base * 1.25 ? "#ffbe55" : "#f2e8cf"} hint={`usual ${g.cv_base.toFixed(1)}%`} digits={1} />
+                <Big label="Day-to-day swing" value={g.cv7} unit="%" color={g.cv7 > g.cv_base * 1.25 ? C.amber : C.cream} hint={`usual ${g.cv_base.toFixed(1)}%`} digits={1} />
               </div>
               <Chart option={option} height={220} label="7-day HRV against normal range" />
             </>
@@ -746,24 +747,24 @@ function LoadChart({ d }: { d: Data }) {
       axisPointer: { link: [{ xAxisIndex: "all" }] },
       tooltip: { ...chartBase.tooltip, trigger: "axis" },
       series: [
-        { name: "Workout load", type: "bar", stack: "day", data: rows.map((r) => [r.day, r.load]), itemStyle: { color: "rgba(217,178,106,0.25)" }, barMaxWidth: 6 },
+        { name: "Workout load", type: "bar", stack: "day", data: rows.map((r) => [r.day, r.load]), itemStyle: { color: `${C.gold}40` }, barMaxWidth: 6 },
         ...(everyday.size
-          ? [{ name: "Everyday strain", type: "bar", stack: "day", data: rows.map((r) => [r.day, everyday.get(r.day) ?? 0]), itemStyle: { color: "rgba(108,199,255,0.35)" }, barMaxWidth: 6 }]
+          ? [{ name: "Everyday strain", type: "bar", stack: "day", data: rows.map((r) => [r.day, everyday.get(r.day) ?? 0]), itemStyle: { color: `${C.sky}59` }, barMaxWidth: 6 }]
           : []),
-        { name: "Fitness (42d)", type: "line", data: rows.map((r) => [r.day, r.fitness]), symbol: "none", lineStyle: { color: "#6cc7ff", width: 2.5 } },
-        { name: "Fatigue (7d)", type: "line", data: rows.map((r) => [r.day, r.fatigue]), symbol: "none", lineStyle: { color: "#ff6a55", width: 1.5 } },
+        { name: "Fitness (42d)", type: "line", data: rows.map((r) => [r.day, r.fitness]), symbol: "none", lineStyle: { color: C.sky, width: 2.5 } },
+        { name: "Fatigue (7d)", type: "line", data: rows.map((r) => [r.day, r.fatigue]), symbol: "none", lineStyle: { color: C.coral, width: 1.5 } },
         {
           name: "Form", type: "line", data: rows.map((r) => [r.day, r.form]), symbol: "none",
-          lineStyle: { color: "#c8f560", width: 1.5, type: "dashed" },
+          lineStyle: { color: C.lime, width: 1.5, type: "dashed" },
         },
         {
           name: "Acute:chronic", type: "line", xAxisIndex: 1, yAxisIndex: 1, data: rows.map((r) => [r.day, r.acwr]), symbol: "none",
-          lineStyle: { color: "#f2e8cf", width: 1.8 },
+          lineStyle: { color: C.cream, width: 1.8 },
           markArea: {
             silent: true,
             data: [
-              [{ yAxis: 0.8, itemStyle: { color: "rgba(200,245,96,0.08)" } }, { yAxis: 1.3 }],
-              [{ yAxis: 1.5, itemStyle: { color: "rgba(255,106,85,0.10)" } }, { yAxis: 2.2 }],
+              [{ yAxis: 0.8, itemStyle: { color: `${C.lime}14` } }, { yAxis: 1.3 }],
+              [{ yAxis: 1.5, itemStyle: { color: `${C.coral}1a` } }, { yAxis: 2.2 }],
             ],
           },
         },
@@ -779,10 +780,10 @@ function LoadChart({ d }: { d: Data }) {
       aside={<Segmented label="Range" options={[{ value: 60, label: "60D" }, { value: 120, label: "120D" }, { value: 365, label: "1Y" }]} value={range} onChange={setRange} />}
     >
       <div className="mb-6 grid grid-cols-2 gap-6 sm:grid-cols-4">
-        <Big label="Fitness" value={last?.fitness} color="#6cc7ff" hint="42-day load" />
-        <Big label="Fatigue" value={last?.fatigue} color="#ff6a55" hint="7-day load" />
-        <Big label="Form" value={last?.form} color="#c8f560" hint="fitness − fatigue" signed />
-        <Big label="Acute:chronic" value={last?.acwr} color="#f2e8cf" hint={last?.acwr == null ? "Shown after 28 days of data" : "sweet spot 0.8–1.3"} digits={2} />
+        <Big label="Fitness" value={last?.fitness} color={C.sky} hint="42-day load" />
+        <Big label="Fatigue" value={last?.fatigue} color={C.coral} hint="7-day load" />
+        <Big label="Form" value={last?.form} color={C.lime} hint="fitness − fatigue" signed />
+        <Big label="Acute:chronic" value={last?.acwr} color={C.cream} hint={last?.acwr == null ? "Shown after 28 days of data" : "sweet spot 0.8–1.3"} digits={2} />
       </div>
       <Chart option={option} height={380} label="Fitness, fatigue and form chart" />
     </Card>
@@ -811,13 +812,13 @@ function Intensity({ d }: { d: Data }) {
     () => ({
       ...chartBase,
       xAxis: { ...chartBase.xAxis, type: "category", data: weeks.map((w) => formatDate(w.week).replace(/ \d{4}$/, "")) },
-      yAxis: { ...chartBase.yAxis, max: 100, scale: false, axisLabel: { color: "#5c5a55", fontSize: 10, formatter: "{value}%" } },
+      yAxis: { ...chartBase.yAxis, max: 100, scale: false, axisLabel: { color: C.faint, fontSize: 10, formatter: "{value}%" } },
       tooltip: { ...chartBase.tooltip, trigger: "axis" },
       series: [
-        { name: "Easy Z1–2", type: "bar", stack: "z", data: weeks.map((w) => w.easy_pct), itemStyle: { color: "#5be3b0" }, barMaxWidth: 22,
-          markLine: { symbol: "none", silent: true, lineStyle: { color: "#f2e8cf", type: "dashed" }, label: { color: "#f2e8cf", formatter: "80% target", position: "insideEndTop" }, data: [{ yAxis: 80 }] } },
-        { name: "Moderate Z3", type: "bar", stack: "z", data: weeks.map((w) => w.moderate_pct), itemStyle: { color: "#ffbe55" } },
-        { name: "Hard Z4–5", type: "bar", stack: "z", data: weeks.map((w) => w.hard_pct), itemStyle: { color: "#ff6a55" } },
+        { name: "Easy Z1–2", type: "bar", stack: "z", data: weeks.map((w) => w.easy_pct), itemStyle: { color: C.mint }, barMaxWidth: 22,
+          markLine: { symbol: "none", silent: true, lineStyle: { color: C.cream, type: "dashed" }, label: { color: C.cream, formatter: "80% target", position: "insideEndTop" }, data: [{ yAxis: 80 }] } },
+        { name: "Moderate Z3", type: "bar", stack: "z", data: weeks.map((w) => w.moderate_pct), itemStyle: { color: C.amber } },
+        { name: "Hard Z4–5", type: "bar", stack: "z", data: weeks.map((w) => w.hard_pct), itemStyle: { color: C.coral } },
       ],
     }),
     [weeks],
@@ -826,11 +827,11 @@ function Intensity({ d }: { d: Data }) {
     <Card id="intensity" title="Intensity balance" eyebrow="Run, ride and swim time by heart-rate zone">
       {split && (
         <div className="mb-6 flex flex-wrap gap-8">
-          <Big label="Easy · 28d" value={split.easy_pct} color="#5be3b0" hint="target ~80%" />
-          <Big label="Moderate" value={split.moderate_pct} color="#ffbe55" hint="'grey zone'" />
-          <Big label="Hard" value={split.hard_pct} color="#ff6a55" />
-          {split.hard_sessions_pct != null && <Big label="Hard sessions" value={split.hard_sessions_pct} color="#f2e8cf" hint="target ~20%" />}
-          {split.by_sport.run && Object.keys(split.by_sport).length > 1 && <Big label="Runs easy" value={split.by_sport.run.easy_pct} color="#5be3b0" hint="running only" />}
+          <Big label="Easy · 28d" value={split.easy_pct} color={C.mint} hint="target ~80%" />
+          <Big label="Moderate" value={split.moderate_pct} color={C.amber} hint="'grey zone'" />
+          <Big label="Hard" value={split.hard_pct} color={C.coral} />
+          {split.hard_sessions_pct != null && <Big label="Hard sessions" value={split.hard_sessions_pct} color={C.cream} hint="target ~20%" />}
+          {split.by_sport.run && Object.keys(split.by_sport).length > 1 && <Big label="Runs easy" value={split.by_sport.run.easy_pct} color={C.mint} hint="running only" />}
         </div>
       )}
       {weeks.length ? <Chart option={option} height={260} label="Weekly intensity distribution" /> : <p className="text-sm text-dim">No zone data yet.</p>}
@@ -841,7 +842,7 @@ function Intensity({ d }: { d: Data }) {
 function Weeks({ d }: { d: Data }) {
   const weeks = d.weeks.slice(-16);
   const families = Array.from(new Set(weeks.flatMap((w) => Object.keys(w.sessions))));
-  const colors: Record<string, string> = { run: "#c8f560", strength: "#ff6a55", ride: "#6cc7ff", walk: "#ffbe55", swim: "#5be3b0", mind: "#9b8cff", other: "#5c5a55" };
+  const colors: Record<string, string> = { run: C.lime, strength: C.coral, ride: C.sky, walk: C.amber, swim: C.mint, mind: C.violet, other: C.faint };
   const option = useMemo<ChartOption>(
     () => ({
       ...chartBase,
@@ -850,9 +851,9 @@ function Weeks({ d }: { d: Data }) {
       tooltip: { ...chartBase.tooltip, trigger: "axis" },
       series: [
         ...families.map((f) => ({
-          name: f, type: "bar", stack: "s", data: weeks.map((w) => w.sessions[f] ?? 0), itemStyle: { color: colors[f] ?? "#8d8a82" }, barMaxWidth: 22,
+          name: f, type: "bar", stack: "s", data: weeks.map((w) => w.sessions[f] ?? 0), itemStyle: { color: colors[f] ?? C.mute }, barMaxWidth: 22,
         })),
-        { name: "Run km", type: "line", yAxisIndex: 1, data: weeks.map((w) => w.run_km), symbol: "circle", symbolSize: 5, lineStyle: { color: "#f2e8cf" }, itemStyle: { color: "#f2e8cf" } },
+        { name: "Run km", type: "line", yAxisIndex: 1, data: weeks.map((w) => w.run_km), symbol: "circle", symbolSize: 5, lineStyle: { color: C.cream }, itemStyle: { color: C.cream } },
       ],
     }),
     [weeks, families],
@@ -862,10 +863,10 @@ function Weeks({ d }: { d: Data }) {
     <Card id="weeks" title="Weekly rhythm" eyebrow="Sessions by type · line is running km">
       {last && (
         <div className="mb-6 flex flex-wrap gap-8">
-          <Big label="Last week" value={last.total_sessions} color="#f2e8cf" hint="training sessions" />
-          <Big label="Strength" value={last.strength_sessions} color="#ff6a55" hint="target 2" />
-          <Big label="Rest days" value={last.rest_days} color="#6cc7ff" />
-          <Big label="Monotony" value={last.monotony} color={last.monotony && last.monotony > 2 ? "#ffbe55" : "#f2e8cf"} hint="flag above 2" digits={1} />
+          <Big label="Last week" value={last.total_sessions} color={C.cream} hint="training sessions" />
+          <Big label="Strength" value={last.strength_sessions} color={C.coral} hint="target 2" />
+          <Big label="Rest days" value={last.rest_days} color={C.sky} />
+          <Big label="Monotony" value={last.monotony} color={last.monotony && last.monotony > 2 ? C.amber : C.cream} hint="flag above 2" digits={1} />
         </div>
       )}
       <Chart option={option} height={260} label="Weekly sessions" />
@@ -882,15 +883,15 @@ function Aerobic({ d }: { d: Data }) {
   const effOption = useMemo<ChartOption>(
     () => ({
       ...chartBase,
-      yAxis: { ...chartBase.yAxis, inverse: true, axisLabel: { color: "#5c5a55", fontSize: 10, formatter: (v: number) => pace(v) } },
+      yAxis: { ...chartBase.yAxis, inverse: true, axisLabel: { color: C.faint, fontSize: 10, formatter: (v: number) => pace(v) } },
       tooltip: {
         ...chartBase.tooltip,
         trigger: "item",
-        formatter: (p: { data: [string, number, string] }) => `${formatDate(p.data[0])}<br/><b>${pace(p.data[1])}/km</b> at ${ref} bpm<br/><span style="color:#8d8a82">${p.data[2]}</span>`,
+        formatter: (p: { data: [string, number, string] }) => `${formatDate(p.data[0])}<br/><b>${pace(p.data[1])}/km</b> at ${ref} bpm<br/><span style="color:${C.mute}">${p.data[2]}</span>`,
       },
       series: [
-        { type: "scatter", data: runs.map((r) => [r.day, r.pace_s, r.name]), symbolSize: 6, itemStyle: { color: "rgba(200,245,96,0.45)" } },
-        { type: "line", data: (t?.monthly ?? []).map((m) => [`${m.month}-15`, m.pace_s]), symbol: "circle", symbolSize: 6, lineStyle: { color: "#c8f560", width: 2.5 }, itemStyle: { color: "#c8f560" } },
+        { type: "scatter", data: runs.map((r) => [r.day, r.pace_s, r.name]), symbolSize: 6, itemStyle: { color: `${C.lime}73` } },
+        { type: "line", data: (t?.monthly ?? []).map((m) => [`${m.month}-15`, m.pace_s]), symbol: "circle", symbolSize: 6, lineStyle: { color: C.lime, width: 2.5 }, itemStyle: { color: C.lime } },
       ],
     }),
     [runs, t, ref],
@@ -899,18 +900,18 @@ function Aerobic({ d }: { d: Data }) {
   const durOption = useMemo<ChartOption>(
     () => ({
       ...chartBase,
-      yAxis: { ...chartBase.yAxis, axisLabel: { color: "#5c5a55", fontSize: 10, formatter: "{value}%" } },
+      yAxis: { ...chartBase.yAxis, axisLabel: { color: C.faint, fontSize: 10, formatter: "{value}%" } },
       tooltip: {
         ...chartBase.tooltip,
         trigger: "item",
-        formatter: (p: { data: [string, number, string, number, boolean] }) => `${formatDate(p.data[0])} · ${p.data[3]} min<br/><b>${p.data[1]}% drift</b>${p.data[4] ? "" : " (unsteady pace)"}<br/><span style="color:#8d8a82">${p.data[2]}</span>`,
+        formatter: (p: { data: [string, number, string, number, boolean] }) => `${formatDate(p.data[0])} · ${p.data[3]} min<br/><b>${p.data[1]}% drift</b>${p.data[4] ? "" : " (unsteady pace)"}<br/><span style="color:${C.mute}">${p.data[2]}</span>`,
       },
       series: [
         {
           type: "scatter",
-          data: dur.map((r) => ({ value: [r.day, r.decoupling_pct, r.name, r.minutes, r.steady], itemStyle: { color: r.steady ? (r.decoupling_pct > 5 ? "#ffbe55" : "#5be3b0") : "#34343a" } })),
+          data: dur.map((r) => ({ value: [r.day, r.decoupling_pct, r.name, r.minutes, r.steady], itemStyle: { color: r.steady ? (r.decoupling_pct > 5 ? C.amber : C.mint) : C.lineStrong } })),
           symbolSize: (v: [string, number, string, number]) => Math.max(6, Math.min(18, v[3] / 8)),
-          markLine: { symbol: "none", silent: true, lineStyle: { color: "#ff6a55", type: "dashed" }, label: { color: "#ff6a55", formatter: "5% benchmark", position: "insideEndTop" }, data: [{ yAxis: 5 }] },
+          markLine: { symbol: "none", silent: true, lineStyle: { color: C.coral, type: "dashed" }, label: { color: C.coral, formatter: "5% benchmark", position: "insideEndTop" }, data: [{ yAxis: 5 }] },
         },
       ],
     }),
@@ -919,7 +920,7 @@ function Aerobic({ d }: { d: Data }) {
   const vo2Option = useMemo<ChartOption>(
     () => ({
       ...chartBase,
-      series: [{ type: "line", data: d.vo2max.map((v) => [v.day, v.value]), symbol: "none", step: "end", lineStyle: { color: "#d9b26a", width: 2.5 }, areaStyle: { color: "rgba(217,178,106,0.08)" } }],
+      series: [{ type: "line", data: d.vo2max.map((v) => [v.day, v.value]), symbol: "none", step: "end", lineStyle: { color: C.gold, width: 2.5 }, areaStyle: { color: `${C.gold}14` } }],
     }),
     [d.vo2max],
   );
@@ -938,7 +939,7 @@ function Aerobic({ d }: { d: Data }) {
           </p>
           <p className="text-xs text-dim">{t ? (t.significant ? "statistically clear" : "within noise") : ""}</p>
         </div>
-        {d.vo2max.length > 0 && <Big label="VO₂ max" value={d.vo2max.at(-1)?.value} color="#d9b26a" hint="Garmin estimate" />}
+        {d.vo2max.length > 0 && <Big label="VO₂ max" value={d.vo2max.at(-1)?.value} color={C.gold} hint="Garmin estimate" />}
       </div>
       <div className="grid gap-8 xl:grid-cols-2">
         <div>
@@ -979,7 +980,7 @@ function Sleep({ d }: { d: Data }) {
       ...chartBase,
       yAxis: {
         ...chartBase.yAxis, type: "value", inverse: true, scale: false, min: -180, max: 720,
-        axisLabel: { color: "#5c5a55", fontSize: 10, formatter: (v: number) => clock(v) },
+        axisLabel: { color: C.faint, fontSize: 10, formatter: (v: number) => clock(v) },
       },
       tooltip: {
         ...chartBase.tooltip,
@@ -995,9 +996,9 @@ function Sleep({ d }: { d: Data }) {
             const end = api.coord([api.value(0), api.value(2)]);
             const width = Math.max(3, api.size([86_400_000, 0])[0] * 0.6);
             const hours = api.value(3);
-            return { type: "rect", shape: { x: start[0] - width / 2, y: start[1], width, height: end[1] - start[1] }, style: { fill: hours >= need - 0.25 ? "#6cc7ff" : "#ffbe55", opacity: 0.85 } };
+            return { type: "rect", shape: { x: start[0] - width / 2, y: start[1], width, height: end[1] - start[1] }, style: { fill: hours >= need - 0.25 ? C.sky : C.amber, opacity: 0.85 } };
           },
-          markArea: { silent: true, itemStyle: { color: "rgba(255,255,255,0.03)" }, data: [[{ yAxis: -60 }, { yAxis: 0 }]] },
+          markArea: { silent: true, itemStyle: { color: `${C.paper}08` }, data: [[{ yAxis: -60 }, { yAxis: 0 }]] },
         },
       ],
     }),
@@ -1031,7 +1032,7 @@ function Sleep({ d }: { d: Data }) {
       )}
       {p && (
         <div className="mb-6 grid grid-cols-2 gap-6 sm:grid-cols-5">
-          <Big label="Avg sleep · 14d" value={p.avg_hours} color={p.avg_hours >= need - 0.25 ? "#6cc7ff" : "#ffbe55"} digits={1} hint="hours" />
+          <Big label="Avg sleep · 14d" value={p.avg_hours} color={p.avg_hours >= need - 0.25 ? C.sky : C.amber} digits={1} hint="hours" />
           <div>
             <p className="eyebrow mb-1">Avg bedtime</p>
             <p className="num text-4xl text-paper">{p.avg_bedtime_min != null ? clock(p.avg_bedtime_min) : "—"}</p>
@@ -1042,8 +1043,8 @@ function Sleep({ d }: { d: Data }) {
             <p className="num text-4xl text-paper">{p.avg_wake_min != null ? clock(p.avg_wake_min) : "—"}</p>
             {p.wake_sd_min != null && <p className="text-xs text-dim">± {p.wake_sd_min} min</p>}
           </div>
-          <Big label="7-day debt" value={p.debt_hours} color="#ffbe55" digits={1} hint={`hours vs ${need} h/night`} />
-          {sri && <Big label="Regularity" value={sri.sri} color={sri.sri >= 80 ? "#6cc7ff" : "#ffbe55"} hint={`SRI · midpoint ±${sri.midpoint_sd_min} min`} />}
+          <Big label="7-day debt" value={p.debt_hours} color={C.amber} digits={1} hint={`hours vs ${need} h/night`} />
+          {sri && <Big label="Regularity" value={sri.sri} color={sri.sri >= 80 ? C.sky : C.amber} hint={`SRI · midpoint ±${sri.midpoint_sd_min} min`} />}
         </div>
       )}
       {nights.some((n) => n.bedtime != null) ? (
@@ -1077,7 +1078,7 @@ function Effects({ effects }: { effects: Effect[] }) {
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           {shown.map((e) => {
             const better = e.higher_is_better ? e.diff > 0 : e.diff < 0;
-            const color = !e.significant ? "#8d8a82" : better ? "#c8f560" : "#ff6a55";
+            const color = !e.significant ? C.mute : better ? C.lime : C.coral;
             return (
               <div key={e.id} className="border border-line bg-ink/40 p-5">
                 <p className="eyebrow mb-2">{e.cause} → {e.outcome}</p>
@@ -1152,7 +1153,7 @@ function Methods() {
 
 // ---- is it working? ---------------------------------------------------------------------
 
-const STATE_STYLE = { better: { color: "#c8f560", sign: "▲" }, worse: { color: "#ff6a55", sign: "▼" }, flat: { color: "#8d8a82", sign: "●" }, missing: { color: "#5c5a55", sign: "–" } } as const;
+const STATE_STYLE = { better: { color: C.lime, sign: "▲" }, worse: { color: C.coral, sign: "▼" }, flat: { color: C.mute, sign: "●" }, missing: { color: C.faint, sign: "–" } } as const;
 const fmtMarker = (m: Outcomes_Marker, v: number | null) => (v == null ? "—" : m.key === "sleep" ? v.toFixed(1) : m.key === "efficiency" ? v.toFixed(3) : m.key === "critical_speed" ? `${Math.floor(1000 / v / 60)}:${String(Math.round((1000 / v) % 60)).padStart(2, "0")}` : v.toFixed(m.key === "fitness" ? 0 : 1));
 
 function OutcomesCard() {
@@ -1160,7 +1161,7 @@ function OutcomesCard() {
   if (q.isPending) return <LoadingBlock height={200} />;
   if (q.isError || !q.data.has_data) return null;
   const o = q.data;
-  const tone = o.headline.tone === "good" ? "#c8f560" : o.headline.tone === "warn" ? "#ffbe55" : "#6cc7ff";
+  const tone = o.headline.tone === "good" ? C.lime : o.headline.tone === "warn" ? C.amber : C.sky;
   return (
     <Card id="outcomes" title="Is it working?" eyebrow="The last 12 weeks against the 12 before">
       <p className="mb-5 max-w-3xl text-paper" style={{ borderLeft: `3px solid ${tone}`, paddingLeft: 12 }}>{o.headline.text}</p>

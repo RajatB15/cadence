@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import json
 import re
+import threading
 from datetime import date, datetime, timedelta
 from functools import lru_cache
 from pathlib import Path
@@ -44,6 +45,7 @@ class FoodError(ValueError):
 MIN_CATALOGUE_TO_RETIRE_OLD = 100  # only retire the older built-in dishes once a real catalogue is loaded
 OLD_SOURCES = ("starter", "INDB", "IFCT")
 _APPLIED: dict[str, tuple] = {}
+_APPLY_LOCK = threading.Lock()  # two first requests must not both insert the library (names are unique)
 
 
 @lru_cache(maxsize=2)
@@ -77,6 +79,16 @@ def _apply(row: FoodDish, d: dict) -> None:
 
 
 def ensure_catalogue(session: Session, now: datetime, food_data_dir: Path | None = None) -> None:
+    path = food_data_dir / "library" / "catalogue.json" if food_data_dir else None
+    stamp = path.stat().st_mtime if path and path.is_file() else None
+    if _APPLIED.get(str(session.get_bind().url)) == stamp:
+        return
+    with _APPLY_LOCK:  # the second caller waits, then finds it already applied
+        session.rollback()  # see what the first caller committed, not a stale snapshot
+        _ensure_catalogue(session, now, food_data_dir)
+
+
+def _ensure_catalogue(session: Session, now: datetime, food_data_dir: Path | None = None) -> None:
     """Adds missing catalogue dishes and refreshes the ones you haven't edited.
 
     Matching is by the catalogue code, so your own dishes are never touched and nothing is added twice. A built-in dish

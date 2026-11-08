@@ -174,7 +174,7 @@ function Settings({ view }: { view: TimeOffView }) {
               {x.label}
               <span className="num text-gold">{draft[x.key]} <span className="text-[11px] text-dim">{x.unit}</span></span>
             </span>
-            <input type="range" min={r.min} max={r.max} step={x.step} value={draft[x.key]} onChange={(e) => setDraft({ ...draft, [x.key]: e.target.value })} className="mt-2 w-full accent-[#d9b26a]" />
+            <input type="range" min={r.min} max={r.max} step={x.step} value={draft[x.key]} onChange={(e) => setDraft({ ...draft, [x.key]: e.target.value })} className="mt-2 w-full accent-gold" />
             <span className="flex justify-between text-[11px] text-dim"><span>{x.help}</span><span className="shrink-0 pl-3">usual {def}</span></span>
           </label>
         );
