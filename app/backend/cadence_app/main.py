@@ -17,7 +17,7 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from cadence_app import energy_store, focus_store, food_label, garmin_connect, garmin_workout, backup, days, events, food_crawl, foodlog, food_quick, goal_store, journal, ocr, phases, planner_store, profile as profile_store, push, reading, reading_feed, strength, timeoff_store, weather, weightlog, wellbeing_store
+from cadence_app import food_names, energy_store, focus_store, food_label, garmin_connect, garmin_workout, backup, days, events, food_crawl, foodlog, food_quick, goal_store, journal, ocr, phases, planner_store, profile as profile_store, push, reading, reading_feed, strength, timeoff_store, weather, weightlog, wellbeing_store
 from cadence_app.analytics import foodrank as foodrank_analytics
 from cadence_app.analytics import accuracy as accuracy_analytics
 from cadence_app.analytics import banister as banister_analytics
@@ -296,6 +296,16 @@ class FoodDishPatch(BaseModel):
     barcode: str | None = Field(default=None, max_length=24)  # null clears it
 
 
+class FoodNameRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=200)  # trimmed and checked (1-60 characters) by food_names
+    preferred: bool = False
+
+
+class FoodNamePatch(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=200)
+    preferred: bool | None = None
+
+
 class FoodEntryRequest(BaseModel):
     day: date
     meal: Literal["breakfast", "lunch", "snack", "dinner"]
@@ -314,6 +324,7 @@ class FoodEntryRequest(BaseModel):
     eaten_at: str | None = Field(default=None, max_length=8)  # local "HH:MM"; omitted = now for today, unknown for another day
     unit: str | None = Field(default=None, max_length=40)  # the unit the amount was entered in (remembered per dish)
     source: Literal["manual", "quick", "chip", "scan", "copy"] | None = None
+    via_alias: int | None = Field(default=None, ge=1)  # id of the "my name" it was picked by (counts towards ranking that name)
 
 
 class LabelText(BaseModel):
@@ -339,6 +350,7 @@ class FoodLogItem(BaseModel):
     carbs_g: float | None = Field(default=None, ge=0, le=1000)
     fat_g: float | None = Field(default=None, ge=0, le=500)
     save_dish: bool = False
+    via_alias: int | None = Field(default=None, ge=1)  # id of the "my name" the dish was picked by
 
 
 class FoodLogRequest(BaseModel):
@@ -1702,6 +1714,52 @@ def create_app(
             raise HTTPException(404, "No such dish")
         return dish
 
+    def _count_alias(session: Session, dish_id: int | None, alias_id: int | None) -> None:
+        if alias_id is not None:
+            food_names.bump(session, dish_id, alias_id, clock.now())
+            session.commit()
+
+    @app.get("/api/food/search")
+    def food_search(q: str = Query(default="", max_length=120), limit: int = Query(default=20, ge=1, le=50),
+                    session: Session = Depends(get_session)) -> dict:
+        """Forgiving search over dish names, library aliases and your own names (yours first). See analytics/foodsearch.py."""
+        foodlog.ensure_catalogue(session, clock.now(), settings.food_data_dir)
+        return {"query": q.strip(), "results": food_names.search(session, q, clock.today(), limit) if q.strip() else []}
+
+    def _name_result(dish, alias=None) -> dict:
+        out = {"dish": foodlog.dish_dict(dish)}
+        if alias is not None:
+            out["alias"] = foodlog.alias_dict(alias)
+        return out
+
+    @app.post("/api/food/dishes/{dish_id}/names")
+    def food_name_add(dish_id: int, body: FoodNameRequest, session: Session = Depends(get_session)) -> dict:
+        try:
+            return _name_result(*food_names.add(session, dish_id, body.name, body.preferred, clock.now()))
+        except LookupError:
+            raise HTTPException(404, "No such dish") from None
+        except foodlog.FoodError as exc:
+            raise HTTPException(400, str(exc)) from None
+
+    @app.patch("/api/food/dishes/{dish_id}/names/{alias_id}")
+    def food_name_update(dish_id: int, alias_id: int, body: FoodNamePatch, session: Session = Depends(get_session)) -> dict:
+        values = body.model_dump(exclude_unset=True)
+        if not values:
+            raise HTTPException(400, "Nothing to change")
+        try:
+            return _name_result(*food_names.update_name(session, dish_id, alias_id, values))
+        except LookupError as exc:
+            raise HTTPException(404, str(exc)) from None
+        except foodlog.FoodError as exc:
+            raise HTTPException(400, str(exc)) from None
+
+    @app.delete("/api/food/dishes/{dish_id}/names/{alias_id}")
+    def food_name_delete(dish_id: int, alias_id: int, session: Session = Depends(get_session)) -> dict:
+        try:
+            return {"deleted": alias_id, **_name_result(food_names.remove(session, dish_id, alias_id))}
+        except LookupError as exc:
+            raise HTTPException(404, str(exc)) from None
+
     @app.post("/api/food/entries")
     def food_entry_add(body: FoodEntryRequest, request: Request, session: Session = Depends(get_session)) -> dict:
         key = (body.client_key or request.headers.get("idempotency-key") or "").strip()[:64] or None
@@ -1710,8 +1768,10 @@ def create_app(
         try:
             eaten = _eaten(body.day, body.eaten_at)
             if body.dish_id is not None:
-                return foodlog.log_dish(session, body.day, body.meal, body.dish_id, body.servings, body.eating_out,
-                                        clock.today(), clock.now(), body.grams, key, eaten, body.source or "manual", body.unit)
+                entry = foodlog.log_dish(session, body.day, body.meal, body.dish_id, body.servings, body.eating_out,
+                                         clock.today(), clock.now(), body.grams, key, eaten, body.source or "manual", body.unit)
+                _count_alias(session, body.dish_id, body.via_alias)
+                return entry
             if body.name and body.kcal:
                 return foodlog.log_quick(session, body.day, body.meal, body.name, body.kcal, body.protein_g,
                                          clock.today(), clock.now(), body.carbs_g, body.fat_g, body.save_dish, key, eaten, body.source or "quick")
@@ -1724,8 +1784,12 @@ def create_app(
         """A whole meal in one transaction. The Idempotency-Key header (or `client_key`) makes a retry return the original."""
         key = (body.client_key or request.headers.get("idempotency-key") or "").strip() or None
         try:
-            return foodlog.log_batch(session, body.day, body.meal, [i.model_dump() for i in body.items], body.eating_out,
+            done = foodlog.log_batch(session, body.day, body.meal, [i.model_dump(exclude={"via_alias"}) for i in body.items], body.eating_out,
                                      _eaten(body.day, body.eaten_at), key, body.source, clock.today(), clock.now())
+            if not done.get("replayed"):
+                for item in body.items:
+                    _count_alias(session, item.dish_id, item.via_alias)
+            return done
         except foodlog.FoodError as exc:
             raise HTTPException(400, str(exc)) from None
 

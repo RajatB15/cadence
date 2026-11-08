@@ -17,7 +17,7 @@ export const OUT_SPREAD_PCT = 35;
 export type RowFlag = "rough" | "zero" | "check_amount" | "unit_assumed" | "ml_assumed" | "unit_unknown" | "no_grams";
 
 /** The dish fields a row needs; a full FoodDish satisfies it. */
-export type RowDish = Pick<FoodDish, "id" | "name" | "unit" | "unit_g" | "kcal" | "protein_g" | "spread_pct" | "source" | "basis" | "grams_ok" | "per_100g" | "portions" | "aliases"> & { pinned?: boolean };
+export type RowDish = Pick<FoodDish, "id" | "name" | "unit" | "unit_g" | "kcal" | "protein_g" | "spread_pct" | "source" | "basis" | "grams_ok" | "per_100g" | "portions" | "aliases"> & { pinned?: boolean; my_names?: FoodDish["my_names"]; display_name?: string };
 
 export interface FoodRow {
   id: string;
@@ -25,7 +25,9 @@ export interface FoodRow {
   kind: "dish" | "kcal" | "none";
   dish: RowDish | null;
   dishId: number | null;
-  candidates: { id: number; name: string; score: number }[];
+  candidates: { id: number; name: string; score: number; via?: { kind: "mine" | "alias"; text: string } }[];
+  /** Why the top dish matched (your name or a library alias), when not its own name. */
+  via?: { kind: "mine" | "alias"; text: string };
   /** What was typed. */
   qty: number | null;
   unit: string | null;

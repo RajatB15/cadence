@@ -352,7 +352,7 @@ function Weeks({ items, log, selection }: { items: ActivityItem[]; log: Log | nu
   const thisWeek = log ? weekKey(log.as_of) : null;
 
   return (
-    <div className="space-y-6">
+    <div className="stagger space-y-6">
       {groups.map((g) => {
         const w = log?.weeks[g.key];
         const start = parseDay(g.key);
@@ -400,7 +400,7 @@ function Weeks({ items, log, selection }: { items: ActivityItem[]; log: Log | nu
                 </>
               )}
             </header>
-            <ul className="divide-y divide-line px-6">
+            <ul className="stagger divide-y divide-line px-6">
               {g.items.map((a) => (
                 <ActivityRow key={a.id} a={a} selection={selection && { selected: selection.picked.has(a.id), toggle: () => selection.toggle(a.id) }} />
               ))}

@@ -332,6 +332,15 @@ export const api = {
   foodCrawl: () => request<{ progress: FoodCrawlProgress | null }>("/api/food/crawl"),
   foodDishes: () => request<{ dishes: FoodDish[] }>("/api/food/dishes"),
   addFoodDish: (dish: FoodDishInput) => request<FoodDish>("/api/food/dishes", { method: "POST", body: JSON.stringify(dish) }),
+  addDishName: (dishId: number, name: string, preferred: boolean, idempotencyKey?: string) =>
+    request<unknown>(`/api/food/dishes/${dishId}/names`, {
+      method: "POST",
+      body: JSON.stringify({ name, preferred }),
+      headers: idempotencyKey ? { "Idempotency-Key": idempotencyKey } : undefined,
+    }),
+  deleteDishName: (dishId: number, aliasId: number) => request<unknown>(`/api/food/dishes/${dishId}/names/${aliasId}`, { method: "DELETE" }),
+  setDishNamePreferred: (dishId: number, aliasId: number, preferred: boolean) =>
+    request<unknown>(`/api/food/dishes/${dishId}/names/${aliasId}`, { method: "PATCH", body: JSON.stringify({ preferred }) }),
   addFoodEntry: (entry: FoodEntryInput, idempotencyKey?: string) =>
     request<unknown>("/api/food/entries", {
       method: "POST",

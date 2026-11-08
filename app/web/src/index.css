@@ -435,7 +435,11 @@
   *::before,
   *::after {
     transition-duration: 0.01ms !important;
+    transition-delay: 0s !important;
     animation-duration: 0.01ms !important;
+    animation-delay: 0s !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
   }
 }
 
@@ -518,3 +522,85 @@ body {
 }
 @keyframes dlg-fade { from { opacity: 0; } }
 @keyframes dlg-up { from { transform: translateY(40px); opacity: 0; } }
+
+/* ================= Motion system (tokens and helpers: lib/motion.ts, rules: docs/ui-system.md) ================= */
+
+/* Lets height animate to and from `auto` where supported (accordions); ignored elsewhere. */
+:root {
+  interpolate-size: allow-keywords;
+}
+
+/* Press feedback for every plain button without opting in: uses `scale`, so it composes with any transform.
+   .pop, .press and .chip already have their own spring. */
+@layer base {
+  button:not(:disabled):not(.pop):not(.press):not(.chip):not([data-no-press]),
+  summary {
+    transition: scale 0.22s var(--ease-spring);
+  }
+  button:not(:disabled):not(.pop):not(.press):not(.chip):not([data-no-press]):active,
+  summary:active {
+    scale: 0.97;
+    transition-duration: 0.08s;
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  /* Staggered entrance: put `stagger` on any list or grid container; children rise in 45ms apart, capped at 8.
+     CSS animations run when an element is inserted, so refetches (same keys) never replay it. */
+  .stagger > * {
+    animation: rise-in 0.5s var(--ease-snap) backwards;
+    animation-delay: calc(var(--stagger-i, 0) * 45ms);
+  }
+  .stagger > :nth-child(2) { --stagger-i: 1; }
+  .stagger > :nth-child(3) { --stagger-i: 2; }
+  .stagger > :nth-child(4) { --stagger-i: 3; }
+  .stagger > :nth-child(5) { --stagger-i: 4; }
+  .stagger > :nth-child(6) { --stagger-i: 5; }
+  .stagger > :nth-child(7) { --stagger-i: 6; }
+  .stagger > :nth-child(8) { --stagger-i: 7; }
+  .stagger > :nth-child(n + 9) { --stagger-i: 8; }
+
+  /* Skeleton to content: the real content fades in over the spot the skeleton held. */
+  .fade-in {
+    animation: fade-in 0.4s var(--ease-out-expo) backwards;
+  }
+  @keyframes fade-in {
+    from { opacity: 0; }
+  }
+
+  /* Accordions: <details> content fades down as it opens; the box itself eases open where ::details-content is supported. */
+  details[open] > :not(summary) {
+    animation: details-in 0.32s var(--ease-out-expo);
+  }
+  @keyframes details-in {
+    from { opacity: 0; transform: translateY(-6px); }
+  }
+  details::details-content {
+    block-size: 0;
+    overflow: clip;
+    transition: block-size 0.3s var(--ease-out-expo), content-visibility 0.3s allow-discrete;
+  }
+  details[open]::details-content {
+    block-size: auto;
+  }
+
+  /* Focus rings are pulled in from a little further out instead of popping. */
+  :focus-visible {
+    animation: focus-pull 0.22s var(--ease-out-expo);
+  }
+  @keyframes focus-pull {
+    from { outline-offset: 8px; outline-color: transparent; }
+  }
+}
+
+/* Hover lift, only where there is a real hover (never on touch). */
+@media (hover: hover) and (prefers-reduced-motion: no-preference) {
+  a.surface:hover,
+  .lift:hover {
+    transform: translateY(-2px);
+  }
+  a.surface,
+  .lift {
+    transition: transform 0.4s var(--ease-out-expo), border-color 0.25s, box-shadow 0.4s;
+  }
+}

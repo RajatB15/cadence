@@ -500,7 +500,7 @@ function MiniRing({ done, target, low }: { done: number; target: number; low?: n
   const r = 22;
   const circ = 2 * Math.PI * r;
   return (
-    <div className="relative h-14 w-14">
+    <div data-ring-fit="mini" data-inner="77" className="relative h-14 w-14">
       <svg viewBox="0 0 52 52" className="h-full w-full -rotate-90">
         <circle cx="26" cy="26" r={r} fill="none" stroke={C.grid} strokeWidth="4" />
         <motion.circle

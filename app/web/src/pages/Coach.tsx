@@ -223,7 +223,7 @@ function Readiness({ d }: { d: Data }) {
   return (
     <section className="surface edge p-5 sm:p-8" style={edge(color)}>
       <div className="grid items-center gap-10 lg:grid-cols-[auto_1fr_minmax(0,22rem)]">
-        <div className="relative mx-auto h-48 w-48">
+        <div data-ring-fit="readiness" data-inner="81" className="relative mx-auto h-48 w-48">
           <svg viewBox="0 0 160 160" className="h-full w-full -rotate-90">
             <circle cx="80" cy="80" r="70" fill="none" stroke={C.grid} strokeWidth="10" />
             <motion.circle

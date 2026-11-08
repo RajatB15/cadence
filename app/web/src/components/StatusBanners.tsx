@@ -1,4 +1,6 @@
+import { AnimatePresence, motion } from "motion/react";
 import { edge } from "../lib/color";
+import { EASE } from "../lib/motion";
 import { C } from "../lib/theme";
 import { WifiOff, RefreshCw } from "lucide-react";
 import { useOnline } from "../lib/online";
@@ -8,9 +10,11 @@ import { useUpdateReady } from "../lib/useAppLifecycle";
 export function StatusBanners() {
   const online = useOnline();
   const update = useUpdateReady();
-  if (online && !update) return null;
+  const pop = { initial: { opacity: 0, y: -10 }, animate: { opacity: 1, y: 0 }, exit: { opacity: 0, y: -8 }, transition: { duration: 0.3, ease: EASE.outExpo } };
   return (
-    <div className="mb-6 flex flex-col gap-2">
+    <AnimatePresence initial={false}>
+      {(!online || update) && (
+    <motion.div key="banners" {...pop} className="mb-6 flex flex-col gap-2">
       {!online && (
         <div role="status" className="surface edge flex items-center gap-3 px-4 py-3 text-sm text-amber" style={edge(C.amber)}>
           <WifiOff size={16} aria-hidden />
@@ -28,6 +32,8 @@ export function StatusBanners() {
           </button>
         </div>
       )}
-    </div>
+    </motion.div>
+      )}
+    </AnimatePresence>
   );
 }

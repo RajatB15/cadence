@@ -2,12 +2,13 @@ import * as Tooltip from "@radix-ui/react-tooltip";
 import { clsx } from "clsx";
 import { Activity, AlertTriangle, Archive, BookOpen, CalendarCheck, FlaskConical, Flag, Flame, Gauge, LayoutGrid, Scale, Settings2, Utensils } from "lucide-react";
 import { motion, useReducedMotion } from "motion/react";
-import type { ReactNode } from "react";
+import { useRef, type ReactNode } from "react";
 import { NavLink, Outlet, useLocation, useMatch } from "react-router-dom";
 import { CondensedTitle } from "./CondensedTitle";
 import { RefreshRailButton } from "./RefreshButton";
 import { ReminderBanner } from "./ReminderBanner";
 import { StatusBanners } from "./StatusBanners";
+import { MORPH_SPRING, routeDirection, routeMotion } from "../lib/motion";
 import { C } from "../lib/theme";
 
 const NAV = [
@@ -99,7 +100,7 @@ function TabLink({ to, label, icon: Icon }: (typeof NAV)[number]) {
         <motion.span
           layoutId="tab-pill"
           className="absolute inset-0 rounded-[20px] bg-[var(--pill)] shadow-[inset_0_1px_0_var(--rim-top)]"
-          transition={{ type: "spring", stiffness: 520, damping: 38 }}
+          transition={MORPH_SPRING}
         />
       )}
       <Icon size={20} strokeWidth={isActive ? 2.2 : 1.75} className="relative" style={isActive ? { color: C.gold } : undefined} />
@@ -110,6 +111,16 @@ function TabLink({ to, label, icon: Icon }: (typeof NAV)[number]) {
 
 export function Shell() {
   const location = useLocation();
+  const reduce = useReducedMotion();
+  // Direction-aware route change: slide a little towards where you are going. The previous path is read during render, which is
+  // fine: it is only used to pick offsets for the new page's entrance.
+  const prev = useRef<string | null>(null);
+  const last = useRef<string>(location.pathname);
+  if (last.current !== location.pathname) {
+    prev.current = last.current;
+    last.current = location.pathname;
+  }
+  const route = routeMotion(routeDirection(prev.current, location.pathname), Boolean(reduce));
   return (
     <Tooltip.Provider delayDuration={150}>
       <div className="min-h-dvh md:pl-24">
@@ -131,9 +142,9 @@ export function Shell() {
           <ReminderBanner />
           <motion.div
             key={location.pathname}
-            initial={{ opacity: 0, y: 10, scale: 0.995 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
+            initial={route.initial}
+            animate={route.animate}
+            transition={route.transition}
           >
             <Outlet />
           </motion.div>
@@ -200,7 +211,7 @@ export function Segmented<T extends string | number>({
               <motion.span
                 layoutId={`seg-${label}`}
                 className="absolute inset-0 rounded-full bg-cream shadow-[0_6px_16px_-8px_rgb(0_0_0/0.6),inset_0_1px_0_rgb(255_255_255/0.5)]"
-                transition={{ type: "spring", stiffness: 520, damping: 38 }}
+                transition={MORPH_SPRING}
               />
             )}
             <span className="relative">{o.label}</span>

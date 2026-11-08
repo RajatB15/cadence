@@ -66,7 +66,7 @@ export function ReadingPage() {
           ) : cards.length === 0 ? (
             <div className="surface p-12 text-center text-mute">Nothing matches. Try another topic or filter.</div>
           ) : (
-            <ul className="grid gap-4 md:grid-cols-2">
+            <ul className="stagger grid gap-4 md:grid-cols-2">
               {cards.map((c) => (
                 <li key={c.id}>
                   <button type="button" onClick={() => setOpenId(c.id)} className="surface surface-hover block h-full w-full space-y-3 p-5 text-left">
@@ -144,7 +144,7 @@ function ResearchFeed({ view, topic }: { view: ReadingView; topic: string | null
           {feed.fetched_at ? "Nothing here for this filter." : "Nothing fetched yet. The first check runs in the background; press Check now if it doesn’t appear in a minute."}
         </div>
       ) : (
-        <ul className="space-y-4">
+        <ul className="stagger space-y-4">
           {items.map((i) => (
             <li key={i.id} className="surface space-y-3 p-5">
               <p className="eyebrow flex flex-wrap items-center gap-x-3 gap-y-1">

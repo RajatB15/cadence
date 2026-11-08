@@ -11,6 +11,7 @@ import * as echarts from "echarts/core";
 import { CanvasRenderer } from "echarts/renderers";
 import { useEffect, useRef, useState } from "react";
 import { withAlpha } from "../lib/color";
+import { chartAnimation, prefersReducedMotion } from "../lib/motion";
 import { C } from "../lib/theme";
 
 export { withAlpha };
@@ -51,7 +52,8 @@ export const barStyle = (color: string, r = 5) => ({ color, borderRadius: [r, r,
 export const chartBase = {
   backgroundColor: "transparent",
   textStyle: { fontFamily: "Manrope Variable, sans-serif", color: C.mute },
-  animationDuration: 900,
+  animationDuration: 700,
+  animationDurationUpdate: 0,
   animationEasing: "cubicOut" as const,
   grid: { left: 8, right: 16, top: 24, bottom: 8, containLabel: true },
   tooltip: {
@@ -151,14 +153,18 @@ export function Chart({
 
   const latest = useRef(option);
   latest.current = option;
+  // The entrance draws once, on the first paint after the chart scrolls into view. Refetches, resizes and range changes
+  // update in place without replaying it.
+  const drawn = useRef(false);
   const key = optionKey(option);
   useEffect(() => {
     if (!visible) return;
     const o = latest.current;
-    const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const first = !drawn.current;
+    drawn.current = true;
     // Keep tooltips inside the chart box so they never spill off a phone screen.
     chart.current?.setOption(
-      { ...o, tooltip: Array.isArray(o.tooltip) ? o.tooltip : { confine: true, ...(o.tooltip ?? {}) }, animation: o.animation === false ? false : !reduce, animationDuration: 1100, animationEasing: "cubicOut" },
+      { ...o, tooltip: Array.isArray(o.tooltip) ? o.tooltip : { confine: true, ...(o.tooltip ?? {}) }, ...chartAnimation(first, prefersReducedMotion(), o.animation) },
       { notMerge: true },
     );
   }, [key, visible, group]);

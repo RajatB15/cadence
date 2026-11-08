@@ -122,6 +122,7 @@ export function Ring({ score, size = 160, label = "readiness" }: { score: number
   const circ = 2 * Math.PI * r;
   return (
     <motion.div
+      data-ring-fit="coach-ring" data-inner="81"
       className="relative shrink-0"
       style={{ width: size, height: size }}
       initial={{ rotate: -140, scale: 0.85, opacity: 0 }}

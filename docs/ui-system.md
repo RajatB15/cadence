@@ -29,6 +29,8 @@ Type scale (px): 11 `.eyebrow`, 12 caption, 14 body-small, 16 body, 20 `.t-title
 - `Chart` + `chartBase` + `areaFill(color)`, `lineStyle(color)`, `barStyle(color)`, `withAlpha`. Charts go only through `Chart`. Gradient areas fade to transparent; lines have round caps.
 - `Sparkline` (draw-in, glow end dot), `CountUp` (numbers settle once, instant under reduced motion).
 - Home: `DayRing` (four rings vs stated references, from the pure `lib/dayRing.ts`; a closed ring with fresh data gets a one-off halo), `CalorieRing`, `VitalsRail`, `PhaseHeader`, `NowCard`.
+- Ring gauges: text inside a ring is sized from the hole, never from a guess. `lib/ringFit.ts` (`fitNumeral`, `holeRadius`, `labelWidthPx`) finds the largest numeral whose whole block (numeral plus small label) keeps every corner inside the circle left by the innermost stroke; `useElementWidth` feeds it the live ring width so rings are responsive (320 to 600px and up). Only the numeral and a unit sit inside; descriptive labels go outside the strokes (`CalorieRing` has a caption under the ring). Give a ring root `data-ring-fit` and `data-inner` (hole radius in 200-unit viewBox terms) so a render script can measure text corners against the hole.
+- `CheckHalo` (`components/Halo.tsx`): the one celebration for a goal met, a check badge whose ring breathes out once. Used for fresh achievements only (`isFreshDay`).
 
 ## Motion rules
 
@@ -36,6 +38,26 @@ Type scale (px): 11 `.eyebrow`, 12 caption, 14 body-small, 16 body, 20 `.t-title
 2. Durations: press 80 to 220ms, reveals 450 to 600ms, rings 1.1 to 1.4s. Stagger by index, never more than ~60ms.
 3. Everything animated is gated by `prefers-reduced-motion` (CSS `no-preference` blocks or `useReducedMotion`). Content must be complete with motion off.
 4. Celebrations are subtle, once, and only for fresh (not stale) data.
+
+### Motion toolkit (`lib/motion.ts` + the end of `index.css`)
+
+| Piece | Use |
+| --- | --- |
+| `EASE`, `DUR`, `MORPH_SPRING`, `SHEET_SPRING` | the numbers. Tab pill and `Segmented` share `MORPH_SPRING` so every selector moves alike |
+| `routeDirection` + `routeMotion` | `Shell` slides a new page 16px towards where you are going (tab order, deeper = forward), 280ms; reduced motion swaps instantly. The motion wrapper is interruptible |
+| `MotionConfig reducedMotion="user"` (App) | motion drops transform animations under reduced motion for every `motion.*` element |
+| `.stagger` on a list or grid | children rise in 45ms apart, capped at 8 (CSS only; keyed refetches do not replay it). Used on Activities, Plan, Goals, Journal, Reading and Metric lists |
+| `.fade-in` | a lazy page fades in over its skeleton, only when its chunk actually had to load (`Gate` in `App.tsx`) |
+| `.press`, plus the global rule for plain `button` and `summary` | `scale: 0.97` spring on press (uses the `scale` property, so it composes with other transforms). Opt out with `data-no-press` |
+| `details` | content fades down on open; the box eases open where `::details-content` and `interpolate-size` exist (progressive enhancement) |
+| `:focus-visible` | the ring is pulled in from 8px out (`focus-pull`) |
+| `a.surface`, `.lift`, `.surface-hover` | 2px hover lift, only under `(hover: hover)` |
+| `StatusBanners` | enter and exit through `AnimatePresence` |
+| `chartAnimation(first, reduce)` | `Chart` draws once (700ms, cubicOut) when first scrolled into view; refetches, resizes and range changes update without replaying it |
+| `CountUp` | headline numbers settle once; instant under reduced motion |
+| `staggerDelay`, `isFreshDay`, `prefersReducedMotion` | pure helpers (tested in `lib/motion.test.ts`) |
+
+The global kill-switch at the end of the reduced-motion block in `index.css` zeroes every transition and animation duration, delay and iteration, so new CSS needs no extra guard; JS animation must check `useReducedMotion` or `prefersReducedMotion()`.
 
 ## Do / don't
 

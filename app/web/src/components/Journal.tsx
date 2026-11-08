@@ -250,7 +250,7 @@ export function HabitsPanel({ effects, progress }: { effects: HabitEffect[]; pro
         </button>
       </div>
       {shown.length > 0 ? (
-        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+        <div className="stagger grid gap-3 md:grid-cols-2 xl:grid-cols-3">
           {shown.map((e) => {
             const bad = e.higher_is_better ? e.diff < 0 : e.diff > 0;
             const color = !e.significant ? C.mute : bad ? C.coral : C.lime;

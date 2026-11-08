@@ -39,8 +39,8 @@ function Cell({ label, value, sub, tone }: { label: string; value: string; sub?:
   return (
     <div className="min-w-0 border-l border-line pl-3 first:border-l-0 first:pl-0">
       <p className="eyebrow !text-[11px] !tracking-[0.12em]">{label}</p>
-      <p className={`num mt-1 text-xl leading-tight ${tone === "sky" ? "text-sky" : tone === "amber" ? "text-amber" : "text-cream"}`}>{value}</p>
-      {sub && <p className="mt-0.5 text-[11px] leading-snug text-mute">{sub}</p>}
+      <p className={`num mt-1 whitespace-nowrap text-[clamp(14px,6.8cqw,1.25rem)] leading-tight ${tone === "sky" ? "text-sky" : tone === "amber" ? "text-amber" : "text-cream"}`}>{value}</p>
+      {sub && <p className="mt-0.5 text-[11px] leading-snug text-mute [overflow-wrap:anywhere]">{sub}</p>}
     </div>
   );
 }
@@ -113,9 +113,9 @@ export function CaloriesCard({ energy, phase, isDemo, loading = false }: { energ
         </button>
       </div>
       <div className="mt-4 grid items-center gap-5 sm:grid-cols-[auto_1fr] sm:gap-8">
-        <CalorieRing burned={burned} active={e.burned?.active ?? null} resting={e.burned?.resting ?? null} eaten={eaten} target={target} projected={p ? { lo: p.lo, hi: p.hi } : null} asOf={asOf} summary={summary} size={176} />
+        <CalorieRing burned={burned} active={e.burned?.active ?? null} resting={e.burned?.resting ?? null} eaten={eaten} target={target} projected={p ? { lo: p.lo, hi: p.hi } : null} asOf={asOf} summary={summary} size={208} />
         <div>
-          <div className={clsx("grid gap-3", e.projection_state === "hidden" ? "grid-cols-2" : "grid-cols-3")}>
+          <div className={clsx("@container grid gap-3", e.projection_state === "hidden" ? "grid-cols-[repeat(2,minmax(0,1fr))]" : "grid-cols-[repeat(3,minmax(0,1fr))]")}>
             <Cell label="Eaten" value={eaten != null ? formatKcal(eaten) : "—"} sub={eaten != null ? `${e.eaten?.entries ?? "some"} logged` : copy?.eaten ?? "nothing logged yet"} tone="sky" />
             {state.showLeft ? (
               <Cell label={over ? "Above" : "Left"} value={over ? formatKcal(e.above_by!) : formatKcal(e.left!)} sub={over ? "your estimate" : target ? `of ${formatKcal(target)}` : undefined} tone={over ? "amber" : undefined} />

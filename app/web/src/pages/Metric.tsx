@@ -211,7 +211,7 @@ function Context({ m, metric, color }: { m: DayMetric; metric: string; color: st
       : `#${m.rank_high} highest`;
   return (
     <div>
-      <div className="grid grid-cols-2 gap-5 sm:grid-cols-4">
+      <div className="stagger grid grid-cols-2 gap-5 sm:grid-cols-4">
         {[
           ["7-day avg", m.avg_7d],
           ["30-day avg", m.avg_30d],

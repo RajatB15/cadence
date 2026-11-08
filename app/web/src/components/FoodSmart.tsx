@@ -1,4 +1,4 @@
-import { Camera, ChevronDown, Clock, Minus, Plus, ScanLine, Trash2, Utensils } from "lucide-react";
+import { Camera, ChevronDown, Clock, Minus, Plus, ScanLine, Tag, Trash2, Utensils } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { api, ApiError, keyFor } from "../lib/api";
 import { MEALS, servingsLabel } from "../lib/food";
@@ -12,6 +12,8 @@ import {
 } from "../lib/foodRow";
 import type { LogOp } from "../lib/foodTypes";
 import type { FoodDaySummary, Meal } from "../lib/types";
+import { alsoLine, displayName } from "../lib/foodNames";
+import { FindByOtherName, MyNameSheet, NameChip } from "./FoodNames";
 import { Sheet } from "./Sheet";
 import { Segmented } from "./Shell";
 
@@ -205,7 +207,10 @@ export function SmartEntry({
                   <span className="text-mute">No dish called “{r.text}”. Add calories only, or save it as a new dish.</span>
                 ) : (
                   <>
-                    <span className="min-w-0 truncate text-paper">{r.kind === "dish" ? r.dish!.name : r.text}<span className="text-dim"> · {amountText(r)}</span></span>
+                    <span className="min-w-0 truncate text-paper">
+                      {r.kind === "dish" ? displayName(r.dish!) : r.text}<span className="text-dim"> · {amountText(r)}</span>
+                      {r.via && <span className={`block truncate text-xs ${r.via.kind === "mine" ? "text-gold" : "text-dim"}`}>{r.via.kind === "mine" ? `matched your name “${r.via.text}”` : `matched: ${r.via.text}`}</span>}
+                    </span>
                     <span className="num shrink-0 text-xs text-mute">{rangeText(rowNutrition(r).kcal)}</span>
                   </>
                 )}
@@ -286,6 +291,8 @@ function DraftSheet({
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const slot = useRef<{ sig: string; key: string } | null>(null);
+  const [nameFor, setNameFor] = useState<number | null>(null);
+  const [findFor, setFindFor] = useState<{ rowId: string; text: string } | null>(null);
   const t = useMemo(() => totals(rows), [rows]);
   const blocking = rows.filter((r) => !loggable(r));
   const items = rows.map((r) => toLogItem(r));
@@ -300,7 +307,7 @@ function DraftSheet({
     const key = keyFor(slot, payload); // the same draft keeps the same key through retries
     const op: LogOp = {
       key, ...payload, source: draft.source.current ?? undefined, created_at: Date.now(), attempts: 0, status: "queued",
-      preview: rows.map((r) => ({ name: r.kind === "dish" ? r.dish!.name : r.text, low: rowNutrition(r).kcal?.low ?? null, high: rowNutrition(r).kcal?.high ?? null })),
+      preview: rows.map((r) => ({ name: r.kind === "dish" ? displayName(r.dish!) : r.text, low: rowNutrition(r).kcal?.low ?? null, high: rowNutrition(r).kcal?.high ?? null })),
     };
     try {
       const res = await outbox.submit(op);
@@ -339,6 +346,8 @@ function DraftSheet({
               onChange={(f) => patch(r.id, f)}
               onRemove={() => setRows((rs) => rs.filter((x) => x.id !== r.id))}
               onNewDish={() => { draft.setOpen(false); onNewDish(r.text); }}
+              onName={(id) => setNameFor(id)}
+              onFind={() => setFindFor({ rowId: r.id, text: r.text })}
             />
           ))}
         </ul>
@@ -358,6 +367,19 @@ function DraftSheet({
           {busy ? "Saving…" : `Confirm & log ${rows.length} ${rows.length === 1 ? "item" : "items"}${t.kcal ? ` · ${rangeText(out ? widen(t.kcal) : t.kcal)}` : ""}`}
         </button>
       </div>
+      <MyNameSheet dishId={nameFor} onClose={() => setNameFor(null)} />
+      <FindByOtherName
+        text={findFor?.text ?? null}
+        index={index}
+        recentIds={[]}
+        onClose={() => setFindFor(null)}
+        onPicked={(d) => {
+          const row = findFor;
+          setFindFor(null);
+          const full = index?.byId.get(d.id)?.dish ?? d;
+          if (row) patch(row.rowId, (r) => rowForDish(r, full));
+        }}
+      />
     </Sheet>
   );
 }
@@ -390,9 +412,10 @@ async function undoLogged(ids: number[]): Promise<void> {
   }
 }
 
-function DraftRow({ row, index, onChange, onRemove, onNewDish }: { row: FoodRow; index: FoodIndex | null; onChange: (f: (r: FoodRow) => FoodRow) => void; onRemove: () => void; onNewDish: () => void }) {
+function DraftRow({ row, index, onChange, onRemove, onNewDish, onName, onFind }: { row: FoodRow; index: FoodIndex | null; onChange: (f: (r: FoodRow) => FoodRow) => void; onRemove: () => void; onNewDish: () => void; onName: (dishId: number) => void; onFind: () => void }) {
   const nut = rowNutrition(row);
-  const name = row.kind === "dish" ? row.dish!.name : row.text;
+  const dish = row.kind === "dish" && row.dish ? (index?.byId.get(row.dish.id)?.dish ?? row.dish) : null; // the live copy, so a new name shows at once
+  const name = dish ? displayName(dish) : row.text;
   const [kcalText, setKcalText] = useState("");
   const choices = unitChoices(row);
   const remove = (
@@ -431,6 +454,7 @@ function DraftRow({ row, index, onChange, onRemove, onNewDish }: { row: FoodRow;
           <button type="button" className="chip press min-h-11 disabled:opacity-40" disabled={!(kcal > 0 && kcal <= 5000)} onClick={() => onChange((r) => settle({ ...r, kind: "kcal", kcal, flags: [], portionIdx: -2, amount: 1 }))}>
             Add calories only
           </button>
+          <button type="button" className="chip press min-h-11 !text-gold" onClick={onFind}><Tag size={13} /> Find it by another name</button>
           <button type="button" className="chip press min-h-11" onClick={onNewDish}>Save as a new dish</button>
         </div>
       </li>
@@ -442,11 +466,16 @@ function DraftRow({ row, index, onChange, onRemove, onNewDish }: { row: FoodRow;
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
           <p className="truncate text-base font-bold text-cream">{name}</p>
+          {dish && alsoLine(dish) && <p className="truncate text-xs text-dim">{alsoLine(dish)}</p>}
+          {row.kind === "dish" && row.via && <p className={`truncate text-xs ${row.via.kind === "mine" ? "text-gold" : "text-dim"}`}>{row.via.kind === "mine" ? `matched your name “${row.via.text}”` : `matched: ${row.via.text}`}</p>}
           <p className="num text-xs text-mute">
             {rangeText(nut.kcal) || "—"}{nut.protein_g != null ? ` · ${nut.protein_g} g protein` : row.kind === "dish" ? " · protein unknown" : ""}
           </p>
         </div>
-        {remove}
+        <div className="flex shrink-0 items-center">
+          {dish && <NameChip dish={dish} onOpen={() => onName(dish.id)} />}
+          {remove}
+        </div>
       </div>
       {row.kind === "kcal" ? (
         <div className="mt-2 flex items-center gap-2">

@@ -261,3 +261,24 @@ The backend workstream is built; this section is authoritative where it differs 
 **Energy card**: `energy.eaten` is unchanged except an additive `later: {entries, kcal}` (only when present). For today, entries with a real `eaten_at` after the user's current local time are not in "eaten so far"; entries with no time, or only a default (`eaten_at_est`), count as before. Removed entries count nowhere.
 
 **Phone allowlist** adds exactly: `POST /api/food/log`, `POST /api/food/entries/bulk`, `POST /api/food/entries/[^/]+/restore`.
+
+## 7. Implemented payload (personal names and search)
+
+Backend built (migration `0033`, table `food_user_alias`). Every existing response keeps its keys; the additions are additive.
+
+**Dish dict** (every place a dish appears: `/api/food/dishes`, add/patch responses, search) gains:
+`my_names`: `[{id, name, preferred, use_count, last_used_at (ISO or null)}]` ordered by id; `display_name`: the preferred own name, else the dish `name`; `also`: the library/original `name` when a preferred own name is shown, else `null`. `name` itself never changes (it is what a log entry stores). Show `display_name`, and `also: <name>` underneath when `also` is not null.
+
+**Names** (phone-writable, `X-Cadence-Request` header like every write):
+- `POST /api/food/dishes/{id}/names` body `{name, preferred?: false}` returns `{dish, alias}` with `alias = {id, name, preferred, use_count, last_used_at}`.
+- `PATCH /api/food/dishes/{id}/names/{alias_id}` body `{name?, preferred?}` (at least one) returns `{dish, alias}`. `preferred: true` clears the flag on the dish's other names; `false` returns to the library name.
+- `DELETE /api/food/dishes/{id}/names/{alias_id}` returns `{deleted: alias_id, dish}`.
+- Rules: the name is trimmed with inner whitespace collapsed, 1 to 60 characters, no control characters, must contain a letter or digit, must differ (after folding) from the dish's own name and from its other names, at most 12 per dish. 400 `{"detail": "..."}` with a readable sentence; 404 for an unknown dish or a name that belongs to another dish; 422 if `name` is empty or over 200 characters.
+- Your names survive a catalogue re-seed: a library dish's names also keep its `ref_code` and re-attach to the new row (also across page-code merges). A dish that is dropped from the catalogue keeps its names waiting (not shown) until it returns.
+
+**Search**: `GET /api/food/search?q=&limit=20` (limit 1..50; empty `q` returns no results) returns
+`{"query": "uppitu", "results": [{"dish": {dish dict}, "score": 0.75, "match": {"kind": "my_name" | "name" | "alias", "text": "Uppittu", "alias_id": 4 | null}}]}`, best first. `alias_id` is set only for `kind: "my_name"`; pass it back as `via_alias` when logging. Matches your names, the dish name and library `aliases`; folds case, diacritics, Devanagari and other Indic scripts, and spelling variants (chawal/chaval, aloo/alu, paneer/panir, dosa/dosai); word order is ignored; typos within 1 to 2 edits; prefixes work while typing. Your names rank first when they match well (score 0.8 or more); frecency and how often you chose a name break ties. Only active dishes are searched. Show `match.text` as "matched: ..." when `kind` is not `name`.
+
+**Counting your name**: `POST /api/food/entries` and each item of `POST /api/food/log` accept optional `via_alias` (alias id of that dish; ignored if it is not that dish's name; a replayed batch does not count again). It raises `use_count` and sets `last_used_at`.
+
+**Phone allowlist** adds exactly: `POST /api/food/dishes/[^/]+/names`, `PATCH` and `DELETE /api/food/dishes/[^/]+/names/[^/]+`.

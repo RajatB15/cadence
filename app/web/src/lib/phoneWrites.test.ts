@@ -17,6 +17,16 @@ describe("phoneMayWrite", () => {
     expect(phoneMayWrite("POST", "/api/garmin/sync")).toBe(true);
     expect(phoneMayWrite("POST", "/api/activities/12/fetch")).toBe(true);
   });
+  it("allows managing your own dish names, anchored", () => {
+    expect(phoneMayWrite("POST", "/api/food/dishes/12/names")).toBe(true);
+    expect(phoneMayWrite("PATCH", "/api/food/dishes/12/names/3")).toBe(true);
+    expect(phoneMayWrite("DELETE", "/api/food/dishes/12/names/3")).toBe(true);
+    expect(phoneMayWrite("DELETE", "/api/food/dishes/12")).toBe(false);
+    expect(phoneMayWrite("PUT", "/api/food/dishes/12/names")).toBe(false);
+    expect(phoneMayWrite("POST", "/api/food/dishes/12/names/3")).toBe(false);
+    expect(phoneMayWrite("POST", "/api/food/dishes//names")).toBe(false);
+  });
+
   it("keeps the new food writes anchored and method-specific", () => {
     expect(phoneMayWrite("POST", "/api/food/log/extra")).toBe(false);
     expect(phoneMayWrite("PUT", "/api/food/log")).toBe(false);
