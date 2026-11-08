@@ -194,7 +194,7 @@ def test_copy_yesterday_and_deactivated_dishes_stay_in_history(fenv):
     client, _ = fenv
     d = client.post("/api/food/dishes", json={"name": "Test dish", "unit": "1", "kcal": 100}, headers=MUTATE).json()
     client.post("/api/food/entries", json={"day": "2026-10-21", "meal": "lunch", "dish_id": d["id"]}, headers=MUTATE)
-    assert client.post("/api/food/copy", json={"source": "2026-10-21", "target": "2026-10-22"}, headers=MUTATE).json() == {"copied": 1}
+    assert client.post("/api/food/copy", json={"source": "2026-10-21", "target": "2026-10-22"}, headers=MUTATE).json()["copied"] == 1
     client.patch(f"/api/food/dishes/{d['id']}", json={"active": False}, headers=MUTATE)
     assert d["id"] not in [x["id"] for x in client.get("/api/food/dishes").json()["dishes"]]
     assert len(client.get("/api/food?day=2026-10-22").json()["entries"]) == 1

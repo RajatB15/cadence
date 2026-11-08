@@ -6,7 +6,7 @@ import { motion } from "motion/react";
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { ConfirmDialog } from "../components/ConfirmDialog";
-import { ErrorBlock, LoadingBlock, PageHeader, Segmented } from "../components/Shell";
+import { ErrorBlock, LoadingBlock, PageSkeleton, PageHeader, Segmented } from "../components/Shell";
 import { READ_ONLY, api } from "../lib/api";
 import { formatDate, parseDay, timeAgo } from "../lib/format";
 import { currentSubscription, disablePush, enablePush, pushSupport } from "../lib/push";
@@ -128,7 +128,7 @@ function GarminWorkoutsCard() {
   if (q.isError) return <ErrorBlock error={q.error} retry={() => q.refetch()} />;
   const s = q.data;
   return (
-    <section className="surface p-8">
+    <section className="surface p-5 sm:p-8">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="max-w-2xl">
           <h2 className="font-display text-3xl text-cream">Send workouts to Garmin</h2>
@@ -236,7 +236,7 @@ function BackupCard() {
   const ok = s.configured && !s.stale && !s.last_error;
   const when = s.configured && s.last_success_at ? new Date(`${s.last_success_at}Z`) : null;
   return (
-    <section className="surface p-8">
+    <section className="surface p-5 sm:p-8">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="max-w-2xl">
           <h2 className="font-display text-3xl text-cream">Backups</h2>
@@ -287,7 +287,7 @@ function BodyProfileCard() {
   const validHeight = h >= 100 && h <= 250;
   const validBirth = Boolean(birth || p?.birth_date);
   return (
-    <section className="surface p-8">
+    <section className="surface p-5 sm:p-8">
       <h2 className="font-display text-3xl text-cream">Body profile</h2>
       <p className="mt-3 max-w-2xl text-sm leading-relaxed text-mute">
         Height, birth date and biological sex — used only by the estimated body-composition formulas on the Weight page (BMI, estimated body
@@ -324,16 +324,16 @@ function BodyProfileCard() {
 
 function CredentialCard() {
   const query = useCredentialStatus();
-  if (query.isPending) return <LoadingBlock height={360} />;
+  if (query.isPending) return <PageSkeleton kind="form" />;
   if (query.isError) return <ErrorBlock error={query.error} retry={() => query.refetch()} />;
   const s = query.data;
   const label = LEVEL_LABEL[s.level];
 
   return (
-    <section className="surface h-full p-8">
+    <section className="surface h-full p-5 sm:p-8">
       <div className="flex items-start justify-between gap-4">
         <div className="flex items-center gap-3">
-          <div className="grid h-10 w-10 place-items-center bg-gold/15 text-gold">
+          <div className="grid h-11 w-11 place-items-center rounded-2xl bg-gold/15 text-gold">
             <KeyRound size={18} />
           </div>
           <div>
@@ -451,10 +451,10 @@ function NotificationsCard() {
   const error = enable.error ?? disable.error ?? test.error ?? prefs.error;
 
   return (
-    <section className="surface p-8">
+    <section className="surface p-5 sm:p-8">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="flex items-center gap-3">
-          <div className="grid h-10 w-10 place-items-center bg-gold/15 text-gold">
+          <div className="grid h-11 w-11 place-items-center rounded-2xl bg-gold/15 text-gold">
             <Bell size={18} />
           </div>
           <div>
@@ -595,10 +595,10 @@ function ShareCard() {
   const error = start.error ?? stop.error ?? reset.error ?? revoke.error;
 
   return (
-    <section className="surface p-8">
+    <section className="surface p-5 sm:p-8">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="flex items-center gap-3">
-          <div className="grid h-10 w-10 place-items-center bg-violet/15 text-violet">
+          <div className="grid h-11 w-11 place-items-center rounded-2xl bg-violet/15 text-violet">
             <Smartphone size={18} />
           </div>
           <div>
@@ -730,8 +730,8 @@ function QrCode({ matrix, label }: { matrix: number[][]; label: string }) {
 
 function PrivacyCard() {
   return (
-    <section className="surface h-full p-8">
-      <div className="grid h-10 w-10 place-items-center bg-lime/10 text-lime">
+    <section className="surface h-full p-5 sm:p-8">
+      <div className="grid h-11 w-11 place-items-center rounded-2xl bg-lime/10 text-lime">
         <ShieldCheck size={18} />
       </div>
       <h2 className="mt-5 font-display text-3xl text-cream">Private by construction</h2>
@@ -769,7 +769,7 @@ function SourcesCard() {
   if (sources.isError) return <ErrorBlock error={sources.error} retry={() => sources.refetch()} />;
 
   return (
-    <section className="surface p-8">
+    <section className="surface p-5 sm:p-8">
       <h2 className="font-display text-3xl text-cream">Data sources</h2>
       <ul className="mt-6 divide-y divide-line">
         {sources.data.map((s) => (
@@ -836,7 +836,7 @@ function SourceRow({ s, children }: { s: SourceInfo; children?: React.ReactNode 
   const status = SOURCE_STATUS[s.status] ?? { text: s.status, className: "" };
   return (
     <li className="flex flex-wrap items-center gap-5 py-5">
-      <div className="grid h-10 w-10 place-items-center border border-line-strong text-cream">
+      <div className="grid h-11 w-11 place-items-center rounded-2xl border border-line-strong text-cream">
         <Icon size={18} strokeWidth={1.75} />
       </div>
       <div className="min-w-[220px] flex-1">
@@ -863,8 +863,8 @@ function DeleteDemo() {
         <Trash2 size={14} /> Delete
       </Dialog.Trigger>
       <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm" />
-        <Dialog.Content className="surface fixed top-1/2 left-1/2 z-50 w-[min(92vw,440px)] -translate-x-1/2 -translate-y-1/2 p-8">
+        <Dialog.Overlay className="dialog-overlay" />
+        <Dialog.Content className="surface dialog-content dialog-center">
           <Dialog.Title className="font-display text-4xl text-cream">Delete demo data?</Dialog.Title>
           <Dialog.Description className="mt-3 text-sm text-mute">
             Removes all synthetic metrics, sessions, weigh-ins, and import history. Your goal and

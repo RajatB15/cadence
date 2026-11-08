@@ -1,3 +1,5 @@
+import { edge } from "../lib/color";
+import { C } from "../lib/theme";
 import { WifiOff, RefreshCw } from "lucide-react";
 import { useOnline } from "../lib/online";
 import { useUpdateReady } from "../lib/useAppLifecycle";
@@ -10,7 +12,7 @@ export function StatusBanners() {
   return (
     <div className="mb-6 flex flex-col gap-2">
       {!online && (
-        <div role="status" className="surface flex items-center gap-3 border-l-2 border-amber/50 px-4 py-3 text-sm text-amber">
+        <div role="status" className="surface edge flex items-center gap-3 px-4 py-3 text-sm text-amber" style={edge(C.amber)}>
           <WifiOff size={16} aria-hidden />
           <p className="min-w-0 flex-1 text-paper">
             You're offline. Showing the last saved data; changes can't be saved until you reconnect.
@@ -18,7 +20,7 @@ export function StatusBanners() {
         </div>
       )}
       {update && (
-        <div role="status" className="surface flex items-center gap-3 border-l-2 border-gold/40 px-4 py-3 text-sm text-gold">
+        <div role="status" className="surface edge flex items-center gap-3 px-4 py-3 text-sm text-gold" style={edge(C.gold)}>
           <RefreshCw size={16} aria-hidden />
           <p className="min-w-0 flex-1 text-paper">A new version of Cadence is ready.</p>
           <button type="button" className="eyebrow min-h-11 px-2 !text-current hover:underline" onClick={() => window.location.reload()}>

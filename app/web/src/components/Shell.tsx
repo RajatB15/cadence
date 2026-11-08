@@ -1,9 +1,10 @@
 import * as Tooltip from "@radix-ui/react-tooltip";
 import { clsx } from "clsx";
-import { Activity, Archive, BookOpen, CalendarCheck, FlaskConical, Flag, Flame, Gauge, LayoutGrid, Scale, Settings2, Utensils } from "lucide-react";
+import { Activity, AlertTriangle, Archive, BookOpen, CalendarCheck, FlaskConical, Flag, Flame, Gauge, LayoutGrid, Scale, Settings2, Utensils } from "lucide-react";
 import { motion, useReducedMotion } from "motion/react";
 import type { ReactNode } from "react";
 import { NavLink, Outlet, useLocation, useMatch } from "react-router-dom";
+import { CondensedTitle } from "./CondensedTitle";
 import { RefreshRailButton } from "./RefreshButton";
 import { ReminderBanner } from "./ReminderBanner";
 import { StatusBanners } from "./StatusBanners";
@@ -59,25 +60,25 @@ function RailLink({ to, label, icon: Icon }: (typeof NAV)[number]) {
           end={to === "/"}
           aria-label={label}
           className={clsx(
-            "relative grid h-12 w-12 place-items-center transition-colors",
+            "press relative grid h-12 w-12 place-items-center rounded-2xl transition-colors",
             isActive ? "text-ink" : "text-mute hover:text-paper",
           )}
         >
           {isActive && (
             <motion.span
               layoutId="nav-active"
-              className="absolute inset-0 bg-cream"
-              transition={{ type: "spring", stiffness: 500, damping: 38 }}
+              className="absolute inset-0 rounded-2xl bg-cream shadow-[0_10px_24px_-10px_var(--color-gold),inset_0_1px_0_rgb(255_255_255/0.5)]"
+              transition={{ type: "spring", stiffness: 520, damping: 36 }}
             />
           )}
-          <Icon size={20} strokeWidth={1.75} className="relative" />
+          <Icon size={20} strokeWidth={isActive ? 2.1 : 1.75} className="relative" />
         </NavLink>
       </Tooltip.Trigger>
       <Tooltip.Portal>
         <Tooltip.Content
           side="right"
           sideOffset={14}
-          className="z-50 border border-line-strong bg-coal px-3 py-1.5 text-xs font-semibold tracking-widest text-paper uppercase"
+          className="surface-glass z-50 rounded-xl px-3 py-1.5 text-xs font-bold tracking-wide text-paper"
         >
           {label}
         </Tooltip.Content>
@@ -86,12 +87,33 @@ function RailLink({ to, label, icon: Icon }: (typeof NAV)[number]) {
   );
 }
 
+function TabLink({ to, label, icon: Icon }: (typeof NAV)[number]) {
+  const isActive = useMatch({ path: to, end: to === "/" }) != null;
+  return (
+    <NavLink
+      to={to}
+      end={to === "/"}
+      className={clsx("press relative flex min-h-[52px] min-w-0 flex-col items-center justify-center gap-0.5 rounded-[20px] text-[11px] font-bold tracking-tight transition-colors", isActive ? "text-cream" : "text-dim")}
+    >
+      {isActive && (
+        <motion.span
+          layoutId="tab-pill"
+          className="absolute inset-0 rounded-[20px] bg-[var(--pill)] shadow-[inset_0_1px_0_var(--rim-top)]"
+          transition={{ type: "spring", stiffness: 520, damping: 38 }}
+        />
+      )}
+      <Icon size={20} strokeWidth={isActive ? 2.2 : 1.75} className="relative" style={isActive ? { color: C.gold } : undefined} />
+      <span className="relative max-w-full truncate px-0.5">{label}</span>
+    </NavLink>
+  );
+}
+
 export function Shell() {
   const location = useLocation();
   return (
     <Tooltip.Provider delayDuration={150}>
       <div className="min-h-dvh md:pl-24">
-        <aside className="fixed inset-y-0 left-0 z-40 hidden w-24 flex-col items-center border-r border-line bg-ink/80 py-7 backdrop-blur md:flex">
+        <aside className="fixed inset-y-0 left-0 z-40 hidden w-24 flex-col items-center border-r border-line bg-ink/70 py-7 backdrop-blur-xl md:flex">
           <Monogram />
           <nav className="mt-14 flex flex-col gap-3" aria-label="Primary">
             {NAV.map((item) => (
@@ -104,38 +126,22 @@ export function Shell() {
           <div className="mt-auto eyebrow [writing-mode:vertical-rl] rotate-180 !text-dim">Local · Private</div>
         </aside>
 
-        <main className="mx-auto max-w-[1280px] px-5 pt-8 pb-32 sm:px-8 md:pt-12 lg:px-12">
+        <main className="mx-auto max-w-[1280px] px-5 pt-[max(2rem,env(safe-area-inset-top))] pb-36 sm:px-8 md:pt-12 md:pb-24 lg:px-12">
           <StatusBanners />
           <ReminderBanner />
           <motion.div
             key={location.pathname}
-            initial={{ opacity: 0, y: 14 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.45, ease: [0.2, 0.9, 0.1, 1] }}
+            initial={{ opacity: 0, y: 10, scale: 0.995 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
           >
             <Outlet />
           </motion.div>
         </main>
 
-        <nav
-          aria-label="Primary"
-          className="fixed inset-x-0 bottom-0 z-40 grid grid-cols-6 border-t border-line bg-ink/90 pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)] backdrop-blur md:hidden"
-        >
-          {NAV.filter((item) => !("desktopOnly" in item)).map(({ to, label, icon: Icon }) => (
-            <NavLink
-              key={to}
-              to={to}
-              end={to === "/"}
-              className={({ isActive }) =>
-                clsx(
-                  "flex min-w-0 flex-col items-center gap-1 py-3 text-[10.5px] font-semibold",
-                  isActive ? "text-cream" : "text-dim",
-                )
-              }
-            >
-              <Icon size={20} strokeWidth={1.75} />
-              <span className="max-w-full truncate px-0.5">{label}</span>
-            </NavLink>
+        <nav aria-label="Primary" className="tabbar surface-glass grid grid-cols-6 p-1.5 md:hidden">
+          {NAV.filter((item) => !("desktopOnly" in item)).map((item) => (
+            <TabLink key={item.to} {...item} />
           ))}
         </nav>
       </div>
@@ -153,13 +159,11 @@ export function PageHeader({
   children?: ReactNode;
 }) {
   return (
-    <header className="mb-10 flex flex-wrap items-end justify-between gap-6">
-      <div>
+    <header className="mb-8 flex flex-wrap items-end justify-between gap-6 md:mb-10">
+      <CondensedTitle title={title}>
         <div className="eyebrow mb-3 flex flex-wrap items-center gap-3">{eyebrow}</div>
-        <h1 className="font-display text-5xl leading-[0.95] tracking-tight text-cream sm:text-6xl lg:text-7xl">
-          {title}
-        </h1>
-      </div>
+        <h1 className="t-large sm:!text-6xl lg:!text-7xl">{title}</h1>
+      </CondensedTitle>
       {children && <div className="flex flex-wrap items-center gap-4">{children}</div>}
     </header>
   );
@@ -177,7 +181,7 @@ export function Segmented<T extends string | number>({
   label: string;
 }) {
   return (
-    <div role="radiogroup" aria-label={label} className="flex border border-line-strong p-1">
+    <div role="radiogroup" aria-label={label} className="inline-flex max-w-full overflow-x-auto rounded-full border border-line-strong bg-slate/50 p-1 shadow-[inset_0_1px_2px_rgb(0_0_0/0.25)]">
       {options.map((o) => {
         const active = o.value === value;
         return (
@@ -188,15 +192,15 @@ export function Segmented<T extends string | number>({
             aria-checked={active}
             onClick={() => onChange(o.value)}
             className={clsx(
-              "relative px-3.5 py-1.5 text-xs font-semibold tracking-widest uppercase transition-colors pointer-coarse:py-2.5",
+              "press relative shrink-0 rounded-full px-3.5 py-1.5 text-xs whitespace-nowrap font-bold tracking-wide transition-colors pointer-coarse:py-2.5",
               active ? "text-ink" : "text-mute hover:text-paper",
             )}
           >
             {active && (
               <motion.span
                 layoutId={`seg-${label}`}
-                className="absolute inset-0 bg-cream"
-                transition={{ type: "spring", stiffness: 500, damping: 40 }}
+                className="absolute inset-0 rounded-full bg-cream shadow-[0_6px_16px_-8px_rgb(0_0_0/0.6),inset_0_1px_0_rgb(255_255_255/0.5)]"
+                transition={{ type: "spring", stiffness: 520, damping: 38 }}
               />
             )}
             <span className="relative">{o.label}</span>
@@ -216,26 +220,61 @@ export function DemoChip() {
   );
 }
 
+/** Skeleton card with a quiet shimmer; pass `lines` for text-shaped placeholders inside. */
 export function LoadingBlock({ height = 240 }: { height?: number }) {
   return (
-    <div
-      className="surface animate-pulse"
-      style={{ height }}
-      aria-busy="true"
-      aria-label="Loading"
-    />
+    <div className="surface skeleton" style={{ height }} aria-busy="true" aria-label="Loading" role="status" />
   );
+}
+
+/** Page-shaped loading placeholder: the silhouette of the finished layout, so nothing jumps when data lands. */
+export function PageSkeleton({ kind = "list" }: { kind?: "list" | "hero" | "stats" | "chart" | "form" | "week" }) {
+  const row = (k: number) => (
+    <div key={k} className="surface flex items-center gap-4 p-4">
+      <Skeleton className="h-11 w-11 shrink-0 rounded-2xl" />
+      <div className="flex-1 space-y-2"><Skeleton className="h-3.5 w-2/3 rounded-full" /><Skeleton className="h-3 w-1/3 rounded-full" /></div>
+      <Skeleton className="h-5 w-12 rounded-full" />
+    </div>
+  );
+  const hero = (
+    <div className="surface flex flex-col items-center gap-6 p-6 sm:flex-row sm:p-8">
+      <Skeleton className="h-40 w-40 shrink-0 rounded-full" />
+      <div className="w-full flex-1 space-y-3"><Skeleton className="h-3 w-24 rounded-full" /><Skeleton className="h-10 w-3/4 rounded-2xl" /><Skeleton className="h-3.5 w-full rounded-full" /><Skeleton className="h-3.5 w-2/3 rounded-full" /></div>
+    </div>
+  );
+  const tiles = (n: number) => (
+    <div className={`grid gap-3 ${n === 4 ? "grid-cols-2 lg:grid-cols-4" : "grid-cols-2 sm:grid-cols-3"}`}>
+      {Array.from({ length: n }, (_, i) => (
+        <div key={i} className="surface space-y-3 p-5"><Skeleton className="h-3 w-1/2 rounded-full" /><Skeleton className="h-9 w-3/4 rounded-xl" /><Skeleton className="h-3 w-1/3 rounded-full" /></div>
+      ))}
+    </div>
+  );
+  return (
+    <div role="status" aria-busy="true" aria-label="Loading" className="space-y-4">
+      {kind === "hero" && <>{hero}{tiles(4)}{row(0)}{row(1)}</>}
+      {kind === "stats" && <>{tiles(4)}<Skeleton className="h-52 rounded-[22px]" />{row(0)}{row(1)}{row(2)}</>}
+      {kind === "chart" && <>{tiles(3)}<Skeleton className="h-72 rounded-[22px]" /></>}
+      {kind === "week" && <><div className="grid grid-cols-7 gap-1.5">{Array.from({ length: 7 }, (_, i) => <Skeleton key={i} className="h-20 rounded-2xl" />)}</div><Skeleton className="h-64 rounded-[22px]" />{row(0)}</>}
+      {kind === "form" && <>{[0, 1, 2].map((i) => <div key={i} className="surface space-y-3 p-5"><Skeleton className="h-3 w-24 rounded-full" /><Skeleton className="h-11 w-full rounded-2xl" /><Skeleton className="h-3 w-2/3 rounded-full" /></div>)}</>}
+      {kind === "list" && <>{[0, 1, 2, 3, 4].map(row)}</>}
+    </div>
+  );
+}
+
+export function Skeleton({ className, style }: { className?: string; style?: React.CSSProperties }) {
+  return <div aria-hidden className={clsx("skeleton", className)} style={style} />;
 }
 
 export function ErrorBlock({ error, retry }: { error: unknown; retry?: () => void }) {
   const message = error instanceof Error ? error.message : "Something went wrong";
   return (
-    <div role="alert" className="surface flex flex-wrap items-center justify-between gap-4 border-coral/40 p-6">
-      <div>
-        <p className="font-semibold text-coral">Couldn't load this view</p>
-        <p className="text-sm text-mute">
-          {message}. Make sure the local Cadence service is running.
-        </p>
+    <div role="alert" className="surface flex flex-wrap items-center justify-between gap-4 !border-coral/40 p-6">
+      <div className="flex items-start gap-3">
+        <span aria-hidden className="mt-0.5 grid h-9 w-9 shrink-0 place-items-center rounded-full bg-coral/15 text-coral"><AlertTriangle size={18} /></span>
+        <div>
+          <p className="font-extrabold text-coral">Couldn't load this view</p>
+          <p className="text-sm text-mute">{message}. Make sure the local Cadence service is running.</p>
+        </div>
       </div>
       {retry && (
         <button type="button" className="pop pop-ghost" onClick={retry}>

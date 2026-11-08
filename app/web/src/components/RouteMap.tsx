@@ -411,9 +411,10 @@ function MapView({ track, paced, onFail }: { track: Track; paced: boolean; onFai
 
   return (
     <div ref={wrapRef} className={clsx("bg-ink", full && "flex h-full w-full flex-col gap-4 p-4")}>
-      <div className={clsx("relative overflow-hidden border border-line", full ? "min-h-0 flex-1" : "h-[440px] sm:h-[560px]")}>
+      <div className={clsx("relative overflow-hidden rounded-2xl border border-line", full ? "min-h-0 flex-1" : "h-[440px] sm:h-[560px]")}>
         <div ref={boxRef} style={{ position: "absolute", inset: 0 }} aria-label="Route map" />
-        <div className="pointer-events-none absolute top-3 left-3 z-10 flex flex-col items-start gap-2">
+        <div className="pointer-events-none absolute top-3 right-3 left-3 z-10 flex flex-col items-start gap-2">
+          <div className="flex flex-wrap gap-2 pr-12">
           <Pills label="Map style" options={BASEMAPS} value={basemap} onChange={setBasemap} />
           <Pills
             label="View"
@@ -424,6 +425,7 @@ function MapView({ track, paced, onFail }: { track: Track; paced: boolean; onFai
             value={is3d ? "3d" : "2d"}
             onChange={(v) => setIs3d(v === "3d")}
           />
+          </div>
           {modes.length > 0 && (
             <Pills
               label="Colour route by"

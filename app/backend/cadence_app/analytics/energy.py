@@ -239,6 +239,25 @@ def derive_target(rows: list[tuple[date, float, float | None]], settings: dict, 
 # ---- assembly -------------------------------------------------------------------------------------------------------
 
 
+def split_eaten(entries: list[dict], now_min: int | None) -> tuple[list[dict], list[dict]]:
+    """Today's entries that count as eaten so far, and those with a real time eaten after now. An entry with only a day (no
+    `eaten_at`), or whose time is a meal default (`eaten_at_est`), always counts: a time is never invented."""
+    if now_min is None:
+        return entries, []
+    counted, later = [], []
+    for e in entries:
+        t = e.get("eaten_at")
+        if t and not e.get("eaten_at_est") and int(t[:2]) * 60 + int(t[3:5]) > now_min:
+            later.append(e)
+        else:
+            counted.append(e)
+    return counted, later
+
+
+def later_summary(later: list[dict]) -> dict | None:
+    return {"entries": len(later), "kcal": round(sum(e["kcal"] for e in later))} if later else None
+
+
 def hhmm(minutes: int | None) -> str | None:
     return None if minutes is None else f"{minutes // 60:02d}:{minutes % 60:02d}"
 
@@ -269,6 +288,8 @@ def assemble(*, today: date, now_min: int, burn: dict | None, finals: dict[date,
     eaten = {"kcal": summary.get("kcal") if logged else None, "kcal_low": summary.get("kcal_low") if logged else None,
              "kcal_high": summary.get("kcal_high") if logged else None, "logged": logged,
              "entries": summary.get("entries", 0) if logged else 0, "protein_g": summary.get("protein_g") if logged else None}
+    if summary.get("later"):  # additive: entries dated later today (planned) are not in the totals above
+        eaten["later"] = summary["later"]
 
     workout_kcal = round(sum(w["kcal"] for w in workouts if pos(w.get("kcal")) is not None)) or None
     eat_back = round((workout_kcal or 0) * cfg["eat_back_pct"] / 100)

@@ -1,3 +1,4 @@
+import { edge } from "../lib/color";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { clsx } from "clsx";
 import { Archive, CircleStop, DatabaseZap, Download, FileSearch, RefreshCw, Sparkles } from "lucide-react";
@@ -128,8 +129,7 @@ function Hero({ s }: { s: GarminStatus }) {
     { label: "Garmin calls, lifetime", value: s.totals.api_calls },
   ];
   return (
-    <section className="relative border-y border-line py-10">
-      <div className="pointer-events-none absolute top-6 right-10 h-64 w-64 rounded-full bg-gold/10 blur-3xl" />
+    <section className="surface edge p-5 sm:p-8" style={edge("var(--color-gold)")}>
       <p className="eyebrow mb-3">History reaches back to</p>
       <p className="font-display text-6xl leading-none text-cream sm:text-8xl">
         {first ? formatDate(first) : "—"}

@@ -1,3 +1,4 @@
+import { edge } from "../lib/color";
 import { useQuery } from "@tanstack/react-query";
 import { clsx } from "clsx";
 import {
@@ -22,11 +23,14 @@ import {
 import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useState, type ReactNode } from "react";
 import { Link, useSearchParams } from "react-router-dom";
+import { HomeSkeleton } from "../components/home/HomeSkeleton";
+import { DayRing } from "../components/home/DayRing";
+import { dayRings } from "../lib/dayRing";
 import { CaloriesCard } from "../components/home/CaloriesCard";
 import { NowCard } from "../components/home/NowCard";
 import { PhaseHeader } from "../components/home/PhaseHeader";
 import { VitalsRail } from "../components/home/VitalsRail";
-import { isDimmed, localHour, nowView, sectionLayout, type SectionId } from "../lib/home";
+import { isDimmed, localHour, nowView, phaseAccent, sectionLayout, type SectionId } from "../lib/home";
 import { PhaseBanner } from "../components/PhaseBanner";
 import { CheckInCard } from "../components/Journal";
 import { TodayReadCard } from "../components/Reading";
@@ -40,7 +44,7 @@ import { Sheet } from "../components/Sheet";
 import { TimeOffPanel } from "../components/TimeOff";
 import { StatusPanel, TrendPanel } from "../components/Trends";
 import { KIND_LABEL, STATUS_STYLE } from "../lib/trends";
-import { DemoChip, ErrorBlock, LoadingBlock } from "../components/Shell";
+import { DemoChip, ErrorBlock } from "../components/Shell";
 import { Sparkline } from "../components/Sparkline";
 import { api } from "../lib/api";
 import { deltaTone, formatDuration, formatShortDate, formatWeekday, greeting } from "../lib/format";
@@ -60,7 +64,7 @@ const rise = {
 export function OverviewPage() {
   // Live readiness moves through the day; keep Home current while it's open.
   const query = useQuery({ queryKey: ["overview"], queryFn: api.overview, refetchInterval: 5 * 60_000 });
-  if (query.isPending) return <LoadingBlock height={520} />;
+  if (query.isPending) return <HomeSkeleton />;
   if (query.isError) return <ErrorBlock error={query.error} retry={() => query.refetch()} />;
   if (!query.data.has_data) return <EmptyState />;
   return <Dashboard data={query.data} />;
@@ -162,6 +166,14 @@ function Dashboard({ data }: { data: Extract<Overview, { has_data: true }> }) {
           phase={phaseId}
           hour={hourNow}
           chip={isDemo ? <DemoChip /> : <RefreshChip />}
+        />
+      </motion.div>
+
+      <motion.div variants={rise}>
+        <DayRing
+          rings={dayRings({ metrics: data.metrics, today: data.today, readiness: r ? r.score : null, sleepNeedH: coach?.tonight?.need_h ?? null, energy: data.energy })}
+          accent={C[phaseAccent(phaseId, hourNow)]}
+          demo={isDemo}
         />
       </motion.div>
 
@@ -374,10 +386,9 @@ function TodayCall({ coach }: { coach: Brief }) {
   const color = status?.color ?? k.color;
   const hasMore = t.kind === "done" || Boolean(coach.call?.detail);
   return (
-    <motion.section variants={rise} aria-label="Today" className="surface relative overflow-hidden p-5 sm:p-7">
-      <div className="pointer-events-none absolute -top-20 -right-12 h-56 w-56 rounded-full opacity-15 blur-3xl" style={{ background: color }} />
+    <motion.section variants={rise} aria-label="Today" className="surface edge p-5 sm:p-7" style={edge(color)}>
       <div className="flex items-start gap-4">
-        <div className="grid h-11 w-11 shrink-0 place-items-center" style={{ background: `${color}1f`, color }}>
+        <div className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl" style={{ background: `${color}1f`, color }}>
           <Icon size={20} />
         </div>
         <div className="min-w-0 flex-1">
@@ -458,7 +469,7 @@ function StatusCard({ coach, onStatus, onTimeOff }: { coach: Brief; onStatus: ()
   const horizon = toDay(soon);
   const entries = (q.data?.items ?? []).filter((i) => (!i.end || i.end >= today) && i.start <= horizon);
   return (
-    <motion.section variants={rise} aria-label="Training status" className="surface p-5 sm:p-6" style={{ borderLeft: `3px solid ${color}` }}>
+    <motion.section variants={rise} aria-label="Training status" className="surface edge p-5 sm:p-6" style={edge(color)}>
       <button type="button" onClick={onStatus} className="group block w-full text-left" aria-label={`Training status: ${st.label}. Show the weekly history`}>
         <div className="flex items-center justify-between gap-3">
           <p className="font-display text-3xl leading-tight sm:text-4xl" style={{ color }}>{st.label}</p>
@@ -568,8 +579,8 @@ function PlannedToday({ plans, quietTitle }: { quietTitle?: string; plans: NonNu
   return (
     <motion.section variants={rise} className="space-y-3">
       {plans.map((p) => (
-        <Link key={p.id} to={p.activity ? `/activities/${p.activity.id}` : "/plan"} className="surface surface-hover flex items-center gap-4 p-5"
-          style={{ borderLeft: `3px solid ${p.status === "done" ? C.lime : C.gold}` }}>
+        <Link key={p.id} to={p.activity ? `/activities/${p.activity.id}` : "/plan"} className="surface edge surface-hover flex items-center gap-4 p-5"
+          style={edge(p.status === "done" ? C.lime : C.gold)}>
           <CalendarCheck size={20} className={clsx("shrink-0", p.status === "done" ? "text-lime" : "text-gold")} />
           <div className="min-w-0 flex-1">
             <p className="eyebrow mb-0.5">{p.status === "done" ? "Planned · done" : quietTitle ? `Planned · ${quietTitle.toLowerCase()}` : "Planned today"}</p>
@@ -612,7 +623,7 @@ function StrainRow({ s }: { s: NonNullable<Brief["strain"]> }) {
 function WeatherRow({ w }: { w: NonNullable<Brief["weather"]> }) {
   const h = (n: number) => `${String(n).padStart(2, "0")}:00`;
   return (
-    <motion.section variants={rise} className="surface flex items-center gap-4 p-5" style={{ borderLeft: `3px solid ${C.amber}` }}>
+    <motion.section variants={rise} className="surface edge flex items-center gap-4 p-5" style={edge(C.amber)}>
       <Sun size={20} className="shrink-0 text-amber" />
       <div className="min-w-0 flex-1">
         <p className="eyebrow mb-0.5">Heat today</p>
@@ -629,7 +640,7 @@ function TonightRow({ t }: { t: NonNullable<Brief["tonight"]> }) {
   const extras = [t.extra_load_min ? `+${t.extra_load_min} min for today's training` : null, t.repay_min ? `+${t.repay_min} min toward ${t.debt_h} h of debt` : null].filter(Boolean);
   return (
     <motion.section variants={rise}>
-      <Link to="/coach#sleep" className="surface surface-hover group flex items-center gap-4 p-5" style={{ borderLeft: `3px solid ${C.sky}` }}>
+      <Link to="/coach#sleep" className="surface edge surface-hover group flex items-center gap-4 p-5" style={edge(C.sky)}>
         <BedDouble size={20} className="shrink-0 text-sky" />
         <div className="min-w-0 flex-1">
           <p className="eyebrow mb-0.5">Tonight</p>
@@ -651,7 +662,7 @@ function TonightRow({ t }: { t: NonNullable<Brief["tonight"]> }) {
 function BiggestGain({ gap }: { gap: ScoreSummary["top_gaps"][number] }) {
   return (
     <motion.section variants={rise}>
-      <Link to="/score" className="surface surface-hover group flex items-center gap-4 p-5" style={{ borderLeft: `3px solid ${C.amber}` }}>
+      <Link to="/score" className="surface edge surface-hover group flex items-center gap-4 p-5" style={edge(C.amber)}>
         <TrendingUp size={20} className="shrink-0 text-amber" />
         <div className="min-w-0 flex-1">
           <p className="eyebrow mb-0.5">Biggest gain available</p>
@@ -734,7 +745,7 @@ function RecentSessions({ recent }: { recent: Brief["recent"] }) {
               style={{ borderTop: `2px solid ${style.color}` }}
             >
               <div className="flex items-start gap-3">
-                <div className="grid h-10 w-10 shrink-0 place-items-center" style={{ background: `${style.color}1a`, color: style.color }}>
+                <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl" style={{ background: `${style.color}1a`, color: style.color }}>
                   <Icon size={18} strokeWidth={1.75} />
                 </div>
                 <div className="min-w-0 flex-1">

@@ -1,9 +1,11 @@
+import { EmptyCard } from "../components/EmptyState";
+import { edge } from "../lib/color";
 import { useQuery } from "@tanstack/react-query";
 import { clsx } from "clsx";
 import { ChevronLeft, ChevronRight, Flame, Target } from "lucide-react";
 import type { ReactNode } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { ErrorBlock, LoadingBlock, PageHeader, Segmented } from "../components/Shell";
+import { ErrorBlock, PageSkeleton, PageHeader, Segmented } from "../components/Shell";
 import { WhatIfCard } from "../components/WhatIfCard";
 import { PATTERN_LABEL } from "../components/StrengthClass";
 import { api } from "../lib/api";
@@ -38,8 +40,8 @@ export function ReviewPage() {
       <PageHeader eyebrow="Reviews" title={<>Look <em className="text-gold">back.</em></>}>
         <Segmented label="Period" options={[{ value: "week", label: "Week" }, { value: "month", label: "Month" }]} value={kind} onChange={(k) => go(k)} />
       </PageHeader>
-      {q.isPending ? <LoadingBlock height={520} /> : q.isError ? <ErrorBlock error={q.error} retry={() => q.refetch()} /> : !q.data.has_data ? (
-        <div className="surface p-12 text-center text-mute">Sync some training to see reviews.</div>
+      {q.isPending ? <PageSkeleton kind="stats" /> : q.isError ? <ErrorBlock error={q.error} retry={() => q.refetch()} /> : !q.data.has_data ? (
+        <EmptyCard title="No training to review yet" action={<Link to="/vault" className="pop pop-ghost">Open the vault to sync</Link>}>Weekly and monthly reviews appear once a few sessions are in.</EmptyCard>
       ) : <Body r={q.data} go={go} />}
     </>
   );
@@ -55,16 +57,16 @@ function Body({ r, go }: { r: Review; go: (k: "week" | "month", s?: string) => v
     <div className="space-y-6">
       <section className="flex items-center justify-between gap-3">
         <button type="button" aria-label="Previous" disabled={prev < r.first} onClick={() => go(r.kind, prev)}
-          className="grid h-10 w-10 place-items-center border border-line-strong text-mute hover:text-paper disabled:opacity-30"><ChevronLeft size={18} /></button>
+          className="grid h-11 w-11 place-items-center rounded-full border border-line-strong text-mute hover:text-paper disabled:opacity-30"><ChevronLeft size={18} /></button>
         <div className="text-center">
           <p className="eyebrow">{title}{!r.complete && " · so far"}</p>
           <h2 className="mt-1 font-display text-3xl text-cream sm:text-5xl">{r.verdict}</h2>
         </div>
         <button type="button" aria-label="Next" disabled={next > r.today} onClick={() => go(r.kind, next)}
-          className="grid h-10 w-10 place-items-center border border-line-strong text-mute hover:text-paper disabled:opacity-30"><ChevronRight size={18} /></button>
+          className="grid h-11 w-11 place-items-center rounded-full border border-line-strong text-mute hover:text-paper disabled:opacity-30"><ChevronRight size={18} /></button>
       </section>
 
-      <section className="surface flex items-start gap-4 p-5 sm:p-6" style={{ borderLeft: `3px solid ${C.lime}` }}>
+      <section className="surface edge flex items-start gap-4 p-5 sm:p-6" style={edge(C.lime)}>
         <Target size={20} className="mt-0.5 shrink-0 text-lime" />
         <div>
           <p className="eyebrow mb-1">Focus {r.kind === "week" ? "for next week" : "for next month"}</p>

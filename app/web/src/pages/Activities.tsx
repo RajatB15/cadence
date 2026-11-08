@@ -1,3 +1,4 @@
+import { EmptyCard } from "../components/EmptyState";
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { clsx } from "clsx";
 import { AlertTriangle, ArrowDownRight, ArrowUpRight, Flame, Trophy } from "lucide-react";
@@ -7,7 +8,7 @@ import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { ActivityRow } from "../components/ActivityRow";
 import { CountUp } from "../components/CountUp";
 import { MoreMenu } from "../components/MoreMenu";
-import { ErrorBlock, LoadingBlock, PageHeader, Segmented } from "../components/Shell";
+import { ErrorBlock, PageSkeleton, PageHeader, Segmented } from "../components/Shell";
 import { READ_ONLY, api } from "../lib/api";
 import { formatDuration, parseDay } from "../lib/format";
 import { ACTIVITY_FAMILIES } from "../lib/metrics";
@@ -75,7 +76,8 @@ export function ActivitiesPage() {
         eyebrow={query.data ? `${total.toLocaleString()} sessions on record` : "Training log"}
         title={<>Every session, <em className="text-gold">on record.</em></>}
       >
-        {all > 0 && <Segmented label="Activity type" options={options} value={family} onChange={setFamily} />}
+        <div className="flex w-full min-w-0 items-center gap-3 sm:w-auto">
+        {all > 0 && <div className="min-w-0 flex-1"><Segmented label="Activity type" options={options} value={family} onChange={setFamily} /></div>}
         <MoreMenu
           items={[
             { label: "Treks & multisport events", hint: "Several activities combined into one", onSelect: () => navigate("/events") },
@@ -84,6 +86,7 @@ export function ActivitiesPage() {
               : []),
           ]}
         />
+        </div>
       </PageHeader>
       {grouping && <GroupBar picked={picked} onDone={() => { setGrouping(false); setPicked(new Set()); }} />}
 
@@ -96,13 +99,11 @@ export function ActivitiesPage() {
       )}
 
       {query.isPending ? (
-        <LoadingBlock height={480} />
+        <PageSkeleton kind="list" />
       ) : query.isError ? (
         <ErrorBlock error={query.error} retry={() => query.refetch()} />
       ) : items.length === 0 ? (
-        <div className="surface p-12 text-center text-mute">
-          No sessions yet. Run a Garmin sync from the Vault to import your history.
-        </div>
+        <EmptyCard title="No sessions yet" action={<Link to="/vault" className="pop pop-ghost">Open the vault</Link>}>Run a Garmin sync from the vault to import your history.</EmptyCard>
       ) : (
         <Weeks items={items} log={data} selection={selection} />
       )}
@@ -133,13 +134,13 @@ function YearStats({ log }: { log: Log }) {
     { label: "Active days", year: log.year.active_days, now: log.last_30.active_days, prev: log.prev_30.active_days, unit: "" },
   ];
   return (
-    <section aria-label="Last 12 months" className="grid grid-cols-2 border-y border-line lg:grid-cols-4">
+    <section aria-label="Last 12 months" className="surface grid grid-cols-2 overflow-hidden lg:grid-cols-4">
       {stats.map((s, i) => {
         const delta = s.prev ? ((s.now - s.prev) / s.prev) * 100 : null;
         return (
           <div
             key={s.label}
-            className={clsx("px-1 py-6 sm:px-6", i % 2 === 1 && "border-l border-line", i >= 2 && "border-t border-line lg:border-t-0", i === 2 && "lg:border-l")}
+            className={clsx("px-4 py-6 sm:px-6", i % 2 === 1 && "border-l border-line", i >= 2 && "border-t border-line lg:border-t-0", i === 2 && "lg:border-l")}
           >
             <p className="eyebrow mb-3">{s.label} · 12 mo</p>
             <p className="text-4xl text-paper sm:text-5xl">

@@ -1,10 +1,11 @@
+import { edge } from "../lib/color";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { clsx } from "clsx";
 import { Bike, CheckCircle2, CircleDashed, Dumbbell, Footprints, ImageUp, Trash2, Watch, Waves, XCircle } from "lucide-react";
 import { motion } from "motion/react";
 import { useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { ErrorBlock, LoadingBlock, PageHeader, Segmented } from "../components/Shell";
+import { ErrorBlock, LoadingBlock, PageSkeleton, PageHeader, Segmented } from "../components/Shell";
 import { READ_ONLY, api } from "../lib/api";
 import { hourLabel, toSpec, UNITS, type CustomFields, type CustomSpec } from "../lib/customSession";
 import { formatDate } from "../lib/format";
@@ -22,7 +23,7 @@ const signed = (v: number) => `${v > 0 ? "+" : ""}${v.toFixed(1)}`;
 export function PlanPage() {
   const week = useQuery({ queryKey: ["planner"], queryFn: api.plannerWeek });
   const [day, setDay] = useState<string | null>(null);
-  if (week.isPending) return <LoadingBlock height={520} />;
+  if (week.isPending) return <PageSkeleton kind="week" />;
   if (week.isError) return <ErrorBlock error={week.error} retry={() => week.refetch()} />;
   const w = week.data;
   const upcoming = w.days.filter((d) => d.day >= w.today);
@@ -47,9 +48,9 @@ export function PlanPage() {
           const active = d.day === selected;
           return (
             <button key={d.day} type="button" onClick={() => setDay(d.day)} aria-pressed={active}
-              className={clsx("flex min-h-20 flex-col items-center gap-1.5 border px-1 py-2.5 text-center transition-colors",
+              className={clsx("press flex min-h-20 flex-col items-center gap-1.5 rounded-2xl border px-0.5 py-2.5 text-center transition-colors",
                 active ? "border-gold bg-gold/10" : "border-line bg-ink/40 hover:border-line-strong")}>
-              <span className="eyebrow !text-[11px]">{d.day === w.today ? "Today" : weekday.format(parse(d.day))}</span>
+              <span className="eyebrow !text-[11px] !tracking-wide">{d.day === w.today ? "Today" : weekday.format(parse(d.day))}</span>
               <span className="num text-lg text-cream">{parse(d.day).getDate()}</span>
               <span className="flex gap-0.5">
                 {d.plans.map((pl) => {
@@ -86,7 +87,7 @@ function DayPlans({ day, plans, today }: { day: string; plans: PlannedSessionVie
       {plans.map((p) => {
         const Icon = SPORT_ICON[p.sport];
         return (
-          <div key={p.id} className="surface flex items-start gap-4 p-5" style={{ borderLeft: `3px solid ${p.status === "done" ? C.lime : C.gold}` }}>
+          <div key={p.id} className="surface edge flex items-start gap-4 p-5" style={edge(p.status === "done" ? C.lime : C.gold)}>
             <Icon size={20} className="mt-0.5 shrink-0 text-gold" />
             <div className="min-w-0 flex-1">
               <p className="font-semibold text-paper">{p.title}</p>

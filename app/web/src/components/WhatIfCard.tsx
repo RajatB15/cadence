@@ -1,3 +1,4 @@
+import { edge } from "../lib/color";
 import { Sparkles } from "lucide-react";
 import { Link } from "react-router-dom";
 import type { WhatIfCard as Card } from "../lib/types";
@@ -8,7 +9,7 @@ export function WhatIfCard({ card }: { card: Card | null | undefined }) {
   if (!card) return null;
   const color = card.tone === "good" ? C.lime : C.sky;
   return (
-    <section className="surface flex items-start gap-4 p-5 sm:p-6" style={{ borderLeft: `3px solid ${color}` }}>
+    <section className="surface edge flex items-start gap-4 p-5 sm:p-6" style={edge(color)}>
       <Sparkles size={20} className="mt-0.5 shrink-0" style={{ color }} />
       <div className="min-w-0">
         <p className="eyebrow mb-1">What if</p>

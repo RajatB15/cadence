@@ -255,6 +255,13 @@ def test_paired_phone_can_name_a_strength_class(api, web):
 def test_phone_write_allowlist_is_anchored():
     assert phone_may_write("PUT", "/api/journal/2026-10-21")
     assert phone_may_write("POST", "/api/food/meals/3/log")
+    assert phone_may_write("POST", "/api/food/log")
+    assert phone_may_write("POST", "/api/food/entries/bulk")
+    assert phone_may_write("POST", "/api/food/entries/7/restore")
+    assert not phone_may_write("POST", "/api/food/log/x")
+    assert not phone_may_write("PUT", "/api/food/log")
+    assert not phone_may_write("POST", "/api/food/entries/7/restore/x")
+    assert not phone_may_write("POST", "/api/food/barcode/12345678/lookup")  # no online lookup exists
     assert not phone_may_write("POST", "/api/planner/3/garmin")
     assert not phone_may_write("DELETE", "/api/planner/3/garmin")
     assert not phone_may_write("POST", "/api/reading/feed/refresh")

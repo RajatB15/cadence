@@ -15,7 +15,7 @@ from __future__ import annotations
 import json
 import re
 import threading
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, time, timedelta, timezone
 from functools import lru_cache
 from pathlib import Path
 
@@ -24,9 +24,16 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from cadence_app import nutrients
-from cadence_app.models import FoodDish, FoodEntry, FoodMeal, FoodMealItem
+from cadence_app.analytics import foodrank
+from cadence_app.models import FoodDish, FoodEntry, FoodMeal, FoodMealItem, FoodPortionMemory
 
 MEALS = ("breakfast", "lunch", "snack", "dinner")
+SOURCES = ("manual", "quick", "chip", "scan", "copy")
+MAX_BATCH_ITEMS = 40
+MAX_BULK_IDS = 100
+KEY_MAX = 56  # a batch item's key is "{key}:{index}" and must fit the 64-character column
+PURGE_AFTER_DAYS = 7
+BARCODE_RE = re.compile(r"[0-9]{6,14}")
 MAX_BACKFILL_DAYS = 60
 MAX_SERVINGS = 20.0
 MAX_UNIT_GRAMS = 3000.0
@@ -37,6 +44,10 @@ HOME_SPREAD, OUT_SPREAD, PACKAGED_SPREAD = 20, 30, 10
 MIN_DAYS_FOR_AVERAGE = 4
 # ISSN position stand (Jäger et al. 2017): 1.4-2.0 g/kg/day for people who exercise. A reference range, not advice.
 PROTEIN_REFERENCE_G_PER_KG = (1.4, 2.0)
+
+def utcnow() -> datetime:
+    return datetime.now(timezone.utc).replace(tzinfo=None)
+
 
 class FoodError(ValueError):
     pass
@@ -180,7 +191,7 @@ def dish_dict(d: FoodDish) -> dict:
             "micros_per_100g": json.loads(d.micros_100g) if d.micros_100g else None,
             "aliases": json.loads(d.aliases) if d.aliases else [],
             "portions": json.loads(d.portions) if d.portions else [],
-            "grams_ok": d.unit_g is not None and d.kcal_100g is not None}
+            "grams_ok": d.unit_g is not None and d.kcal_100g is not None, "barcode": d.barcode, "pinned": bool(d.pinned)}
 
 
 def dishes(session: Session, include_inactive: bool = False) -> list[dict]:
@@ -209,7 +220,7 @@ def _clean_micros(micros: dict | None) -> dict[str, float] | None:
 
 def add_dish(session: Session, name: str, unit: str, kcal: float, protein_g: float | None, carbs_g: float | None, fat_g: float | None,
              now: datetime, spread_pct: int = HOME_SPREAD, grams: float | None = None, micros_per_100g: dict | None = None,
-             basis: str = "estimate", note: str | None = None) -> dict:
+             basis: str = "estimate", note: str | None = None, barcode: str | None = None) -> dict:
     """Your own dish (typed in, read from a label, or remembered from a quick entry). Give the weight of one serving
     (grams) and it can also be logged by weight. Macros you don't know stay unknown."""
     name, unit = _clean(name, unit, kcal, protein_g, carbs_g, fat_g)
@@ -220,9 +231,29 @@ def add_dish(session: Session, name: str, unit: str, kcal: float, protein_g: flo
     _set_weight(d, grams)
     micros = _clean_micros(micros_per_100g)
     d.micros_100g = json.dumps(micros) if micros and d.unit_g else None  # per 100 g needs a weight to scale from
+    if barcode:
+        d.barcode = _free_barcode(session, barcode, None)
     session.add(d)
     session.commit()
     return dish_dict(d)
+
+
+def clean_barcode(code: str | None) -> str | None:
+    """Digits only, 6 to 14 of them (EAN-8/13, UPC-A/E, ITF-14). Typed codes may carry spaces or dashes."""
+    code = re.sub(r"[\s-]", "", code or "")
+    if not code:
+        return None
+    if not BARCODE_RE.fullmatch(code):
+        raise FoodError("A barcode is 6 to 14 digits")
+    return code
+
+
+def _free_barcode(session: Session, code: str, dish_id: int | None) -> str:
+    code = clean_barcode(code)
+    clash = session.scalar(select(FoodDish).where(FoodDish.barcode == code, FoodDish.id != (dish_id or 0)))
+    if clash is not None:
+        raise FoodError(f"That barcode already belongs to {clash.name}")
+    return code
 
 
 def _set_weight(d: FoodDish, grams: float | None) -> None:
@@ -253,6 +284,10 @@ def update_dish(session: Session, dish_id: int, values: dict) -> dict | None:
     d.kcal, d.protein_g, d.carbs_g, d.fat_g, d.spread_pct = (merged[k] for k in ("kcal", "protein_g", "carbs_g", "fat_g", "spread_pct"))
     if values.get("active") is not None:
         d.active = values["active"]
+    if values.get("pinned") is not None:
+        d.pinned = bool(values["pinned"])
+    if "barcode" in values:  # null or empty clears it
+        d.barcode = _free_barcode(session, values["barcode"], dish_id) if clean_barcode(values["barcode"]) else None
     if nutrition_changed:
         _set_weight(d, values["grams"] if values.get("grams") is not None else d.unit_g)
         d.basis, d.note, d.flagged = "estimate", "Edited by you.", False
@@ -300,30 +335,80 @@ def _micros_json(m: dict | None) -> str | None:
     return json.dumps(m) if m else None
 
 
-def log_dish(session: Session, day: date, meal: str, dish_id: int, servings: float, eating_out: bool,
-             today: date, now: datetime, grams: float | None = None, client_key: str | None = None) -> dict:
-    """Logs a dish by number of servings, or by grams for dishes that have a weight."""
+def parse_eaten_at(value: str | time | None) -> time | None:
+    """"HH:MM" (or HH:MM:SS) as a time of day; None stays None."""
+    if value is None or isinstance(value, time):
+        return value.replace(second=0, microsecond=0) if value else None
+    m = re.fullmatch(r"([01]?\d|2[0-3]):([0-5]\d)(?::[0-5]\d)?", str(value).strip())
+    if not m:
+        raise FoodError("Time eaten must look like 08:10")
+    return time(int(m.group(1)), int(m.group(2)))
+
+
+def default_eaten_at(day: date, today: date, local_now: time | None) -> time | None:
+    """When nothing was said: logging today means eating about now; a backfilled day has no time (never invented)."""
+    return local_now.replace(second=0, microsecond=0) if day == today and local_now is not None else None
+
+
+def _check_source(source: str) -> str:
+    if source not in SOURCES:
+        raise FoodError("Unknown source")
+    return source
+
+
+def _unit_label(d: FoodDish, unit: str | None, by_grams: bool) -> str:
+    if by_grams:
+        return "g"
+    if unit:
+        return unit.strip()[:40]
+    portions = json.loads(d.portions) if d.portions else []
+    return (portions[0]["unit"] if portions else d.unit)[:40]
+
+
+def _remember(session: Session, d: FoodDish, p: dict, unit: str | None, by_grams: bool, now: datetime) -> None:
+    """Keeps the amount just logged as the next default for this dish (joins the caller's transaction)."""
+    row = session.get(FoodPortionMemory, d.id)
+    prev = None if row is None else {"servings": row.servings, "n": row.n, "streak": row.streak}
+    nxt = foodrank.next_memory(prev, round(p["servings"], 4), _unit_label(d, unit, by_grams), None if p["grams"] is None else round(p["grams"], 1))
+    if row is None:
+        session.add(FoodPortionMemory(dish_id=d.id, updated_at=now, **nxt))
+    else:
+        for k, v in nxt.items():
+            setattr(row, k, v)
+        row.updated_at = now
+
+
+def _dish_entry(session: Session, day: date, meal: str, dish_id: int, servings: float, eating_out: bool, today: date, now: datetime,
+                grams: float | None, client_key: str | None, eaten_at: time | None, source: str, unit: str | None = None) -> FoodEntry:
     _check_day(day, today)
     _check_meal(meal)
+    _check_source(source)
     d = session.get(FoodDish, dish_id)
     if d is None:
         raise FoodError("Unknown dish")
     p = _portion(d, servings, grams)
-    entry = FoodEntry(day=day, meal=meal, dish_id=d.id, name=d.name, servings=p["servings"], kcal=p["kcal"],
-                      protein_g=p["protein_g"], carbs_g=p["carbs_g"], fat_g=p["fat_g"], grams=p["grams"],
-                      micros=_micros_json(p["micros"]),
-                      spread_pct=max(d.spread_pct, OUT_SPREAD) if eating_out else d.spread_pct, logged_at=now, client_key=client_key)
+    _remember(session, d, p, unit, grams is not None, now)
+    return FoodEntry(day=day, meal=meal, dish_id=d.id, name=d.name, servings=p["servings"], kcal=p["kcal"],
+                     protein_g=p["protein_g"], carbs_g=p["carbs_g"], fat_g=p["fat_g"], grams=p["grams"],
+                     micros=_micros_json(p["micros"]),
+                     spread_pct=max(d.spread_pct, OUT_SPREAD) if eating_out else d.spread_pct, logged_at=now, client_key=client_key,
+                     eaten_at=eaten_at, source=source)
+
+
+def log_dish(session: Session, day: date, meal: str, dish_id: int, servings: float, eating_out: bool,
+             today: date, now: datetime, grams: float | None = None, client_key: str | None = None,
+             eaten_at: time | None = None, source: str = "manual", unit: str | None = None) -> dict:
+    """Logs a dish by number of servings, or by grams for dishes that have a weight."""
+    entry = _dish_entry(session, day, meal, dish_id, servings, eating_out, today, now, grams, client_key, eaten_at, source, unit)
     return _commit_entry(session, entry, client_key)
 
 
-def log_quick(session: Session, day: date, meal: str, name: str, kcal: float, protein_g: float | None,
-              today: date, now: datetime, carbs_g: float | None = None, fat_g: float | None = None, save_dish: bool = True,
-              client_key: str | None = None) -> dict:
-    """A one-off entry (eating out, something not in the library). Calories required; macros optional and left unknown if
-    not given. By default it is also remembered as one of your dishes (one serving) so it can be picked again next time;
-    if a dish with that name already exists it is only logged."""
+def _quick_entry(session: Session, day: date, meal: str, name: str, kcal: float, protein_g: float | None, today: date, now: datetime,
+                 carbs_g: float | None, fat_g: float | None, save_dish: bool, client_key: str | None, eaten_at: time | None,
+                 source: str) -> tuple[FoodEntry, FoodDish | None]:
     _check_day(day, today)
     _check_meal(meal)
+    _check_source(source)
     if not name.strip():
         raise FoodError("Say what it was")
     if not 0 < kcal <= MAX_KCAL:
@@ -332,21 +417,32 @@ def log_quick(session: Session, day: date, meal: str, name: str, kcal: float, pr
         if v is not None and not 0 <= v <= cap:
             raise FoodError(f"{label} must be between 0 and {cap} g")
     name = name.strip()[:80]
-    dish_id, saved = None, False
+    dish = None
     if save_dish and session.scalar(select(FoodDish.id).where(FoodDish.name.ilike(name))) is None:
         dish = FoodDish(name=name, unit="1 serving", kcal=kcal, protein_g=protein_g, carbs_g=carbs_g, fat_g=fat_g, spread_pct=OUT_SPREAD,
                         builtin=False, active=True, source="mine", basis="estimate", note="Remembered from a quick entry.", created_at=now)
         session.add(dish)
         session.flush()
-        dish_id, saved = dish.id, True
-    entry = FoodEntry(day=day, meal=meal, dish_id=dish_id, name=name, servings=1, kcal=kcal,
-                      protein_g=protein_g, carbs_g=carbs_g, fat_g=fat_g, spread_pct=OUT_SPREAD, logged_at=now, client_key=client_key)
+    entry = FoodEntry(day=day, meal=meal, dish_id=dish.id if dish else None, name=name, servings=1, kcal=kcal,
+                      protein_g=protein_g, carbs_g=carbs_g, fat_g=fat_g, spread_pct=OUT_SPREAD, logged_at=now, client_key=client_key,
+                      eaten_at=eaten_at, source=source)
+    return entry, dish
+
+
+def log_quick(session: Session, day: date, meal: str, name: str, kcal: float, protein_g: float | None,
+              today: date, now: datetime, carbs_g: float | None = None, fat_g: float | None = None, save_dish: bool = True,
+              client_key: str | None = None, eaten_at: time | None = None, source: str = "quick") -> dict:
+    """A one-off entry (eating out, something not in the library). Calories required; macros optional and left unknown if
+    not given. By default it is also remembered as one of your dishes (one serving) so it can be picked again next time;
+    if a dish with that name already exists it is only logged."""
+    entry, dish = _quick_entry(session, day, meal, name, kcal, protein_g, today, now, carbs_g, fat_g, save_dish, client_key, eaten_at, source)
     out = _commit_entry(session, entry, client_key)
-    return {**out, "saved_dish": saved and not out.get("replayed")}
+    return {**out, "saved_dish": dish is not None and not out.get("replayed")}
 
 
 def entry_for_key(session: Session, client_key: str | None) -> dict | None:
-    """The entry an earlier request with this idempotency key created, if any (a retry after a timeout)."""
+    """The entry an earlier request with this idempotency key created, if any (a retry after a timeout).
+    A removed entry is still found, so a late retry never logs it again."""
     if not client_key:
         return None
     e = session.scalar(select(FoodEntry).where(FoodEntry.client_key == client_key))
@@ -365,22 +461,182 @@ def _commit_entry(session: Session, entry: FoodEntry, client_key: str | None) ->
     return entry_dict(entry)
 
 
-def remove(session: Session, entry_id: int) -> bool:
-    result = session.execute(delete(FoodEntry).where(FoodEntry.id == entry_id))
+# ---- batch: a whole meal in one transaction ----
+
+
+def log_batch(session: Session, day: date, meal: str, items: list[dict], eating_out: bool, eaten_at: time | None, client_key: str | None,
+              source: str | None, today: date, now: datetime) -> dict:
+    """Logs every item of a draft meal or none of them. With a `client_key`, item i is stored under "{key}:{i}", so a retry
+    (even one that arrives while the first request is still running) returns the entries already written and adds nothing;
+    a batch that was only partly written before is completed, not repeated.
+
+    Items: {dish_id, servings|grams, unit?} or {name, kcal, protein_g?, carbs_g?, fat_g?, save_dish?}."""
+    if not items:
+        raise FoodError("Nothing to log")
+    if len(items) > MAX_BATCH_ITEMS:
+        raise FoodError(f"A meal logs up to {MAX_BATCH_ITEMS} items at once")
+    key = (client_key or "").strip() or None
+    if key and len(key) > KEY_MAX:
+        raise FoodError(f"The key can be up to {KEY_MAX} characters")
+    keys = [f"{key}:{i}" if key else None for i in range(len(items))]
+    existing = {e.client_key: e for e in session.scalars(select(FoodEntry).where(FoodEntry.client_key.in_([k for k in keys if k])))} if key else {}
+    if key and len(existing) == len(items):
+        return _batch_out(keys, existing, [], True)
+    when = eaten_at
+    made: dict[str, FoodEntry] = dict(existing)
+    saved: list[FoodDish] = []
+    try:
+        for i, it in enumerate(items):
+            if keys[i] in existing:
+                continue
+            try:
+                src = source or ("quick" if it.get("dish_id") is None else "manual")
+                if it.get("dish_id") is not None:
+                    entry = _dish_entry(session, day, meal, it["dish_id"], it.get("servings") or 1.0, eating_out, today, now, it.get("grams"),
+                                        keys[i], when, src, it.get("unit"))
+                elif it.get("name") and it.get("kcal"):
+                    entry, dish = _quick_entry(session, day, meal, it["name"], it["kcal"], it.get("protein_g"), today, now, it.get("carbs_g"),
+                                               it.get("fat_g"), it.get("save_dish", False), keys[i], when, src)
+                    if dish is not None:
+                        saved.append(dish)
+                else:
+                    raise FoodError("Pick a dish, or give a name and calories")
+            except FoodError as exc:
+                raise FoodError(f"Item {i + 1}: {exc}") from None
+            session.add(entry)
+            made[keys[i] or f"#{i}"] = entry
+        session.commit()
+    except IntegrityError:  # the same key raced in from a second request: its rows won, return them
+        session.rollback()
+        if not key:
+            raise
+        got = {e.client_key: e for e in session.scalars(select(FoodEntry).where(FoodEntry.client_key.in_(keys)))}
+        if len(got) != len(items):
+            raise
+        return _batch_out(keys, got, [], True)
+    except FoodError:
+        session.rollback()
+        raise
+    ordered = [made[keys[i] or f"#{i}"] for i in range(len(items))]
+    return {"entries": [entry_dict(e) for e in ordered if e.deleted_at is None], "replayed": False, "saved_dishes": [dish_dict(d) for d in saved]}
+
+
+def _batch_out(keys: list, rows: dict[str, FoodEntry], saved: list, replayed: bool) -> dict:
+    live = [rows[k] for k in keys if k in rows and rows[k].deleted_at is None]
+    return {"entries": [entry_dict(e) for e in live], "replayed": replayed, "saved_dishes": saved}
+
+
+# ---- remove (soft), restore, purge, bulk ----
+
+
+def active_entries():
+    """The only way to select entries for any total, list, history or copy: removed ones are excluded."""
+    return select(FoodEntry).where(FoodEntry.deleted_at.is_(None))
+
+
+def remove(session: Session, entry_id: int, now: datetime | None = None) -> bool:
+    """Soft delete: the entry disappears everywhere but can be restored for a week. False if it is missing or already removed."""
+    result = session.execute(update(FoodEntry).where(FoodEntry.id == entry_id, FoodEntry.deleted_at.is_(None))
+                             .values(deleted_at=now or utcnow()))
     session.commit()
     return result.rowcount > 0
 
 
+def restore(session: Session, entry_id: int) -> dict | None:
+    e = session.get(FoodEntry, entry_id)
+    if e is None:
+        return None
+    e.deleted_at = None
+    session.commit()
+    return entry_dict(e)
+
+
+def purge_deleted(session: Session, now: datetime) -> int:
+    """Hard-deletes entries removed more than a week ago. Returns how many."""
+    result = session.execute(delete(FoodEntry).where(FoodEntry.deleted_at.is_not(None),
+                                                     FoodEntry.deleted_at < now - timedelta(days=PURGE_AFTER_DAYS)))
+    session.commit()
+    return result.rowcount
+
+
+def _scale(e: FoodEntry, factor: float) -> None:
+    if e.servings * factor > MAX_SERVINGS or e.servings * factor <= 0:
+        raise FoodError(f"Servings must be between 0 and {MAX_SERVINGS:g}")
+    e.kcal = e.kcal * factor
+    for attr in ("protein_g", "carbs_g", "fat_g", "grams"):
+        v = getattr(e, attr)
+        setattr(e, attr, None if v is None else v * factor)
+    e.micros = _micros_json(nutrients.multiply(json.loads(e.micros) if e.micros else None, factor))
+    e.servings = e.servings * factor
+
+
+def bulk(session: Session, ids: list[int], action: str, meal: str | None, scale: float | None, now: datetime) -> dict:
+    """Delete, restore, move to a meal, or scale several entries together; all or none."""
+    ids = list(dict.fromkeys(ids))
+    if not ids or len(ids) > MAX_BULK_IDS:
+        raise FoodError(f"Pick between 1 and {MAX_BULK_IDS} entries")
+    rows = {e.id: e for e in session.scalars(select(FoodEntry).where(FoodEntry.id.in_(ids)))}
+    if len(rows) != len(ids):
+        raise FoodError("One of those entries no longer exists")
+    if action != "restore" and any(rows[i].deleted_at is not None for i in ids):
+        raise FoodError("One of those entries was already removed")
+    if action == "delete":
+        for e in rows.values():
+            e.deleted_at = now
+    elif action == "restore":
+        for e in rows.values():
+            e.deleted_at = None
+    elif action == "move":
+        _check_meal(meal or "")
+        for e in rows.values():
+            e.meal = meal
+    elif action == "scale":
+        if scale is None or not 0 < scale <= MAX_MEAL_SCALE:
+            raise FoodError(f"Scale must be between 0 and {MAX_MEAL_SCALE:g}")
+        try:
+            for e in rows.values():
+                _scale(e, scale)
+        except FoodError:
+            session.rollback()
+            raise
+    else:
+        raise FoodError("Unknown action")
+    session.commit()
+    return {"entries": [entry_dict(rows[i]) for i in ids], "affected": len(ids)}
+
+
+def copy_entries(session: Session, source: date, target: date, today: date, now: datetime, meal: str | None = None,
+                 target_meal: str | None = None, entry_ids: list[int] | None = None, local_now: time | None = None) -> dict:
+    """Copies entries from one day onto another: the whole day, one meal, or chosen entries (`target_meal` puts them in
+    another meal, for "same as yesterday's lunch"). Nothing is skipped silently: asking for an entry that is gone is an error."""
+    _check_day(target, today)
+    if meal is not None:
+        _check_meal(meal)
+    if target_meal is not None:
+        _check_meal(target_meal)
+    q = active_entries().where(FoodEntry.day == source).order_by(FoodEntry.id)
+    if meal is not None:
+        q = q.where(FoodEntry.meal == meal)
+    if entry_ids:
+        q = q.where(FoodEntry.id.in_(entry_ids))
+    rows = list(session.scalars(q))
+    if entry_ids and len(rows) != len(set(entry_ids)):
+        raise FoodError("One of those entries is gone or isn't from that day")
+    eaten = default_eaten_at(target, today, local_now)
+    added = []
+    for r in rows:
+        e = FoodEntry(day=target, meal=target_meal or r.meal, dish_id=r.dish_id, name=r.name, servings=r.servings, kcal=r.kcal,
+                      protein_g=r.protein_g, carbs_g=r.carbs_g, fat_g=r.fat_g, grams=r.grams, micros=r.micros,
+                      spread_pct=r.spread_pct, logged_at=now, eaten_at=eaten, source="copy")
+        session.add(e)
+        added.append(e)
+    session.commit()
+    return {"copied": len(added), "entries": [entry_dict(e) for e in added]}
+
+
 def copy_day(session: Session, source: date, target: date, today: date, now: datetime) -> int:
     """Copies a day's entries onto another day (typically yesterday onto today). Returns how many were added."""
-    _check_day(target, today)
-    rows = list(session.scalars(select(FoodEntry).where(FoodEntry.day == source).order_by(FoodEntry.id)))
-    for r in rows:
-        session.add(FoodEntry(day=target, meal=r.meal, dish_id=r.dish_id, name=r.name, servings=r.servings, kcal=r.kcal,
-                              protein_g=r.protein_g, carbs_g=r.carbs_g, fat_g=r.fat_g, grams=r.grams, micros=r.micros,
-                              spread_pct=r.spread_pct, logged_at=now))
-    session.commit()
-    return len(rows)
+    return copy_entries(session, source, target, today, now)["copied"]
 
 
 def entry_dict(e: FoodEntry) -> dict:
@@ -389,21 +645,28 @@ def entry_dict(e: FoodEntry) -> dict:
             "carbs_g": None if e.carbs_g is None else round(e.carbs_g, 1),
             "fat_g": None if e.fat_g is None else round(e.fat_g, 1), "spread_pct": e.spread_pct,
             "grams": None if e.grams is None else round(e.grams),
-            "micros": json.loads(e.micros) if e.micros else None}
+            "micros": json.loads(e.micros) if e.micros else None,
+            "eaten_at": None if e.eaten_at is None else e.eaten_at.strftime("%H:%M"), "eaten_at_est": bool(e.eaten_at_est),
+            "source": e.source, "deleted_at": e.deleted_at}
 
 
 def recent_dish_ids(session: Session, limit: int = 12) -> list[int]:
     """The dishes you log most often lately, so the picker can lead with them."""
-    since = session.scalar(select(FoodEntry.day).order_by(FoodEntry.day.desc()).limit(1))
+    since = session.scalar(select(FoodEntry.day).where(FoodEntry.deleted_at.is_(None)).order_by(FoodEntry.day.desc()).limit(1))
     if since is None:
         return []
     rows = session.execute(
-        select(FoodEntry.dish_id).where(FoodEntry.dish_id.is_not(None), FoodEntry.day >= since - timedelta(days=30))
+        select(FoodEntry.dish_id).where(FoodEntry.dish_id.is_not(None), FoodEntry.deleted_at.is_(None), FoodEntry.day >= since - timedelta(days=30))
     ).scalars()
     counts: dict[int, int] = {}
     for dish_id in rows:
         counts[dish_id] = counts.get(dish_id, 0) + 1
     return [k for k, _ in sorted(counts.items(), key=lambda kv: -kv[1])[:limit]]
+
+
+def display_time(e: FoodEntry) -> time:
+    """When to show an entry in the day's timeline: the time eaten, else a default for its meal. For ordering only."""
+    return e.eaten_at or time(*foodrank.MEAL_DEFAULT_TIMES.get(e.meal, (12, 0)))
 
 
 def day_summary(entries: list[dict], weight_kg: float | None = None) -> dict:
@@ -455,9 +718,9 @@ def average(summaries: list[dict]) -> dict | None:
 def view(session: Session, day: date, today: date, weight_kg: float | None, window: int = 7, long_window: int = 14) -> dict:
     """Everything the Food page needs for one day, plus trailing windows of day totals (7 shown, 14 for the expenditure check)."""
     since = day - timedelta(days=long_window - 1)
-    rows = list(session.scalars(select(FoodEntry).where(FoodEntry.day >= since, FoodEntry.day <= day).order_by(FoodEntry.id)))
+    rows = list(session.scalars(active_entries().where(FoodEntry.day >= since, FoodEntry.day <= day).order_by(FoodEntry.id)))
     by_day: dict[date, list[dict]] = {}
-    for r in rows:
+    for r in sorted(rows, key=lambda r: (r.day, display_time(r), r.id)):
         by_day.setdefault(r.day, []).append(entry_dict(r))
     trail14 = []
     for i in range(long_window):
@@ -481,18 +744,40 @@ def view(session: Session, day: date, today: date, weight_kg: float | None, wind
 
 def set_amount(session: Session, entry_id: int, servings: float) -> dict | None:
     """Changes how much of an entry was eaten, scaling everything it holds (calories, macros, grams, micronutrients)."""
+    return update_entry(session, entry_id, {"servings": servings})
+
+
+def update_entry(session: Session, entry_id: int, values: dict) -> dict | None:
+    """Edits an entry: amount (`servings`, or `grams` for entries that have a weight), `meal`, `eaten_at` (null clears it).
+    Amounts scale everything the entry holds. A removed entry can't be edited."""
     e = session.get(FoodEntry, entry_id)
-    if e is None:
+    if e is None or e.deleted_at is not None:
         return None
-    if not 0 < servings <= MAX_SERVINGS:
-        raise FoodError(f"Servings must be between 0 and {MAX_SERVINGS:g}")
-    factor = servings / e.servings
-    e.kcal = e.kcal * factor
-    for attr in ("protein_g", "carbs_g", "fat_g", "grams"):
-        v = getattr(e, attr)
-        setattr(e, attr, None if v is None else v * factor)
-    e.micros = _micros_json(nutrients.multiply(json.loads(e.micros) if e.micros else None, factor))
-    e.servings = servings
+    if "meal" in values and values["meal"] is not None:
+        _check_meal(values["meal"])
+    if values.get("servings") is not None and values.get("grams") is not None:
+        raise FoodError("Give servings or grams, not both")
+    factor = None
+    if values.get("servings") is not None:
+        if not 0 < values["servings"] <= MAX_SERVINGS:
+            raise FoodError(f"Servings must be between 0 and {MAX_SERVINGS:g}")
+        factor = values["servings"] / e.servings
+    elif values.get("grams") is not None:
+        if not e.grams:
+            raise FoodError("This entry is logged by serving, not by grams")
+        if not 0 < values["grams"] <= MAX_LOG_GRAMS:
+            raise FoodError(f"Grams must be between 0 and {MAX_LOG_GRAMS:g}")
+        factor = values["grams"] / e.grams
+    if factor is not None:
+        try:
+            _scale(e, factor)
+        except FoodError:
+            session.rollback()
+            raise
+    if values.get("meal") is not None:
+        e.meal = values["meal"]
+    if "eaten_at" in values:
+        e.eaten_at, e.eaten_at_est = parse_eaten_at(values["eaten_at"]), False
     session.commit()
     return entry_dict(e)
 
@@ -531,7 +816,7 @@ def meal_dict(session: Session, m: FoodMeal) -> dict:
                 total[k] += v[k]
     return {"id": m.id, "name": m.name, "items": out, "kcal": round(total["kcal"]), "protein_g": round(total["protein_g"], 1),
             "carbs_g": round(total["carbs_g"], 1), "fat_g": round(total["fat_g"], 1), "partial_macros": partial,
-            "last_used": m.last_used}
+            "last_used": m.last_used, "pinned": bool(m.pinned)}
 
 
 def meals(session: Session) -> list[dict]:
@@ -552,7 +837,7 @@ def save_meal(session: Session, name: str, entry_ids: list[int], now: datetime) 
         raise FoodError(f"A meal holds up to {MAX_MEAL_ITEMS} foods")
     if session.scalar(select(FoodMeal.id).where(FoodMeal.name.ilike(name))) is not None:
         raise FoodError("You already have a meal with that name")
-    by_id = {e.id: e for e in session.scalars(select(FoodEntry).where(FoodEntry.id.in_(entry_ids)))}
+    by_id = {e.id: e for e in session.scalars(active_entries().where(FoodEntry.id.in_(entry_ids)))}
     if len(by_id) != len(set(entry_ids)):
         raise FoodError("One of those foods no longer exists")
     meal = FoodMeal(name=name, created_at=now)
@@ -581,6 +866,24 @@ def rename_meal(session: Session, meal_id: int, name: str) -> dict | None:
     return meal_dict(session, m)
 
 
+def update_meal(session: Session, meal_id: int, values: dict) -> dict | None:
+    """Renames and/or pins a saved meal."""
+    m = session.get(FoodMeal, meal_id)
+    if m is None:
+        return None
+    if values.get("name") is not None:
+        name = values["name"].strip()[:80]
+        if not name:
+            raise FoodError("Give the meal a name")
+        if session.scalar(select(FoodMeal.id).where(FoodMeal.name.ilike(name), FoodMeal.id != meal_id)) is not None:
+            raise FoodError("You already have a meal with that name")
+        m.name = name
+    if values.get("pinned") is not None:
+        m.pinned = bool(values["pinned"])
+    session.commit()
+    return meal_dict(session, m)
+
+
 def delete_meal(session: Session, meal_id: int) -> bool:
     session.execute(delete(FoodMealItem).where(FoodMealItem.meal_id == meal_id))
     result = session.execute(delete(FoodMeal).where(FoodMeal.id == meal_id))
@@ -588,7 +891,8 @@ def delete_meal(session: Session, meal_id: int) -> bool:
     return result.rowcount > 0
 
 
-def log_meal(session: Session, meal_id: int, day: date, meal: str, scale: float, eating_out: bool, today: date, now: datetime) -> list[dict]:
+def log_meal(session: Session, meal_id: int, day: date, meal: str, scale: float, eating_out: bool, today: date, now: datetime,
+             eaten_at: time | None = None) -> list[dict]:
     """Adds every food in a saved meal to a day, optionally scaled (0.5 = half portions)."""
     _check_day(day, today)
     _check_meal(meal)
@@ -610,7 +914,7 @@ def log_meal(session: Session, meal_id: int, day: date, meal: str, scale: float,
                           fat_g=None if v["fat_g"] is None else v["fat_g"] * factor,
                           grams=None if v["grams"] is None else v["grams"] * factor,
                           micros=_micros_json(nutrients.multiply(v["micros"], factor)),
-                          spread_pct=max(spread, OUT_SPREAD) if eating_out else spread, logged_at=now)
+                          spread_pct=max(spread, OUT_SPREAD) if eating_out else spread, logged_at=now, eaten_at=eaten_at, source="chip")
         session.add(entry)
         added.append(entry)
     m.last_used = now

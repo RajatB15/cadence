@@ -1,3 +1,4 @@
+import { edge } from "../lib/color";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { clsx } from "clsx";
 import { ArrowLeft, ChevronLeft, ChevronRight, CloudDownload } from "lucide-react";
@@ -103,35 +104,34 @@ function DayView({ metric, day, color, onSelect }: { metric: string; day: string
 
   const m = d?.metrics[metric];
   return (
-    <section className="relative overflow-hidden border-y border-line py-8">
-      <div className="pointer-events-none absolute -top-24 right-0 h-72 w-72 rounded-full opacity-15 blur-3xl" style={{ background: color }} />
+    <section className="surface edge p-5 sm:p-8" style={edge(color)}>
       <div className="flex flex-wrap items-center gap-4">
         <button
           type="button"
           aria-label="Previous day"
           disabled={!d?.prev_day}
           onClick={() => d?.prev_day && onSelect(d.prev_day)}
-          className="grid h-10 w-10 place-items-center border border-line-strong text-mute hover:text-paper disabled:opacity-30"
+          className="grid h-11 w-11 place-items-center rounded-full border border-line-strong text-mute hover:text-paper disabled:opacity-30"
         >
           <ChevronLeft size={18} />
         </button>
         <div className="min-w-0 flex-1">
           <p className="eyebrow">Selected day<span className="pointer-coarse:hidden"> · ← → to move</span></p>
-          <p className="font-display text-3xl text-cream sm:text-4xl">{longDate.format(parseDay(day))}</p>
+          <p className="font-display text-2xl text-cream sm:text-4xl">{longDate.format(parseDay(day))}</p>
         </div>
         <button
           type="button"
           aria-label="Next day"
           disabled={!d?.next_day}
           onClick={() => d?.next_day && onSelect(d.next_day)}
-          className="grid h-10 w-10 place-items-center border border-line-strong text-mute hover:text-paper disabled:opacity-30"
+          className="grid h-11 w-11 place-items-center rounded-full border border-line-strong text-mute hover:text-paper disabled:opacity-30"
         >
           <ChevronRight size={18} />
         </button>
       </div>
 
       {query.isPending ? (
-        <div className="mt-8 h-40 animate-pulse bg-coal" />
+        <div className="skeleton mt-8 h-40 rounded-2xl" />
       ) : query.isError ? (
         <div className="mt-6"><ErrorBlock error={query.error} retry={() => query.refetch()} /></div>
       ) : !m ? (

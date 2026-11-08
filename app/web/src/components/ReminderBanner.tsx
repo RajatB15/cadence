@@ -1,3 +1,5 @@
+import { edge } from "../lib/color";
+import { C } from "../lib/theme";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { clsx } from "clsx";
 import { AlertTriangle, KeyRound, X } from "lucide-react";
@@ -8,10 +10,11 @@ import { reminderCopy } from "../lib/format";
 import { useCredentialStatus } from "../lib/useCredentialStatus";
 
 const TONES = {
-  info: "border-gold/40 text-gold",
-  warn: "border-amber/50 text-amber",
-  danger: "border-coral/60 text-coral",
+  info: "text-gold",
+  warn: "text-amber",
+  danger: "text-coral",
 };
+const TONE_COLOR = { info: C.gold, warn: C.amber, danger: C.coral };
 
 export function ReminderBanner() {
   const { data } = useCredentialStatus();
@@ -32,9 +35,10 @@ export function ReminderBanner() {
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, y: -12 }}
           className={clsx(
-            "surface mb-8 flex items-center gap-4 border-l-2 px-5 py-4",
+            "surface edge mb-8 flex items-center gap-4 px-5 py-4",
             TONES[copy.tone],
           )}
+          style={edge(TONE_COLOR[copy.tone])}
         >
           {copy.tone === "danger" ? <AlertTriangle size={18} /> : <KeyRound size={18} />}
           <div className="min-w-0 flex-1">

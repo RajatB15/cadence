@@ -1,3 +1,4 @@
+import { edge } from "../lib/color";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { clsx } from "clsx";
 import { Check, HeartPulse, Sparkles } from "lucide-react";
@@ -24,7 +25,7 @@ function Choice({ label, options, value, offset = 0, onPick }: { label: string; 
           const on = value === v;
           return (
             <button key={o} type="button" role="radio" aria-checked={on} onClick={() => onPick(v)}
-              className={clsx("min-w-14 border px-3 py-2 text-xs font-semibold tracking-wide transition-colors pointer-coarse:py-3",
+              className={clsx("min-w-14 rounded-full border px-3 py-2 text-xs font-semibold tracking-wide transition-colors pointer-coarse:py-3",
                 on ? "border-gold bg-gold/15 text-paper" : "border-line-strong text-mute hover:text-paper")}>
               {o}
             </button>
@@ -59,7 +60,7 @@ export function WellbeingCard({ day, block }: { day: string; block: BriefWellbei
       ].filter(Boolean).join(" · ")
     : "";
   return (
-    <section className="surface p-5 sm:p-6" style={{ borderLeft: `3px solid ${color}` }} aria-label="Check-in">
+    <section className="surface edge p-5 sm:p-6" style={edge(color)} aria-label="Check-in">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="eyebrow flex items-center gap-2"><HeartPulse size={14} style={{ color }} /> {entry ? "Today's check-in" : "How do you feel today?"}</p>
         {entry && !more && (
@@ -107,7 +108,7 @@ export function WellbeingCard({ day, block }: { day: string; block: BriefWellbei
 export function RecoveryWinsCard({ wins }: { wins: RecoveryWins | null | undefined }) {
   if (!wins) return null;
   return (
-    <section className="surface p-5 sm:p-6" style={{ borderLeft: `3px solid ${C.mint}` }}>
+    <section className="surface edge p-5 sm:p-6" style={edge(C.mint)}>
       <p className="eyebrow mb-2 flex items-center gap-2"><Sparkles size={14} className="text-mint" /> {wins.title} · last {wins.window} days</p>
       <p className="text-sm text-mute">{wins.text}</p>
       <ul className="mt-3 space-y-1.5 text-sm text-paper">

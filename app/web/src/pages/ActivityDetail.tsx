@@ -1,3 +1,4 @@
+import { edge, withAlpha } from "../lib/color";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { clsx } from "clsx";
 import { ArrowLeft, CloudDownload, Gauge, HeartPulse, Map as MapIcon, Route as RouteIcon, Rows3 } from "lucide-react";
@@ -11,7 +12,7 @@ import { MoreMenu } from "../components/MoreMenu";
 import { ShareCardButton } from "../components/ShareCard";
 import { ClassContent } from "../components/StrengthClass";
 import { JsonTree, RecordTable, humanize } from "../components/DataViews";
-import { ErrorBlock, LoadingBlock, Segmented } from "../components/Shell";
+import { ErrorBlock, PageSkeleton, Segmented } from "../components/Shell";
 import { READ_ONLY, api } from "../lib/api";
 import { formatDate, formatDuration, formatPace } from "../lib/format";
 import { clockTime, signed } from "../lib/goals";
@@ -54,7 +55,7 @@ export function ActivityPage() {
     }
   }, [canFetch, missing.length, query.data, fetchNow]);
 
-  if (query.isPending) return <LoadingBlock height={640} />;
+  if (query.isPending) return <PageSkeleton kind="stats" />;
   if (query.isError) return <ErrorBlock error={query.error} retry={() => query.refetch()} />;
   const d = query.data;
 
@@ -160,7 +161,7 @@ function PlannedVsActual({ d }: { d: ActivityDetail }) {
   const diff = actual != null && p.predicted.load ? (actual - p.predicted.load) / p.predicted.load : null;
   const verdict = diff == null ? null : diff > 0.25 ? "Harder than planned" : diff < -0.25 ? "Easier than planned" : "As planned";
   return (
-    <section className="surface flex flex-wrap items-center gap-x-8 gap-y-3 p-5 sm:p-6" style={{ borderLeft: `3px solid ${C.gold}` }}>
+    <section className="surface edge flex flex-wrap items-center gap-x-8 gap-y-3 p-5 sm:p-6" style={edge(C.gold)}>
       <div className="min-w-0 flex-1">
         <p className="eyebrow mb-1">Planned</p>
         <p className="text-paper">{p.title}</p>
@@ -185,8 +186,9 @@ function Header({ d }: { d: ActivityDetail }) {
   return (
     <header className="relative">
       <div
-        className="pointer-events-none absolute -top-10 -left-10 h-56 w-56 rounded-full opacity-20 blur-3xl"
-        style={{ background: style.color }}
+        aria-hidden
+        className="pointer-events-none absolute -inset-x-5 -top-24 h-72 opacity-60 sm:-inset-x-10"
+        style={{ background: `radial-gradient(60% 70% at 20% 0%, ${withAlpha(style.color, 0.22)}, transparent 70%)` }}
       />
       <div className="eyebrow mb-4 flex flex-wrap items-center gap-3">
         <span className="chip" style={{ borderColor: `${style.color}66`, color: style.color }}>
@@ -249,14 +251,14 @@ function HeadlineStats({ d }: { d: ActivityDetail }) {
   push("Steps", num(s, "steps")?.toLocaleString() ?? null);
   push("Body Battery", num(s, "differenceBodyBattery")?.toFixed(0) ?? null);
   return (
-    <section className="grid grid-cols-2 border-y border-line sm:grid-cols-3 lg:grid-cols-6">
+    <section className="surface grid grid-cols-2 gap-y-1 p-2 sm:grid-cols-3 sm:p-3 lg:grid-cols-6">
       {stats.map((x, i) => (
         <motion.div
           key={x.label}
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: i * 0.03 }}
-          className="border-b border-line/60 px-1 py-5 sm:px-4"
+          className="px-3 py-4 sm:px-4"
         >
           <p className="eyebrow mb-2">{x.label}</p>
           <p className="num text-3xl" style={{ color: x.accent ?? C.paper }}>

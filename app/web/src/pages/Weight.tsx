@@ -1,12 +1,13 @@
+import { EmptyCard } from "../components/EmptyState";
 import * as Dialog from "@radix-ui/react-dialog";
 import { hasFinePointer } from "../lib/pointer";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Info, Scale, Target, X } from "lucide-react";
+import { Info, Target, X } from "lucide-react";
 import { useCallback, useMemo, useState, type FormEvent } from "react";
 import { Chart, chartBase, type ChartOption } from "../components/Chart";
 import { NoteGrid } from "../components/CoachNotes";
 import { CountUp } from "../components/CountUp";
-import { ErrorBlock, LoadingBlock, PageHeader, Segmented } from "../components/Shell";
+import { ErrorBlock, PageSkeleton, PageHeader, Segmented } from "../components/Shell";
 import { useSearchParams } from "react-router-dom";
 import { BodyStats } from "../components/BodyStats";
 import { LogWeightDialog } from "../components/LogWeightDialog";
@@ -34,18 +35,14 @@ export function WeightPage() {
         {query.data && <GoalDialog current={query.data.goal_kg} />}
       </PageHeader>
       {query.isPending ? (
-        <LoadingBlock height={520} />
+        <PageSkeleton kind="chart" />
       ) : query.isError ? (
         <ErrorBlock error={query.error} retry={() => query.refetch()} />
       ) : query.data.points.length === 0 ? (
-        <div className="surface flex flex-col items-center gap-3 p-12 text-center">
-          <Scale size={28} className="text-gold" />
-          <p className="font-display text-3xl text-cream">No weigh-ins yet</p>
-          <p className="max-w-md text-sm text-mute">
-            Log today's weight with the button above, or weigh in with the Garmin app — those sync in automatically. A smoothed trend, your BMI and
-            body estimates appear after the first reading.
-          </p>
-        </div>
+        <EmptyCard title="No weigh-ins yet">
+          Log today's weight with the button above, or weigh in with the Garmin app; those sync in automatically. A smoothed trend, your BMI and
+          body estimates appear after the first reading.
+        </EmptyCard>
       ) : (
         <WeightBody data={query.data} />
       )}
@@ -281,9 +278,9 @@ function GoalDialog({ current }: { current: number | null }) {
         <Target size={16} /> {current == null ? "Set goal" : "Edit goal"}
       </Dialog.Trigger>
       <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm" />
-        <Dialog.Content className="surface fixed top-1/2 left-1/2 z-50 w-[min(92vw,440px)] -translate-x-1/2 -translate-y-1/2 p-8">
-          <Dialog.Close className="absolute top-4 right-4 p-1 text-mute hover:text-paper" aria-label="Close">
+        <Dialog.Overlay className="dialog-overlay" />
+        <Dialog.Content className="surface dialog-content">
+          <Dialog.Close className="dialog-close" aria-label="Close">
             <X size={18} />
           </Dialog.Close>
           <Dialog.Title className="font-display text-4xl text-cream">Target weight</Dialog.Title>

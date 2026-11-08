@@ -20,11 +20,11 @@ export function ConfirmDialog({
   return (
     <Dialog.Root open={open} onOpenChange={(o) => !o && onCancel()}>
       <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 z-[60] bg-ink/70 backdrop-blur-sm" />
+        <Dialog.Overlay className="dialog-overlay !z-[60]" />
         <Dialog.Content
           role="alertdialog"
           aria-describedby={body ? "confirm-body" : undefined}
-          className="fixed top-1/2 left-1/2 z-[60] w-[min(420px,calc(100vw-2rem))] -translate-x-1/2 -translate-y-1/2 border border-line-strong bg-coal p-6"
+          className="surface dialog-content dialog-center !z-[60]"
         >
           <Dialog.Title className="font-display text-2xl text-cream">{title}</Dialog.Title>
           {body && (
