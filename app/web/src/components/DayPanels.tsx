@@ -5,6 +5,7 @@ import { Chart, chartBase, type ChartOption } from "./Chart";
 import { ActivityRow } from "./ActivityRow";
 import { RecordTable, humanize } from "./DataViews";
 import type { DayDetail, Json } from "../lib/types";
+import { C } from "../lib/theme";
 
 type Raw = Record<string, unknown>;
 
@@ -96,7 +97,7 @@ function Stat({ label, value, unit, color, hint }: { label: string; value: React
   return (
     <div>
       <p className="eyebrow mb-1.5">{label}</p>
-      <p className="num text-3xl" style={{ color: color ?? "#ecebe6" }}>
+      <p className="num text-3xl" style={{ color: color ?? C.paper }}>
         {value}
         {unit && <span className="ml-1 text-sm text-mute">{unit}</span>}
       </p>
@@ -146,7 +147,7 @@ function Ring({ label, value, goal, unit, color }: { label: string; value: numbe
   return (
     <div className="flex items-center gap-5">
       <svg viewBox="0 0 128 128" className="h-28 w-28 shrink-0 -rotate-90">
-        <circle cx="64" cy="64" r={r} fill="none" stroke="#1c1c1f" strokeWidth="12" />
+        <circle cx="64" cy="64" r={r} fill="none" stroke={C.grid} strokeWidth="12" />
         <motion.circle
           cx="64" cy="64" r={r} fill="none" stroke={color} strokeWidth="12" strokeLinecap="round"
           strokeDasharray={c}
@@ -196,7 +197,7 @@ function TimeChart({
       ...chartBase,
       useUTC: true,
       grid: { left: 8, right: 16, top: 16, bottom: 8, containLabel: true },
-      xAxis: { ...chartBase.xAxis, type: "time", axisLabel: { color: "#8d8a82", fontSize: 11, formatter: (v: number) => fmtClock(v) } },
+      xAxis: { ...chartBase.xAxis, type: "time", axisLabel: { color: C.mute, fontSize: 11, formatter: (v: number) => fmtClock(v) } },
       yAxis: { ...chartBase.yAxis, min, max },
       tooltip: {
         ...chartBase.tooltip,
@@ -219,7 +220,7 @@ function TimeChart({
             ? { color: { type: "linear", x: 0, y: 0, x2: 0, y2: 1, colorStops: [{ offset: 0, color: `${color}66` }, { offset: 1, color: `${color}00` }] } }
             : undefined,
           markArea: band
-            ? { silent: true, itemStyle: { color: "rgba(200,245,96,0.08)" }, data: [[{ yAxis: band[0] }, { yAxis: band[1] }]] }
+            ? { silent: true, itemStyle: { color: `${C.lime}14` }, data: [[{ yAxis: band[0] }, { yAxis: band[1] }]] }
             : undefined,
         },
       ],
@@ -237,8 +238,8 @@ function Missing({ what }: { what: string }) {
 // ---- metric families -----------------------------------------------------
 
 const QUALIFIER: Record<string, string> = {
-  EXCELLENT: "#5be3b0", GOOD: "#c8f560", FAIR: "#ffbe55", POOR: "#ff6a55",
-  BALANCED: "#c8f560", UNBALANCED: "#ffbe55", LOW: "#ff6a55", NONE: "#5c5a55",
+  EXCELLENT: C.mint, GOOD: C.lime, FAIR: C.amber, POOR: C.coral,
+  BALANCED: C.lime, UNBALANCED: C.amber, LOW: C.coral, NONE: C.faint,
 };
 
 function HrvDay({ d }: { d: DayDetail }) {
@@ -265,10 +266,10 @@ function HrvDay({ d }: { d: DayDetail }) {
     <div className="space-y-6">
       <Panel
         title="Overnight HRV"
-        aside={status && <span className="chip" style={{ borderColor: `${QUALIFIER[status] ?? "#8d8a82"}88`, color: QUALIFIER[status] }}>{humanize(status.toLowerCase())}</span>}
+        aside={status && <span className="chip" style={{ borderColor: `${QUALIFIER[status] ?? C.mute}88`, color: QUALIFIER[status] }}>{humanize(status.toLowerCase())}</span>}
       >
         <Stats>
-          <Stat label="Last night avg" value={last} unit="ms" color="#9b8cff" />
+          <Stat label="Last night avg" value={last} unit="ms" color={C.violet} />
           <Stat label="5-min high" value={high} unit="ms" />
           <Stat label="7-day avg" value={weekly} unit="ms" hint="Garmin's status uses this" />
           <Stat label="Balanced range" value={balLow != null && balHigh != null ? `${balLow}–${balHigh}` : null} unit="ms" />
@@ -308,7 +309,7 @@ function HrvDay({ d }: { d: DayDetail }) {
       </Panel>
       <Panel title="Through the night" aside={intraday && <p className="eyebrow">{fmtClock(wallMs(intraday.sleepStartTimestampLocal))} → {fmtClock(wallMs(intraday.sleepEndTimestampLocal))}</p>}>
         {readings.length > 1 ? (
-          <TimeChart data={readings} color="#9b8cff" unit="ms" band={balLow != null && balHigh != null ? [balLow, balHigh] : null} label="Overnight HRV readings" />
+          <TimeChart data={readings} color={C.violet} unit="ms" band={balLow != null && balHigh != null ? [balLow, balHigh] : null} label="Overnight HRV readings" />
         ) : (
           <Missing what="Overnight HRV readings" />
         )}
@@ -325,7 +326,7 @@ function HeartDay({ d }: { d: DayDetail }) {
   return (
     <Panel title="Heart rate, all day">
       <Stats>
-        <Stat label="Resting" value={resting} unit="bpm" color="#ff6a55" />
+        <Stat label="Resting" value={resting} unit="bpm" color={C.coral} />
         <Stat label="Lowest" value={n(hr?.minHeartRate) ?? n(summary?.minValue)} unit="bpm" />
         <Stat label="Highest" value={n(hr?.maxHeartRate) ?? n(summary?.maxValue)} unit="bpm" />
         <Stat label="7-day resting avg" value={n(hr?.lastSevenDaysAvgRestingHeartRate)} unit="bpm" />
@@ -333,7 +334,7 @@ function HeartDay({ d }: { d: DayDetail }) {
       </Stats>
       <div className="mt-8">
         {points.length > 1 ? (
-          <TimeChart data={points} color="#ff6a55" unit="bpm" label="All-day heart rate" height={260} />
+          <TimeChart data={points} color={C.coral} unit="bpm" label="All-day heart rate" height={260} />
         ) : (
           <Missing what="All-day heart rate" />
         )}
@@ -350,11 +351,11 @@ function SleepDay({ d }: { d: DayDetail }) {
   const need = obj(s.sleepNeed);
   const start = wallMs(s.sleepStartTimestampLocal), end = wallMs(s.sleepEndTimestampLocal);
   const stages = [
-    { label: "Deep", value: n(s.deepSleepSeconds) ?? 0, color: "#5b6cff" },
-    { label: "Light", value: n(s.lightSleepSeconds) ?? 0, color: "#6cc7ff" },
-    { label: "REM", value: n(s.remSleepSeconds) ?? 0, color: "#9b8cff" },
-    { label: "Awake", value: n(s.awakeSleepSeconds) ?? 0, color: "#ffbe55" },
-    { label: "Unmeasurable", value: n(s.unmeasurableSleepSeconds) ?? 0, color: "#5c5a55" },
+    { label: "Deep", value: n(s.deepSleepSeconds) ?? 0, color: C.violet },
+    { label: "Light", value: n(s.lightSleepSeconds) ?? 0, color: C.sky },
+    { label: "REM", value: n(s.remSleepSeconds) ?? 0, color: C.violet },
+    { label: "Awake", value: n(s.awakeSleepSeconds) ?? 0, color: C.amber },
+    { label: "Unmeasurable", value: n(s.unmeasurableSleepSeconds) ?? 0, color: C.faint },
   ].map((p) => ({ ...p, detail: dur(p.value) }));
   const components = Object.entries(scores).filter(([k]) => k !== "overall");
   return (
@@ -364,7 +365,7 @@ function SleepDay({ d }: { d: DayDetail }) {
         aside={start && end ? <p className="eyebrow">{fmtClock(start)} → {fmtClock(end)}</p> : null}
       >
         <Stats>
-          <Stat label="Asleep" value={dur(n(s.sleepTimeSeconds))} color="#6cc7ff" />
+          <Stat label="Asleep" value={dur(n(s.sleepTimeSeconds))} color={C.sky} />
           <Stat label="Score" value={n(overall?.value)} color={QUALIFIER[String(overall?.qualifierKey)]} hint={overall?.qualifierKey ? humanize(String(overall.qualifierKey).toLowerCase()) : undefined} />
           <Stat label="Need" value={need ? dur((n(need.actual) ?? n(need.baseline) ?? 0) * 60) : null} hint={need ? "Garmin's estimate" : undefined} />
           <Stat label="Awakenings" value={n(s.awakeCount)} />
@@ -389,7 +390,7 @@ function SleepDay({ d }: { d: DayDetail }) {
                   <span className="text-sm text-mute">{humanize(k)}</span>
                   <span className="flex items-center gap-3">
                     {n(o.value) != null && <span className="num text-paper">{String(o.value)}</span>}
-                    <span className="chip" style={{ color: QUALIFIER[q], borderColor: `${QUALIFIER[q] ?? "#34343a"}88` }}>
+                    <span className="chip" style={{ color: QUALIFIER[q], borderColor: `${QUALIFIER[q] ?? C.lineStrong}88` }}>
                       {humanize(q.toLowerCase()) || "—"}
                     </span>
                   </span>
@@ -424,15 +425,15 @@ function BodyBatteryDay({ d }: { d: DayDetail }) {
   return (
     <Panel title="Energy through the day">
       <Stats>
-        <Stat label="Peak" value={n(summary?.maxValue)} color="#c8f560" />
+        <Stat label="Peak" value={n(summary?.maxValue)} color={C.lime} />
         <Stat label="Low" value={n(summary?.minValue)} />
-        <Stat label="Charged" value={n(report?.charged) ?? n(summary?.chargedValue)} color="#5be3b0" />
-        <Stat label="Drained" value={n(report?.drained) ?? n(summary?.drainedValue)} color="#ff6a55" />
+        <Stat label="Charged" value={n(report?.charged) ?? n(summary?.chargedValue)} color={C.mint} />
+        <Stat label="Drained" value={n(report?.drained) ?? n(summary?.drainedValue)} color={C.coral} />
         <Stat label="Latest" value={n(summary?.latestValue)} />
       </Stats>
       <div className="mt-8">
         {points.length > 1 ? (
-          <TimeChart data={points} color="#c8f560" unit="" area min={0} max={100} label="Body Battery timeline" height={240} />
+          <TimeChart data={points} color={C.lime} unit="" area min={0} max={100} label="Body Battery timeline" height={240} />
         ) : (
           <Missing what="Body Battery timeline" />
         )}
@@ -455,21 +456,21 @@ function StressDay({ d }: { d: DayDetail }) {
   if (!s) return <Missing what="Stress" />;
   const ms = (k: string) => (n(s[k]) ?? 0) / 1000;
   const parts = [
-    { label: "Rest", value: ms("restDurationInMillis"), color: "#6cc7ff" },
-    { label: "Low", value: ms("lowStressDurationInMillis"), color: "#ffd98a" },
-    { label: "Medium", value: ms("mediumStressDurationInMillis"), color: "#ffbe55" },
-    { label: "High", value: ms("highStressDurationInMillis"), color: "#ff6a55" },
-    { label: "Activity", value: ms("activityDurationInMillis"), color: "#5c5a55" },
-    { label: "Unmeasured", value: ms("uncategorizedDurationInMillis"), color: "#34343a" },
+    { label: "Rest", value: ms("restDurationInMillis"), color: C.sky },
+    { label: "Low", value: ms("lowStressDurationInMillis"), color: C.amber },
+    { label: "Medium", value: ms("mediumStressDurationInMillis"), color: C.amber },
+    { label: "High", value: ms("highStressDurationInMillis"), color: C.coral },
+    { label: "Activity", value: ms("activityDurationInMillis"), color: C.faint },
+    { label: "Unmeasured", value: ms("uncategorizedDurationInMillis"), color: C.lineStrong },
   ].map((p) => ({ ...p, detail: dur(p.value) }));
   return (
     <Panel title="Stress through the day" aside={typeof s.qualifier === "string" && <span className="chip">{humanize(s.qualifier.toLowerCase())}</span>}>
       <Stats>
-        <Stat label="Average" value={n(s.avgLevel)} color="#ffbe55" />
+        <Stat label="Average" value={n(s.avgLevel)} color={C.amber} />
         <Stat label="Peak" value={n(s.maxLevel)} />
         <Stat label="Measured" value={dur(ms("totalDurationInMillis"))} />
-        <Stat label="Rest" value={dur(ms("restDurationInMillis"))} color="#6cc7ff" />
-        <Stat label="High stress" value={dur(ms("highStressDurationInMillis"))} color="#ff6a55" />
+        <Stat label="Rest" value={dur(ms("restDurationInMillis"))} color={C.sky} />
+        <Stat label="High stress" value={dur(ms("highStressDurationInMillis"))} color={C.coral} />
       </Stats>
       <div className="mt-8">
         <Segments parts={parts} />
@@ -490,9 +491,9 @@ function MovementDay({ d }: { d: DayDetail }) {
     <div className="space-y-6">
       <Panel title="Movement">
         <div className="grid gap-8 md:grid-cols-3">
-          <Ring label="Steps" value={n(steps?.value)} goal={n(steps?.goal)} color="#5be3b0" />
-          <Ring label="Floors" value={n(floors?.value)} goal={n(floors?.goal)} color="#5be3b0" />
-          <Ring label="Intensity minutes" value={moderate + 2 * vigorous} goal={n(im?.goal) ? n(im?.goal)! / 7 : null} unit="pts" color="#ff9a5b" />
+          <Ring label="Steps" value={n(steps?.value)} goal={n(steps?.goal)} color={C.mint} />
+          <Ring label="Floors" value={n(floors?.value)} goal={n(floors?.goal)} color={C.mint} />
+          <Ring label="Intensity minutes" value={moderate + 2 * vigorous} goal={n(im?.goal) ? n(im?.goal)! / 7 : null} unit="pts" color={C.gold} />
         </div>
         <div className="mt-8">
           <Stats>
@@ -508,8 +509,8 @@ function MovementDay({ d }: { d: DayDetail }) {
         <Panel title="Energy">
           <Segments
             parts={[
-              { label: "Resting (BMR)", value: n(cal.burnedResting) ?? 0, color: "#5c5a55", detail: `${n(cal.burnedResting) ?? 0} kcal` },
-              { label: "Active", value: n(cal.burnedActive) ?? 0, color: "#ff9a5b", detail: `${n(cal.burnedActive) ?? 0} kcal` },
+              { label: "Resting (BMR)", value: n(cal.burnedResting) ?? 0, color: C.faint, detail: `${n(cal.burnedResting) ?? 0} kcal` },
+              { label: "Active", value: n(cal.burnedActive) ?? 0, color: C.gold, detail: `${n(cal.burnedActive) ?? 0} kcal` },
             ]}
           />
           <div className="mt-6">
@@ -532,14 +533,14 @@ function Spo2Day({ d }: { d: DayDetail }) {
   return (
     <Panel title="Blood oxygen">
       <Stats>
-        <Stat label="Average" value={n(p?.averageSpO2) ?? n(summary?.avgValue)} unit="%" color="#ff6a55" />
+        <Stat label="Average" value={n(p?.averageSpO2) ?? n(summary?.avgValue)} unit="%" color={C.coral} />
         <Stat label="Lowest" value={n(p?.lowestSpO2) ?? n(summary?.minValue)} unit="%" />
         <Stat label="During sleep" value={n(p?.avgSleepSpO2)?.toFixed(0) ?? null} unit="%" />
         <Stat label="7-day avg" value={n(p?.lastSevenDaysAvgSpO2)?.toFixed(1) ?? null} unit="%" />
         <Stat label="Altitude" value={n(summary?.avgAltitudeInMeters)?.toFixed(0) ?? null} unit="m" />
       </Stats>
       <div className="mt-8">
-        {hourly.length > 1 ? <TimeChart data={hourly} color="#ff6a55" unit="%" label="Hourly SpO₂" /> : <Missing what="Hourly SpO₂" />}
+        {hourly.length > 1 ? <TimeChart data={hourly} color={C.coral} unit="%" label="Hourly SpO₂" /> : <Missing what="Hourly SpO₂" />}
       </div>
     </Panel>
   );
@@ -551,7 +552,7 @@ function RespirationDay({ d }: { d: DayDetail }) {
   return (
     <Panel title="Breathing">
       <Stats>
-        <Stat label="Waking avg" value={n(r?.avgValue)} unit="brpm" color="#6cc7ff" />
+        <Stat label="Waking avg" value={n(r?.avgValue)} unit="brpm" color={C.sky} />
         <Stat label="Range" value={n(r?.minValue) != null ? `${r!.minValue}–${r!.maxValue}` : null} unit="brpm" />
         <Stat label="Latest" value={n(r?.latestValue)} unit="brpm" />
         <Stat label="Asleep avg" value={n(s?.averageRespirationValue)?.toFixed(1) ?? null} unit="brpm" />
@@ -585,7 +586,7 @@ function FitnessAgeDay({ d }: { d: DayDetail }) {
   return (
     <Panel title="Fitness age">
       <Stats>
-        <Stat label="Fitness age" value={n(fa.fitnessAge)?.toFixed(1) ?? null} unit="yrs" color="#d9b26a" />
+        <Stat label="Fitness age" value={n(fa.fitnessAge)?.toFixed(1) ?? null} unit="yrs" color={C.gold} />
         <Stat label="Actual age" value={n(fa.chronologicalAge)} unit="yrs" />
         <Stat label="Achievable" value={n(fa.achievableFitnessAge)?.toFixed(1) ?? null} unit="yrs" />
         <Stat label="Previous" value={n(fa.previousFitnessAge)?.toFixed(1) ?? null} unit="yrs" />
@@ -604,7 +605,7 @@ function HydrationDay({ d }: { d: DayDetail }) {
   const h = obj(at(d.raw.daily_summaries, "hydration"));
   return (
     <Panel title="Hydration">
-      <Ring label="Water" value={n(h?.consumedInFractionalMl)} goal={n(h?.goalInFractionalMl) ?? n(h?.goalInMl)} unit="ml" color="#6cc7ff" />
+      <Ring label="Water" value={n(h?.consumedInFractionalMl)} goal={n(h?.goalInFractionalMl) ?? n(h?.goalInMl)} unit="ml" color={C.sky} />
     </Panel>
   );
 }

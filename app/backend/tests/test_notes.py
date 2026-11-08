@@ -160,9 +160,10 @@ def test_open_work_moves_to_tomorrow_once_the_strain_budget_is_used():
     open_ = notes.today_session(c, r, week, plan, now_hour=10)
     assert open_["status"] == "open"
     used = notes.today_session(c, r, week, plan, now_hour=10, strain_state="above")
-    assert used["status"] == "open" and "not done today" in used["title"] and used["second"] is None
-    assert "budget is already used" in used["detail"] + used["next"]
-    assert "not done today" not in notes.today_session(c, r, week, plan, now_hour=10, strain_state="below")["title"]
+    assert used["status"] == "deferred" and used["title"] == "Not today" and used["second"] is None
+    assert "Not today" != notes.today_session(c, r, week, plan, now_hour=10, strain_state="below")["title"]
+    late = notes.today_session(c, r, week, plan, now_hour=22)  # the 10 pm bug: never "open" late in the evening
+    assert late["status"] == "deferred" and "open" not in (late["title"] + late["detail"] + late["next"]).lower().split()
 
 
 def test_streaks_do_not_count_todays_partial_week_as_a_miss():
@@ -175,3 +176,29 @@ def test_streaks_do_not_count_todays_partial_week_as_a_miss():
     c = ctx(acts, days=28)
     weekly = {s["key"]: s for s in notes.streaks(c)}["weeks"]
     assert weekly["current"] == 3 and weekly["best"] == 3
+
+
+def test_a_session_not_done_is_never_open_late_in_the_evening():
+    """The 10 pm bug: with nothing done yet, the evening must not present the planned session as open."""
+    acts, i = [], 0
+    for w in range(8):
+        for dd in (0, 2, 4):
+            i += 1
+            acts.append(act(i, D0 + timedelta(days=7 * w + dd), HARD if dd == 2 else EASY))
+    days = [D0 + timedelta(days=k) for k in range(60)]
+    series = {"hrv": {x: 55.0 for x in days}, "resting_hr": {x: 50.0 for x in days}, "sleep_score": {x: 85.0 for x in days},
+              "sleep_hours": {x: 7.8 for x in days}, "body_battery": {x: 92.0 for x in days}}
+    c = ctx(acts, series, days=60)
+    plan = insights_weekly_plan(c)
+    week = notes.week_progress(c, plan)
+    r = notes.readiness_on(c, D0 + timedelta(days=59))
+    morning = notes.today_session(c, r, week, plan, now_hour=9)
+    assert morning["kind"] != "done" and morning.get("status") in (None, "open")
+    for hour in (20, 22, 23, 1):
+        late = notes.today_session(c, r, week, plan, now_hour=hour)
+        if late["kind"] in ("key", "long", "easy", "strength"):
+            assert late["status"] == "deferred" and late["title"] == "Not today"
+        text = " ".join(str(late.get(k, "")) for k in ("title", "detail", "next")).lower()
+        assert "open" not in text.split() and "missed" not in text and "failed" not in text
+    evening = notes.today_session(c, r, week, plan, now_hour=18)
+    assert evening.get("status") in (None, "window_closed")

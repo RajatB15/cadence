@@ -216,7 +216,7 @@ export interface Brief {
     kind: "key" | "easy" | "long" | "rest" | "strength" | "done" | "unknown";
     title: string;
     detail: string;
-    status?: "matched" | "open" | "over" | "extra";
+    status?: "matched" | "open" | "over" | "extra" | "deferred" | "window_closed";
     planned?: string | null;
     next?: string;
     load?: number;
@@ -818,6 +818,94 @@ export interface TrendPoint {
   body: BodyEstimate | null;
 }
 
+/** Calorie card payload: `energy` on GET /api/overview (docs/home-design.md section G). Missing is never zero: unknown values are null. */
+export interface HomeEnergy {
+  status?: "ok" | "partial" | "insufficient" | "no_garmin_kcal" | "just_started" | string;
+  day?: string;
+  as_of_min?: number | null;
+  as_of?: string | null;
+  burned?: { total: number | null; active: number | null; resting: number | null; as_of: string | null } | null;
+  eaten?: { kcal: number | null; kcal_low?: number | null; kcal_high?: number | null; logged: boolean; entries: number; protein_g: number | null } | null;
+  projected?: { value: number; lo: number; hi: number; n: number; method: "curve" | "fallback" | string } | null;
+  projection_state?: "ok" | "partial" | "insufficient" | "hidden" | "no_burn" | null;
+  projection_history_days?: number;
+  target?: {
+    kcal: number;
+    source: "manual" | "history" | "formula" | string;
+    maintenance_kcal?: number | null;
+    adjustment_kcal?: number | null;
+    floor_kcal?: number | null;
+    floor_applied?: boolean;
+    below_floor?: boolean;
+    n_days?: number | null;
+    pace?: { kcal: number; state: string; kg_per_week?: number | null; weeks_at_gentle_pace?: number | null } | null;
+    hold?: "time_off" | "unwell" | "hard_block" | null;
+    protein?: { low_g: number; high_g: number; per_kg: [number, number] } | null;
+  } | null;
+  left?: number | null;
+  above_by?: number | null;
+  workout_active_kcal?: number | null;
+  eat_back_pct?: number | null;
+  eat_back_kcal?: number | null;
+  balance?: { so_far_kcal: number } | null;
+  spark?: { day: string; total: number | null; eaten: number | null; partial?: boolean }[];
+  yesterday?: { day: string; total: number | null; eaten: number | null } | null;
+  settings?: CalorieSettings | null;
+  /** Wording written by the backend; render as sent. */
+  copy?: {
+    footnote?: string | null;
+    status?: string | null;
+    burned?: string | null;
+    eaten?: string | null;
+    target?: string | null;
+    left?: string | null;
+    projection?: string | null;
+    target_notes?: string[];
+    workout?: string | null;
+    refuel?: string | null;
+    partial_log?: string | null;
+  } | null;
+}
+
+/** GET/PUT /api/settings/calories. The PUT takes any subset of mode, manual_kcal, eat_back_pct, pace. */
+export interface CalorieSettings {
+  mode: "auto" | "manual";
+  manual_kcal: number | null;
+  eat_back_pct: number;
+  pace: boolean;
+}
+export interface CalorieSettingsView extends CalorieSettings {
+  ranges: { manual_kcal: [number, number]; eat_back_pct: [number, number] };
+  floor_kcal: number;
+}
+
+/** Day-phase block: the backend decides; the web renders it and never recomputes it. */
+export interface HomePhase {
+  phase?: string;
+  band?: string;
+  now_local?: string;
+  day?: string;
+  flags?: string[];
+  /** Visible card ids in the order the backend wants them (vitals, calories, now, readiness, checkin, week, recent, more). */
+  cards?: string[];
+  dimmed?: string[];
+  hidden?: string[];
+  /** Overview metric keys in the order the vitals rail should show them. */
+  vitals_order?: string[];
+  session_state?: "none" | "rest" | "done" | "upcoming" | "open" | "window_closed" | "deferred" | "race" | string;
+  hints?: { phase?: string; session?: string; sleep?: "not_synced" | "recap" | "tile" | string; calories?: "left" | "day_total" | string; steps?: "prompt" | "tile" | string; protein_check?: boolean; yesterday_recap?: boolean };
+  copy?: {
+    headline?: string | null;
+    session?: { title: string; detail: string } | null;
+    sleep?: string | null;
+    calories?: string | null;
+    steps?: string | null;
+    protein_check?: string | null;
+    recap?: string | null;
+    flags?: string[];
+  } | null;
+}
+
 export type Overview =
   | { has_data: false }
   | {
@@ -829,6 +917,8 @@ export type Overview =
       score: ScoreSummary | null;
       journal: { day: string; done: boolean; behaviours: Behaviour[] };
       planned_today: PlannedSessionView[];
+      energy?: HomeEnergy | null;
+      phase?: HomePhase | null;
       metrics: MetricSummary[];
       week: {
         start: string;

@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import Callable, Iterator
 from contextlib import asynccontextmanager
 from dataclasses import asdict
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from statistics import fmean
 from typing import Literal
 
@@ -11,16 +11,17 @@ from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.concurrency import run_in_threadpool
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.responses import FileResponse, JSONResponse, Response
-from pydantic import BaseModel, Field
+from pydantic import ConfigDict, BaseModel, Field
 from sqlalchemy import delete, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from cadence_app import focus_store, food_label, garmin_connect, garmin_workout, backup, days, events, food_crawl, foodlog, goal_store, journal, ocr, phases, planner_store, profile as profile_store, push, reading, reading_feed, strength, timeoff_store, weather, weightlog, wellbeing_store
+from cadence_app import energy_store, focus_store, food_label, garmin_connect, garmin_workout, backup, days, events, food_crawl, foodlog, goal_store, journal, ocr, phases, planner_store, profile as profile_store, push, reading, reading_feed, strength, timeoff_store, weather, weightlog, wellbeing_store
 from cadence_app.analytics import accuracy as accuracy_analytics
 from cadence_app.analytics import banister as banister_analytics
 from cadence_app.analytics import channels as channels_analytics
-from cadence_app.analytics import exercises
+from cadence_app.analytics import dayphase, exercises
+from cadence_app.analytics import energy as energy_analytics
 from cadence_app.analytics import goals as goal_analytics
 from cadence_app.analytics import improve as improve_analytics
 from cadence_app.analytics import outcomes as outcome_analytics
@@ -191,6 +192,15 @@ class PlanSettingsRequest(BaseModel):
     away_return_pct: float | None = None
     sick_return_weeks: float | None = None
     sick_return_pct: float | None = None
+
+
+class CalorieSettingsRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")  # a typo'd key must fail loudly, not save nothing
+
+    mode: Literal["auto", "manual"] | None = None
+    manual_kcal: int | None = Field(default=None, ge=energy_analytics.MANUAL_RANGE[0], le=energy_analytics.MANUAL_RANGE[1])
+    eat_back_pct: int | None = Field(default=None, ge=energy_analytics.EAT_BACK_RANGE[0], le=energy_analytics.EAT_BACK_RANGE[1])
+    pace: bool | None = None
 
 
 class TrainingModeRequest(BaseModel):
@@ -777,15 +787,19 @@ def create_app(
         weight = _weight_summary(session, clock.today())
         journal.ensure_catalogue(session, clock.now())
         today_plans = planner_store.reconcile(session, source_id, planner_store.listing(session, clock.today(), clock.today()), clock.today(), clock.now())
+        brief = coach_notes.brief(ctx) if ctx else None
+        energy_block, phase_block = _home_blocks(session, source_id, ctx, brief, weight.latest_trend_kg)
         return {
             "has_data": True,
+            "energy": energy_block,
+            "phase": phase_block,
             "planned_today": today_plans,
             "journal": {**journal.checkin(session, clock.today()),
                         "behaviours": [journal.behaviour_dict(b) for b in journal.catalogue(session, include_inactive=False)]},
             "source_id": source_id,
             "as_of": latest_day,
             "today": clock.today(),
-            "coach": coach_notes.brief(ctx) if ctx else None,
+            "coach": brief,
             "score": cadence_score.summary(ctx) if ctx else None,
             "metrics": metrics,
             "week": {
@@ -808,6 +822,46 @@ def create_app(
                 ],
             },
         }
+
+    def _home_blocks(session: Session, source_id: str, ctx: dict | None, brief: dict | None, weight_kg: float | None) -> tuple[dict, dict]:
+        """The `energy` and `phase` blocks of the overview, on the user's wall clock (never the server's)."""
+        today = clock.today()
+        now_local = datetime.combine(today, insights_service.to_local(clock.now(), clock.tz_name).time())
+        now_min = now_local.hour * 60 + now_local.minute
+        energy_store.record_snapshot(session, source_id, clock.tz_name)  # throttled; no-op when nothing new
+        hold = insights_service.energy_hold(ctx, brief, today)
+        inputs = energy_store.load(session, source_id, today, clock.tz_name, weight_kg, hold)
+        block = energy_analytics.assemble(today=today, now_min=now_min, **inputs)
+        block["copy"] = coach_notes.energy_copy(block, now_min)
+        metrics = dict(session.execute(select(DailyMetric.metric, DailyMetric.value).where(
+            DailyMetric.source_id == source_id, DailyMetric.day == today, DailyMetric.metric.in_(("steps", "sleep_hours")))).all())
+        tz = localtime.zone(clock.tz_name)
+        ends = []
+        for a in session.scalars(select(Activity).where(Activity.source_id == source_id, Activity.local_date == today)):
+            end = (a.start_time_utc + timedelta(seconds=a.duration_s or 0)).replace(tzinfo=timezone.utc).astimezone(tz).replace(tzinfo=None)
+            if (a.duration_s or 0) >= 900 and "walk" not in a.activity_type.lower():  # a walk is not a session that changes the day's phase
+                ends.append(end)
+        facts = insights_service.phase_facts(ctx, brief, now_local, session_ends=ends, steps=metrics.get("steps"), garmin_today=bool(metrics) or inputs["burn"] is not None,
+                                             sleep_synced="sleep_hours" in metrics, food_logged=block["eaten"]["logged"])
+        ph = dayphase.phase(facts)
+        ph["copy"] = coach_notes.phase_copy(ph)
+        ph["now_local"] = now_local.strftime("%H:%M")
+        ph["day"] = today
+        return block, ph
+
+    @app.get("/api/settings/calories")
+    def calories_settings_get(session: Session = Depends(get_session)) -> dict:
+        return {**energy_store.load_settings(session), "ranges": {"manual_kcal": list(energy_analytics.MANUAL_RANGE), "eat_back_pct": list(energy_analytics.EAT_BACK_RANGE)},
+                "floor_kcal": energy_analytics.FLOOR_KCAL}
+
+    @app.put("/api/settings/calories")
+    def calories_settings_save(body: CalorieSettingsRequest, session: Session = Depends(get_session)) -> dict:
+        try:
+            saved = energy_store.save_settings(session, body.model_dump(exclude_unset=True))
+        except ValueError as err:
+            raise HTTPException(400, str(err)) from err
+        return {**saved, "ranges": {"manual_kcal": list(energy_analytics.MANUAL_RANGE), "eat_back_pct": list(energy_analytics.EAT_BACK_RANGE)},
+                "floor_kcal": energy_analytics.FLOOR_KCAL}
 
     @app.get("/api/metrics/{metric}")
     def metric_series(

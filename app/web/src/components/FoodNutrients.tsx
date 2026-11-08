@@ -2,8 +2,9 @@ import { ChevronDown } from "lucide-react";
 import { useState } from "react";
 import { formatMicro, macroSplit, microCoverage, microState, type MicroState } from "../lib/food";
 import type { FoodMicro, FoodView } from "../lib/types";
+import { C } from "../lib/theme";
 
-const MACRO_COLOR = { protein: "#c8f560", carbs: "#6cc7ff", fat: "#ffbe55" } as const;
+const MACRO_COLOR = { protein: C.lime, carbs: C.sky, fat: C.amber } as const;
 
 const STATE_WORD: Record<MicroState, string> = {
   unknown: "not reported",
@@ -15,13 +16,13 @@ const STATE_WORD: Record<MicroState, string> = {
   no_reference: "",
 };
 const STATE_COLOR: Record<MicroState, string> = {
-  unknown: "#5c5a55",
-  partial: "#d9b26a",
-  reached: "#c8f560",
-  building: "#6cc7ff",
-  under: "#6cc7ff",
-  over: "#ffbe55",
-  no_reference: "#d9b26a",
+  unknown: C.faint,
+  partial: C.gold,
+  reached: C.lime,
+  building: C.sky,
+  under: C.sky,
+  over: C.amber,
+  no_reference: C.gold,
 };
 
 /** Macros as a share of the day's calories, then micronutrients against cited references. Missing is shown as unknown, never zero. */

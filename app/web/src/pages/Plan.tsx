@@ -9,6 +9,7 @@ import { READ_ONLY, api } from "../lib/api";
 import { hourLabel, toSpec, UNITS, type CustomFields, type CustomSpec } from "../lib/customSession";
 import { formatDate } from "../lib/format";
 import type { PlanOption, PlannedSessionView, Prediction, Sport } from "../lib/types";
+import { C } from "../lib/theme";
 
 const SPORTS: { value: Sport; label: string }[] = [
   { value: "run", label: "Run" }, { value: "ride", label: "Ride" }, { value: "swim", label: "Swim" }, { value: "strength", label: "Strength" },
@@ -85,7 +86,7 @@ function DayPlans({ day, plans, today }: { day: string; plans: PlannedSessionVie
       {plans.map((p) => {
         const Icon = SPORT_ICON[p.sport];
         return (
-          <div key={p.id} className="surface flex items-start gap-4 p-5" style={{ borderLeft: `3px solid ${p.status === "done" ? "#c8f560" : "#d9b26a"}` }}>
+          <div key={p.id} className="surface flex items-start gap-4 p-5" style={{ borderLeft: `3px solid ${p.status === "done" ? C.lime : C.gold}` }}>
             <Icon size={20} className="mt-0.5 shrink-0 text-gold" />
             <div className="min-w-0 flex-1">
               <p className="font-semibold text-paper">{p.title}</p>
@@ -245,8 +246,8 @@ function OptionCard({ o, day, index, extra }: { o: PlanOption; day: string; inde
     <motion.article initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: index * 0.04 }}
       className={clsx("flex flex-col border bg-ink/40 p-5", o.recommended ? "border-lime/60" : "border-line")}>
       <div className="flex flex-wrap items-center gap-2">
-        {o.recommended && <span className="chip text-lime" style={{ borderColor: "#c8f56066" }}>Recommended</span>}
-        {o.caution && <span className="chip text-amber" style={{ borderColor: "#ffbe5566" }}>Not ideal</span>}
+        {o.recommended && <span className="chip text-lime" style={{ borderColor: `${C.lime}66` }}>Recommended</span>}
+        {o.caution && <span className="chip text-amber" style={{ borderColor: `${C.amber}66` }}>Not ideal</span>}
         <span className="eyebrow">{o.minutes ? `${o.minutes} min` : ""}</span>
       </div>
       <h3 className="mt-2 font-display text-2xl text-cream">{o.title}</h3>

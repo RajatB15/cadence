@@ -264,6 +264,9 @@ def test_phone_write_allowlist_is_anchored():
     assert not phone_may_write("POST", "/api/journalx/behaviours")
     assert not phone_may_write("DELETE", "/api/push/test")  # method matters
     assert not phone_may_write("POST", "/api/settings/plan")
+    assert phone_may_write("PUT", "/api/settings/calories")
+    assert not phone_may_write("POST", "/api/settings/calories")
+    assert not phone_may_write("PUT", "/api/settings/calories/extra")
     assert phone_may_write("POST", "/api/activities/12/fetch")
     assert not phone_may_write("POST", "/api/activities/1/fetch/x")
     assert not phone_may_write("POST", "/api/activities/abc/fetch")

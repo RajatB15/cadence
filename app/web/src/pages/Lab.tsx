@@ -10,6 +10,7 @@ import { api } from "../lib/api";
 import { formatDate } from "../lib/format";
 import { clockTime as hms, signed } from "../lib/goals";
 import type { AccuracyPoint, AccuracyStats, ChannelsFit, FatigueFit, Freshness, Headline, LabAccuracy, LabModel, LabRoutes, LabWhatIf, RouteView, WhatIfBundle, SaturationFit, WhatIfExtras, WhatIfModel, WhatIfPoint, WhatIfResult } from "../lib/types";
+import { C } from "../lib/theme";
 
 type Tab = "accuracy" | "model" | "routes" | "whatif";
 const TABS: { value: Tab; label: string }[] = [
@@ -29,7 +30,7 @@ const mmss = (s: number) => {
   const r = Math.round(s);
   return `${Math.floor(r / 60)}:${String(r % 60).padStart(2, "0")}`;
 };
-const TONE = { good: "#c8f560", info: "#6cc7ff", warn: "#ffbe55" } as const;
+const TONE = { good: C.lime, info: C.sky, warn: C.amber } as const;
 
 export function LabPage() {
   const [params, setParams] = useSearchParams();
@@ -96,7 +97,7 @@ function Stat({ label, value, hint, color }: { label: string; value: ReactNode; 
   return (
     <div>
       <p className="eyebrow mb-1">{label}</p>
-      <p className="num text-3xl" style={{ color: color ?? "#f2e8cf" }}>{value}</p>
+      <p className="num text-3xl" style={{ color: color ?? C.cream }}>{value}</p>
       {hint && <p className="mt-0.5 text-xs text-dim">{hint}</p>}
     </div>
   );
@@ -191,9 +192,9 @@ function Scores({ s, minBias, empty }: { s: AccuracyStats; minBias: number; empt
     <>
       <div className="grid grid-cols-2 gap-6 sm:grid-cols-3">
         <Stat label="Typical miss" value={`${s.typical_error_pct}%`} hint={`across ${s.n} sessions`} />
-        <Stat label="Close calls" value={`${s.within_25_pct}%`} hint={`within 25% of prediction (${s.within_10_pct}% within 10%)`} color="#6cc7ff" />
+        <Stat label="Close calls" value={`${s.within_25_pct}%`} hint={`within 25% of prediction (${s.within_10_pct}% within 10%)`} color={C.sky} />
         <Stat
-          label="Leans" value={s.biased ? `${signed(s.bias_pct!, 0)}%` : "no"} color={s.biased ? "#ffbe55" : "#c8f560"}
+          label="Leans" value={s.biased ? `${signed(s.bias_pct!, 0)}%` : "no"} color={s.biased ? C.amber : C.lime}
           hint={s.n < minBias ? `too early to say (needs ${minBias}+)` : s.biased ? `sessions cost ${signed(s.bias_pct!, 0)}% vs predicted` : "no consistent over- or under-prediction"}
         />
       </div>
@@ -210,13 +211,13 @@ function Scatter({ plans, backtest }: { plans: AccuracyPoint[]; backtest: Accura
       ...chartBase,
       grid: { ...chartBase.grid, bottom: 40 },
       tooltip: { ...chartBase.tooltip, trigger: "item", formatter: (q: { data: [number, number, string, string] }) => `${q.data[2]} · ${formatDate(q.data[3])}<br/>predicted <b>${q.data[0]}</b> · actual <b>${q.data[1]}</b>` },
-      xAxis: { ...chartBase.xAxis, type: "value", min: 0, max: Math.ceil(max / 10) * 10, name: "Predicted load", nameLocation: "middle", nameGap: 28, nameTextStyle: { color: "#5c5a55", fontSize: 11 } },
-      yAxis: { ...chartBase.yAxis, scale: false, min: 0, max: Math.ceil(max / 10) * 10, name: "Actual", nameTextStyle: { color: "#5c5a55", fontSize: 11 } },
+      xAxis: { ...chartBase.xAxis, type: "value", min: 0, max: Math.ceil(max / 10) * 10, name: "Predicted load", nameLocation: "middle", nameGap: 28, nameTextStyle: { color: C.faint, fontSize: 11 } },
+      yAxis: { ...chartBase.yAxis, scale: false, min: 0, max: Math.ceil(max / 10) * 10, name: "Actual", nameTextStyle: { color: C.faint, fontSize: 11 } },
       legend: { show: false },
       series: [
-        { name: "Exactly right", type: "line", symbol: "none", silent: true, lineStyle: { color: "#5c5a55", type: "dashed", width: 1 }, data: [[0, 0], [max, max]] },
-        { name: "Walk-forward", type: "scatter", symbolSize: 7, itemStyle: { color: "rgba(108,199,255,0.55)" }, data: dot(backtest) },
-        { name: "Your plans", type: "scatter", symbolSize: 11, itemStyle: { color: "#d9b26a" }, data: dot(plans) },
+        { name: "Exactly right", type: "line", symbol: "none", silent: true, lineStyle: { color: C.faint, type: "dashed", width: 1 }, data: [[0, 0], [max, max]] },
+        { name: "Walk-forward", type: "scatter", symbolSize: 7, itemStyle: { color: `${C.sky}8c` }, data: dot(backtest) },
+        { name: "Your plans", type: "scatter", symbolSize: 11, itemStyle: { color: C.gold }, data: dot(plans) },
       ],
     };
   }, [plans, backtest, max]);
@@ -267,8 +268,8 @@ function ModelBody({ d }: { d: Extract<LabModel, { has_data: true }> & { valid: 
       ...chartBase,
       tooltip: { ...chartBase.tooltip, trigger: "axis" },
       series: [
-        { name: "Modelled", type: "line", symbol: "none", lineStyle: { color: "#d9b26a", width: 2 }, data: (d.curve ?? []).map((p) => [p.day, p.value]) },
-        { name: "Observed (weekly median)", type: "scatter", symbolSize: 8, itemStyle: { color: "#6cc7ff" }, data: (d.series ?? []).map((p) => [p.day, p.observed]) },
+        { name: "Modelled", type: "line", symbol: "none", lineStyle: { color: C.gold, width: 2 }, data: (d.curve ?? []).map((p) => [p.day, p.value]) },
+        { name: "Observed (weekly median)", type: "scatter", symbolSize: 8, itemStyle: { color: C.sky }, data: (d.series ?? []).map((p) => [p.day, p.observed]) },
       ],
     }),
     [d.curve, d.series],
@@ -282,8 +283,8 @@ function ModelBody({ d }: { d: Extract<LabModel, { has_data: true }> & { valid: 
         aside={<span className={clsx("chip", d.adopted ? "!border-lime/40 !text-lime" : "")}>{d.adopted ? "Adopted" : "Standard kept"}</span>}
       >
         <div className="grid grid-cols-2 gap-6 sm:grid-cols-4">
-          <Stat label="Fitness builds over" value={`${d.tau1} days`} hint={`textbook ${d.default_taus![0]} · data allow ${r.tau1[0]}–${r.tau1[1]}`} color="#6cc7ff" />
-          <Stat label="Fatigue fades in" value={`${d.tau2} days`} hint={`textbook ${d.default_taus![1]} · data allow ${r.tau2[0]}–${r.tau2[1]}`} color="#ff6a55" />
+          <Stat label="Fitness builds over" value={`${d.tau1} days`} hint={`textbook ${d.default_taus![0]} · data allow ${r.tau1[0]}–${r.tau1[1]}`} color={C.sky} />
+          <Stat label="Fatigue fades in" value={`${d.tau2} days`} hint={`textbook ${d.default_taus![1]} · data allow ${r.tau2[0]}–${r.tau2[1]}`} color={C.coral} />
           <Stat label="Weeks used" value={d.n} hint={`over ${d.span_days} days`} />
           <Stat label="Follows past weeks" value={d.r2 != null ? `${Math.round(d.r2 * 100)}%` : "—"} hint="looks flattering; the test below is what counts" />
         </div>
@@ -291,7 +292,7 @@ function ModelBody({ d }: { d: Extract<LabModel, { has_data: true }> & { valid: 
       </Panel>
       <Panel title="The honesty test" eyebrow="Predict weeks the model never saw (average miss, lower is better)">
         <div className="grid grid-cols-3 gap-6">
-          <Stat label="Your fit" value={cv.personal.toFixed(2)} hint="average miss on unseen weeks" color={d.adopted ? "#c8f560" : undefined} />
+          <Stat label="Your fit" value={cv.personal.toFixed(2)} hint="average miss on unseen weeks" color={d.adopted ? C.lime : undefined} />
           <Stat label="Textbook 42/7" value={cv.default.toFixed(2)} hint={cv.gain_vs_default_pct >= 0 ? `your fit is ${Math.round(cv.gain_vs_default_pct)}% closer` : `your fit is ${Math.round(-cv.gain_vs_default_pct)}% further off`} />
           <Stat label="Just guess the average" value={cv.mean.toFixed(2)} hint="the lazy baseline" />
         </div>
@@ -360,10 +361,10 @@ function RouteCard({ r, open: initial }: { r: RouteView; open: boolean }) {
         <div className="space-y-6 border-t border-line p-5 sm:p-6">
           {r.notes.length > 0 && <NoteGrid notes={r.notes} compact />}
           <div className="grid grid-cols-2 gap-6 sm:grid-cols-4">
-            <Stat label="Best" value={hms(r.best.time_s)} hint={formatDate(r.best.day)} color="#c8f560" />
+            <Stat label="Best" value={hms(r.best.time_s)} hint={formatDate(r.best.day)} color={C.lime} />
             <Stat label="Median" value={hms(r.median_time_s)} hint={`${r.n} efforts`} />
-            <Stat label="Latest HR" value={r.latest.avg_hr ?? "—"} hint={v.avg_hr != null ? `${signed(v.avg_hr)} bpm vs usual` : undefined} color="#ff6a55" />
-            <Stat label="Efficiency" value={v.ef_pct != null ? `${signed(v.ef_pct)}%` : "—"} hint={r.trend ? `trend ${signed(r.trend.change_pct)}% (${signed(r.trend.ci_pct[0])} to ${signed(r.trend.ci_pct[1])})` : "needs 5+ runs over 4+ weeks"} color="#6cc7ff" />
+            <Stat label="Latest HR" value={r.latest.avg_hr ?? "—"} hint={v.avg_hr != null ? `${signed(v.avg_hr)} bpm vs usual` : undefined} color={C.coral} />
+            <Stat label="Efficiency" value={v.ef_pct != null ? `${signed(v.ef_pct)}%` : "—"} hint={r.trend ? `trend ${signed(r.trend.change_pct)}% (${signed(r.trend.ci_pct[0])} to ${signed(r.trend.ci_pct[1])})` : "needs 5+ runs over 4+ weeks"} color={C.sky} />
           </div>
           <RouteChart r={r} />
           <EffortTable r={r} />
@@ -380,12 +381,12 @@ function RouteChart({ r }: { r: RouteView }) {
       ...chartBase,
       tooltip: { ...chartBase.tooltip, trigger: "axis", valueFormatter: (v: number) => String(v) },
       yAxis: [
-        { ...chartBase.yAxis, inverse: true, axisLabel: { color: "#5c5a55", fontSize: 10, formatter: (v: number) => hms(v) } },
-        ...(hasEf ? [{ ...chartBase.yAxis, position: "right", splitLine: { show: false }, axisLabel: { color: "#5c5a55", fontSize: 10 } }] : []),
+        { ...chartBase.yAxis, inverse: true, axisLabel: { color: C.faint, fontSize: 10, formatter: (v: number) => hms(v) } },
+        ...(hasEf ? [{ ...chartBase.yAxis, position: "right", splitLine: { show: false }, axisLabel: { color: C.faint, fontSize: 10 } }] : []),
       ],
       series: [
-        { name: "Time", type: "line", data: r.efforts.map((e) => [e.day, e.time_s]), symbol: "circle", symbolSize: 7, lineStyle: { color: "#d9b26a", width: 2 }, itemStyle: { color: "#d9b26a" } },
-        ...(hasEf ? [{ name: "Efficiency", type: "line", yAxisIndex: 1, data: r.efforts.filter((e) => e.ef != null).map((e) => [e.day, e.ef]), symbol: "none", lineStyle: { color: "#6cc7ff", width: 1.5, type: "dashed" } }] : []),
+        { name: "Time", type: "line", data: r.efforts.map((e) => [e.day, e.time_s]), symbol: "circle", symbolSize: 7, lineStyle: { color: C.gold, width: 2 }, itemStyle: { color: C.gold } },
+        ...(hasEf ? [{ name: "Efficiency", type: "line", yAxisIndex: 1, data: r.efforts.filter((e) => e.ef != null).map((e) => [e.day, e.ef]), symbol: "none", lineStyle: { color: C.sky, width: 1.5, type: "dashed" } }] : []),
       ],
     }),
     [r.efforts, hasEf],
@@ -470,8 +471,8 @@ function Bundle({ b }: { b: WhatIfBundle }) {
     <Panel title={b.label} eyebrow={`${b.n} sessions · last ${Math.round(b.n_days / 7)} weeks`}>
       <p className="mb-5 text-paper">{b.headline}</p>
       <div className="mb-6 grid grid-cols-2 gap-6 sm:grid-cols-4">
-        <Stat label="Fitness" value={signed(b.end.fitness_delta)} hint={b.end.fitness_delta_pct != null ? `${signed(b.end.fitness_delta_pct)}% · ${b.end.fitness[0].toFixed(0)} → ${b.end.fitness[1].toFixed(0)}` : undefined} color="#6cc7ff" />
-        <Stat label="Average form" value={signed(b.avg_form_delta)} hint="across the window" color="#c8f560" />
+        <Stat label="Fitness" value={signed(b.end.fitness_delta)} hint={b.end.fitness_delta_pct != null ? `${signed(b.end.fitness_delta_pct)}% · ${b.end.fitness[0].toFixed(0)} → ${b.end.fitness[1].toFixed(0)}` : undefined} color={C.sky} />
+        <Stat label="Average form" value={signed(b.avg_form_delta)} hint="across the window" color={C.lime} />
         <Stat label="Days above 1.3" value={`${b.acwr_days_over[0]} → ${b.acwr_days_over[1]}`} hint="acute:chronic" />
         {b.performance && <Stat label="Modelled performance" value={b.performance.delta_pct != null ? `${signed(b.performance.delta_pct, 2)}%` : "—"} hint={`personal ${b.performance.taus[0]}/${b.performance.taus[1]}-day model`} />}
       </div>
@@ -488,10 +489,10 @@ function Trajectory({ rows }: { rows: WhatIfPoint[] }) {
       ...chartBase,
       tooltip: { ...chartBase.tooltip, trigger: "axis" },
       series: [
-        { name: "Fitness (actual)", type: "line", symbol: "none", lineStyle: { color: "#6cc7ff", width: 2.5 }, data: rows.map((r) => [r.day, r.fitness]) },
-        { name: "Fitness (replay)", type: "line", symbol: "none", lineStyle: { color: "#6cc7ff", width: 2, type: "dashed" }, data: rows.map((r) => [r.day, r.alt_fitness]) },
-        { name: "Form (actual)", type: "line", symbol: "none", lineStyle: { color: "#c8f560", width: 2 }, data: rows.map((r) => [r.day, r.form]) },
-        { name: "Form (replay)", type: "line", symbol: "none", lineStyle: { color: "#c8f560", width: 1.8, type: "dashed" }, data: rows.map((r) => [r.day, r.alt_form]) },
+        { name: "Fitness (actual)", type: "line", symbol: "none", lineStyle: { color: C.sky, width: 2.5 }, data: rows.map((r) => [r.day, r.fitness]) },
+        { name: "Fitness (replay)", type: "line", symbol: "none", lineStyle: { color: C.sky, width: 2, type: "dashed" }, data: rows.map((r) => [r.day, r.alt_fitness]) },
+        { name: "Form (actual)", type: "line", symbol: "none", lineStyle: { color: C.lime, width: 2 }, data: rows.map((r) => [r.day, r.form]) },
+        { name: "Form (replay)", type: "line", symbol: "none", lineStyle: { color: C.lime, width: 1.8, type: "dashed" }, data: rows.map((r) => [r.day, r.alt_form]) },
       ],
     }),
     [rows],
@@ -594,9 +595,9 @@ function FreshnessPanel({ fresh, explain, model }: { fresh: Freshness; explain: 
       ...chartBase,
       grid: { ...chartBase.grid, bottom: 40 },
       tooltip: { ...chartBase.tooltip, trigger: "item", formatter: (q: { data: [number, number, string] }) => `${formatDate(q.data[2])}<br/>form <b>${q.data[0]}</b> · ${q.data[1]}% of your recent best` },
-      xAxis: { ...chartBase.xAxis, type: "value", scale: true, name: "Form that morning (higher = fresher)", nameLocation: "middle", nameGap: 28, nameTextStyle: { color: "#5c5a55", fontSize: 11 } },
-      yAxis: { ...chartBase.yAxis, name: "Hard-run quality, % of recent best", nameTextStyle: { color: "#5c5a55", fontSize: 11 } },
-      series: [{ type: "scatter", symbolSize: 9, itemStyle: { color: "#d9b26a" }, data: (h.points ?? []).map((p) => [p.form, p.quality_pct, p.day]) }],
+      xAxis: { ...chartBase.xAxis, type: "value", scale: true, name: "Form that morning (higher = fresher)", nameLocation: "middle", nameGap: 28, nameTextStyle: { color: C.faint, fontSize: 11 } },
+      yAxis: { ...chartBase.yAxis, name: "Hard-run quality, % of recent best", nameTextStyle: { color: C.faint, fontSize: 11 } },
+      series: [{ type: "scatter", symbolSize: 9, itemStyle: { color: C.gold }, data: (h.points ?? []).map((p) => [p.form, p.quality_pct, p.day]) }],
     }),
     [h.points],
   );
@@ -646,8 +647,8 @@ function FatiguePanel({ f, explain }: { f: FatigueFit; explain: { q: string; a: 
       ...chartBase,
       tooltip: { ...chartBase.tooltip, trigger: "axis" },
       series: [
-        { name: "Your strain (weekly mean)", type: "line", symbol: "circle", symbolSize: 5, lineStyle: { color: "#6cc7ff", width: 1.5 }, itemStyle: { color: "#6cc7ff" }, data: (f.series ?? []).map((p) => [p.day, p.observed]) },
-        { name: "Expected from your load", type: "line", symbol: "none", lineStyle: { color: "#d9b26a", width: 2 }, data: (f.series ?? []).map((p) => [p.day, p.fitted]) },
+        { name: "Your strain (weekly mean)", type: "line", symbol: "circle", symbolSize: 5, lineStyle: { color: C.sky, width: 1.5 }, itemStyle: { color: C.sky }, data: (f.series ?? []).map((p) => [p.day, p.observed]) },
+        { name: "Expected from your load", type: "line", symbol: "none", lineStyle: { color: C.gold, width: 2 }, data: (f.series ?? []).map((p) => [p.day, p.fitted]) },
       ],
     }),
     [f.series],
@@ -656,9 +657,9 @@ function FatiguePanel({ f, explain }: { f: FatigueFit; explain: { q: string; a: 
     <Panel title="How fast you recover" eyebrow="From your overnight HRV and resting heart rate" aside={<span className={clsx("chip", f.adopted ? "!border-lime/40 !text-lime" : "")}>{f.adopted ? "In use" : "Standard kept"}</span>}>
       {f.tau != null && (
         <div className="mb-5 grid grid-cols-2 gap-6 sm:grid-cols-4">
-          <Stat label="Fatigue fades over" value={`${f.tau} days`} hint={`textbook ${f.default_tau} · data allow ${f.region![0]}–${f.region![1]}`} color="#ff6a55" />
+          <Stat label="Fatigue fades over" value={`${f.tau} days`} hint={`textbook ${f.default_tau} · data allow ${f.region![0]}–${f.region![1]}`} color={C.coral} />
           <Stat label="Half gone after" value={`${f.half_life_days?.toFixed(0)} days`} />
-          <Stat label="Your fit" value={f.cv!.personal.toFixed(2)} hint="average miss on unseen nights" color={f.adopted ? "#c8f560" : undefined} />
+          <Stat label="Your fit" value={f.cv!.personal.toFixed(2)} hint="average miss on unseen nights" color={f.adopted ? C.lime : undefined} />
           <Stat label="Textbook 7 days" value={f.cv!.default.toFixed(2)} hint={f.cv!.gain_vs_default_pct >= 0 ? `yours ${Math.round(f.cv!.gain_vs_default_pct)}% closer` : `yours ${Math.round(-f.cv!.gain_vs_default_pct)}% further`} />
         </div>
       )}
@@ -673,7 +674,7 @@ function SaturationPanel({ s, explain }: { s: SaturationFit; explain: { q: strin
     <Panel title="Do big days count for less?" eyebrow="Diminishing returns" aside={<span className={clsx("chip", s.adopted ? "!border-lime/40 !text-lime" : "")}>{s.adopted ? "In use" : "Linear kept"}</span>}>
       {s.valid && (
         <div className="mb-5 grid grid-cols-2 gap-6 sm:grid-cols-3">
-          <Stat label="A day with double the load builds" value={`${(2 ** s.alpha).toFixed(2)}×`} hint="textbook model: 2.00×" color={s.adopted ? "#c8f560" : undefined} />
+          <Stat label="A day with double the load builds" value={`${(2 ** s.alpha).toFixed(2)}×`} hint="textbook model: 2.00×" color={s.adopted ? C.lime : undefined} />
           <Stat label="Held-out gain" value={`${s.gain_pct != null ? Math.max(0, s.gain_pct).toFixed(0) : 0}%`} hint="needs 5% to be adopted" />
         </div>
       )}
@@ -687,8 +688,8 @@ function ChannelsPanel({ ch, explain }: { ch: ChannelsFit; explain: { q: string;
     <Panel title="Easy minutes and hard minutes" eyebrow="Which kind of training moves your efficiency" aside={<span className={clsx("chip", ch.adopted ? "!border-lime/40 !text-lime" : "")}>{ch.adopted ? "In use" : "Not separable yet"}</span>}>
       {ch.valid && ch.aerobic && ch.high && (
         <div className="mb-5 grid grid-cols-2 gap-6 sm:grid-cols-4">
-          <Stat label="Easy hour a week" value={`${signed(ch.aerobic.pct_per_hour)}%`} hint={`efficiency · range ${signed(ch.aerobic.ci[0])} to ${signed(ch.aerobic.ci[1])}`} color="#5be3b0" />
-          <Stat label="Hard hour a week" value={`${signed(ch.high.pct_per_hour)}%`} hint={`efficiency · range ${signed(ch.high.ci[0])} to ${signed(ch.high.ci[1])}`} color="#ff6a55" />
+          <Stat label="Easy hour a week" value={`${signed(ch.aerobic.pct_per_hour)}%`} hint={`efficiency · range ${signed(ch.aerobic.ci[0])} to ${signed(ch.aerobic.ci[1])}`} color={C.mint} />
+          <Stat label="Hard hour a week" value={`${signed(ch.high.pct_per_hour)}%`} hint={`efficiency · range ${signed(ch.high.ci[0])} to ${signed(ch.high.ci[1])}`} color={C.coral} />
           <Stat label="Weeks used" value={ch.n} />
         </div>
       )}

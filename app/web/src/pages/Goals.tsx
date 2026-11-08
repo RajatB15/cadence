@@ -10,6 +10,7 @@ import { READ_ONLY, api } from "../lib/api";
 import { formatDate } from "../lib/format";
 import { clockTime as hms, countdown, distanceLabel as km, pacePer, parseTime, signed } from "../lib/goals";
 import type { GoalBand, GoalInput, GoalKind, GoalSport, GoalsResponse, GoalView } from "../lib/types";
+import { C } from "../lib/theme";
 
 const KIND_LABEL: Record<GoalKind, string> = { race: "Race", performance: "Target", distance: "Distance", weight: "Weight" };
 const KIND_HELP: Record<GoalKind, string> = {
@@ -19,9 +20,9 @@ const KIND_HELP: Record<GoalKind, string> = {
   weight: "A target scale weight, judged on the trend line.",
 };
 const SPORT_ICON = { run: Footprints, ride: Bike, swim: Waves } as const;
-const BAND_COLOR: Record<GoalBand, string> = { likely: "#c8f560", plausible: "#5be3b0", "a stretch": "#ffbe55", unlikely: "#ff6a55" };
+const BAND_COLOR: Record<GoalBand, string> = { likely: C.lime, plausible: C.mint, "a stretch": C.amber, unlikely: C.coral };
 const PHASE_COLOR: Record<string, string> = {
-  base: "#6cc7ff", build: "#d9b26a", specific: "#ff6a55", recovery: "#5be3b0", absorb: "#ffbe55", taper: "#9b8cff", race: "#c8f560",
+  base: C.sky, build: C.gold, specific: C.coral, recovery: C.mint, absorb: C.amber, taper: C.violet, race: C.lime,
 };
 const PRESETS: Record<GoalSport, { label: string; m: number }[]> = {
   run: [{ label: "5 km", m: 5000 }, { label: "10 km", m: 10000 }, { label: "Half", m: 21097.5 }, { label: "Marathon", m: 42195 }],
@@ -134,7 +135,7 @@ function GoalCard({ g, planGoal, edit }: { g: GoalView; planGoal: boolean; edit:
           </div>
         )}
       </div>
-      <p className="mt-4 max-w-3xl text-paper" style={{ borderLeft: `3px solid ${g.headline.tone === "good" ? "#c8f560" : g.headline.tone === "warn" ? "#ffbe55" : "#34343a"}`, paddingLeft: 12 }}>
+      <p className="mt-4 max-w-3xl text-paper" style={{ borderLeft: `3px solid ${g.headline.tone === "good" ? C.lime : g.headline.tone === "warn" ? C.amber : C.lineStrong}`, paddingLeft: 12 }}>
         {g.headline.text}
       </p>
       {g.state === "ok" && (
@@ -164,7 +165,7 @@ function Stat({ label, value, hint, color }: { label: string; value: ReactNode; 
   return (
     <div>
       <p className="eyebrow mb-1">{label}</p>
-      <p className="num text-2xl" style={{ color: color ?? "#f2e8cf" }}>{value}</p>
+      <p className="num text-2xl" style={{ color: color ?? C.cream }}>{value}</p>
       {hint && <p className="mt-0.5 text-xs text-dim">{hint}</p>}
     </div>
   );
@@ -181,12 +182,12 @@ function PerformanceDetail({ g }: { g: GoalView }) {
   return (
     <>
       <div className="grid grid-cols-2 gap-6 sm:grid-cols-4">
-        {g.current_s != null && <Stat label="Today's level" value={hms(g.current_s)} hint={`${pacePer(g.sport, dist, g.current_s)} · ${g.basis}`} color="#6cc7ff" />}
-        {target != null && <Stat label="Target" value={hms(target)} hint={pacePer(g.sport, dist, target)} color="#d9b26a" />}
+        {g.current_s != null && <Stat label="Today's level" value={hms(g.current_s)} hint={`${pacePer(g.sport, dist, g.current_s)} · ${g.basis}`} color={C.sky} />}
+        {target != null && <Stat label="Target" value={hms(target)} hint={pacePer(g.sport, dist, target)} color={C.gold} />}
         {p && <Stat label={g.date ? "By the date" : `In ${Math.round((g.horizon_days ?? 84) / 7)} weeks`} value={hms(p.p50_s)} hint={`middle 80%: ${hms(p.p10_s)}–${hms(p.p90_s)}`} />}
-        {g.cs_gain_pct != null && <Stat label="Needs" value={g.cs_gain_pct <= 0 ? "met" : `+${g.cs_gain_pct}% speed`} hint="critical speed for the target" color={g.cs_gain_pct <= 0 ? "#c8f560" : "#ffbe55"} />}
+        {g.cs_gain_pct != null && <Stat label="Needs" value={g.cs_gain_pct <= 0 ? "met" : `+${g.cs_gain_pct}% speed`} hint="critical speed for the target" color={g.cs_gain_pct <= 0 ? C.lime : C.amber} />}
         {g.outlook?.required_gain_pct != null && g.cs_gain_pct == null && (
-          <Stat label="Still to find" value={g.outlook.required_gain_pct <= 0 ? "none" : `${g.outlook.required_gain_pct}%`} hint={g.outlook.per_month_pct != null ? `${g.outlook.per_month_pct}% a month` : "already shown"} color={g.outlook.required_gain_pct <= 0 ? "#c8f560" : "#ffbe55"} />
+          <Stat label="Still to find" value={g.outlook.required_gain_pct <= 0 ? "none" : `${g.outlook.required_gain_pct}%`} hint={g.outlook.per_month_pct != null ? `${g.outlook.per_month_pct}% a month` : "already shown"} color={g.outlook.required_gain_pct <= 0 ? C.lime : C.amber} />
         )}
       </div>
       {p && target != null && Number.isFinite(lo) && (
@@ -214,10 +215,10 @@ function DistanceDetail({ g }: { g: GoalView }) {
   return (
     <>
       <div className="grid grid-cols-2 gap-6 sm:grid-cols-4">
-        <Stat label="Longest, last 90 days" value={g.longest_recent ? km(g.longest_recent.distance_m) : "—"} color="#6cc7ff" />
-        <Stat label="Target" value={km(target)} color="#d9b26a" />
+        <Stat label="Longest, last 90 days" value={g.longest_recent ? km(g.longest_recent.distance_m) : "—"} color={C.sky} />
+        <Stat label="Target" value={km(target)} color={C.gold} />
         {g.ladder && <Stat label="Weeks needed" value={g.ladder.weeks_needed} hint={g.earliest ? `earliest ${formatDate(g.earliest)}` : undefined} />}
-        {g.outlook?.spare_weeks != null && <Stat label="Spare weeks" value={signed(g.outlook.spare_weeks, 0)} color={g.outlook.spare_weeks >= 0 ? "#c8f560" : "#ff6a55"} />}
+        {g.outlook?.spare_weeks != null && <Stat label="Spare weeks" value={signed(g.outlook.spare_weeks, 0)} color={g.outlook.spare_weeks >= 0 ? C.lime : C.coral} />}
       </div>
       {weeks.length > 0 && (
         <div>
@@ -225,7 +226,7 @@ function DistanceDetail({ g }: { g: GoalView }) {
           <div className="flex items-end gap-1" style={{ height: 96 }} role="img" aria-label="Weekly long-session distances up to the attempt">
             {weeks.slice(0, 40).map((w) => (
               <div key={w.week} className="flex min-w-0 flex-1 flex-col items-center justify-end" title={`Week ${w.week}: ${km(w.m)} (${w.kind})`}>
-                <div className="w-full" style={{ height: `${Math.max(4, (w.m / target) * 88)}px`, background: w.kind === "attempt" ? "#c8f560" : w.kind === "recovery" ? "#5be3b0" : w.kind === "easier" ? "#34343a" : "#d9b26a" }} />
+                <div className="w-full" style={{ height: `${Math.max(4, (w.m / target) * 88)}px`, background: w.kind === "attempt" ? C.lime : w.kind === "recovery" ? C.mint : w.kind === "easier" ? C.lineStrong : C.gold }} />
               </div>
             ))}
           </div>
@@ -241,7 +242,7 @@ function WeightDetail({ g }: { g: GoalView }) {
     () => ({
       ...chartBase,
       tooltip: { ...chartBase.tooltip, trigger: "axis" },
-      series: [{ name: "Straight line to the target", type: "line", symbol: "none", lineStyle: { color: "#d9b26a", width: 2, type: "dashed" }, data: (g.path ?? []).map((p) => [p.week, p.kg]) }],
+      series: [{ name: "Straight line to the target", type: "line", symbol: "none", lineStyle: { color: C.gold, width: 2, type: "dashed" }, data: (g.path ?? []).map((p) => [p.week, p.kg]) }],
     }),
     [g.path],
   );
@@ -249,11 +250,11 @@ function WeightDetail({ g }: { g: GoalView }) {
   return (
     <>
       <div className="grid grid-cols-2 gap-6 sm:grid-cols-4">
-        <Stat label="Trend now" value={`${g.current_kg} kg`} color="#6cc7ff" />
-        <Stat label="Target" value={`${g.target_kg} kg`} hint={g.gap_kg != null ? `${signed(g.gap_kg)} kg to go` : undefined} color="#d9b26a" />
-        <Stat label="Recent rate" value={g.rate_kg_wk != null ? `${signed(g.rate_kg_wk, 2)} kg/wk` : "—"} hint={g.rate_pct_wk != null ? `${signed(g.rate_pct_wk, 2)}% of body weight` : "needs 8+ weigh-ins in 4 weeks"} color={g.rate_flag ? "#ffbe55" : undefined} />
+        <Stat label="Trend now" value={`${g.current_kg} kg`} color={C.sky} />
+        <Stat label="Target" value={`${g.target_kg} kg`} hint={g.gap_kg != null ? `${signed(g.gap_kg)} kg to go` : undefined} color={C.gold} />
+        <Stat label="Recent rate" value={g.rate_kg_wk != null ? `${signed(g.rate_kg_wk, 2)} kg/wk` : "—"} hint={g.rate_pct_wk != null ? `${signed(g.rate_pct_wk, 2)}% of body weight` : "needs 8+ weigh-ins in 4 weeks"} color={g.rate_flag ? C.amber : undefined} />
         {g.required ? (
-          <Stat label="Date needs" value={`${signed(g.required.kg_wk, 2)} kg/wk`} hint={`${signed(g.required.pct_wk, 2)}%/wk${g.required.too_fast ? " · faster than advised" : ""}`} color={g.required.too_fast ? "#ff6a55" : "#c8f560"} />
+          <Stat label="Date needs" value={`${signed(g.required.kg_wk, 2)} kg/wk`} hint={`${signed(g.required.pct_wk, 2)}%/wk${g.required.too_fast ? " · faster than advised" : ""}`} color={g.required.too_fast ? C.coral : C.lime} />
         ) : (
           <Stat label="Steady pace" value={g.steady ? formatDate(g.steady) : "—"} hint="at 0.5% of body weight a week" />
         )}
@@ -281,7 +282,7 @@ function Roadmap({ g }: { g: GoalView }) {
       <p className="eyebrow mb-2">Weeks to go · {weeks.length - 1}</p>
       <div className="flex gap-1" role="img" aria-label={`Training phases from now to ${g.date ?? "the goal"}`}>
         {weeks.map((w) => (
-          <div key={w.week} className="h-6 min-w-0 flex-1" style={{ background: PHASE_COLOR[w.phase] ?? "#34343a", opacity: 0.85 }} title={`Week of ${formatDate(w.week)}: ${w.label}. ${w.blurb}`} />
+          <div key={w.week} className="h-6 min-w-0 flex-1" style={{ background: PHASE_COLOR[w.phase] ?? C.lineStrong, opacity: 0.85 }} title={`Week of ${formatDate(w.week)}: ${w.label}. ${w.blurb}`} />
         ))}
       </div>
       <p className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-dim">

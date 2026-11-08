@@ -19,17 +19,18 @@ import { activityStyle } from "../lib/metrics";
 import { phoneMayWrite } from "../lib/phoneWrites";
 import { buildCardModel, noRouteReason } from "../lib/shareCard";
 import type { ActivityDetail, ActivityRoute, FitData, Json, SessionCoach as SessionCoachData } from "../lib/types";
+import { C } from "../lib/theme";
 
-const ZONE_COLORS = ["#5c5a55", "#6cc7ff", "#5be3b0", "#c8f560", "#ffbe55", "#ff6a55", "#ff3b6b"];
+const ZONE_COLORS = [C.faint, C.sky, C.mint, C.lime, C.amber, C.coral, C.coral];
 const STREAM_STYLE: Record<string, { label: string; color: string; unit: string; area?: boolean }> = {
-  heart_rate: { label: "Heart rate", color: "#ff6a55", unit: "bpm" },
-  pace: { label: "Pace", color: "#c8f560", unit: "min/km" },
-  speed: { label: "Speed", color: "#c8f560", unit: "km/h" },
-  altitude: { label: "Elevation", color: "#d9b26a", unit: "m", area: true },
-  cadence: { label: "Cadence", color: "#6cc7ff", unit: "spm" },
-  power: { label: "Power", color: "#9b8cff", unit: "W" },
-  respiration_rate: { label: "Respiration", color: "#5be3b0", unit: "brpm" },
-  temperature: { label: "Temperature", color: "#ffbe55", unit: "°C" },
+  heart_rate: { label: "Heart rate", color: C.coral, unit: "bpm" },
+  pace: { label: "Pace", color: C.lime, unit: "min/km" },
+  speed: { label: "Speed", color: C.lime, unit: "km/h" },
+  altitude: { label: "Elevation", color: C.gold, unit: "m", area: true },
+  cadence: { label: "Cadence", color: C.sky, unit: "spm" },
+  power: { label: "Power", color: C.violet, unit: "W" },
+  respiration_rate: { label: "Respiration", color: C.mint, unit: "brpm" },
+  temperature: { label: "Temperature", color: C.amber, unit: "°C" },
 };
 const STREAM_ORDER = ["heart_rate", "pace", "speed", "altitude", "cadence", "power", "respiration_rate", "temperature"];
 const RouteMap = lazy(() => import("../components/RouteMap"));
@@ -125,10 +126,10 @@ function RouteSection({ r }: { r: ActivityRoute }) {
       <p className="mb-5 text-sm text-mute">{r.name} · {r.distance_km} km · covered {r.n} times</p>
       {t && (
         <div className="mb-5 grid grid-cols-2 gap-6 sm:grid-cols-4">
-          <Fact label="This time" value={clockTime(t.time_s)} hint={t.is_best ? "fastest" : `${ordinal(t.rank)} of ${t.of}`} color={t.is_best ? "#c8f560" : undefined} />
-          <Fact label="Against usual" value={v?.time_s != null ? `${v.time_s <= 0 ? "−" : "+"}${clockTime(Math.abs(v.time_s))}` : "—"} hint={t.earlier_efforts ? `vs median of ${t.earlier_efforts} earlier` : "first effort"} color={v?.time_s != null ? (v.time_s <= 0 ? "#c8f560" : "#ffbe55") : undefined} />
-          <Fact label="Heart rate" value={t.avg_hr ?? "—"} hint={v?.avg_hr != null ? `${signed(v.avg_hr)} bpm vs usual` : undefined} color="#ff6a55" />
-          <Fact label="Value per beat" value={v?.ef_pct != null ? `${signed(v.ef_pct)}%` : "—"} hint="speed per heartbeat above rest" color="#6cc7ff" />
+          <Fact label="This time" value={clockTime(t.time_s)} hint={t.is_best ? "fastest" : `${ordinal(t.rank)} of ${t.of}`} color={t.is_best ? C.lime : undefined} />
+          <Fact label="Against usual" value={v?.time_s != null ? `${v.time_s <= 0 ? "−" : "+"}${clockTime(Math.abs(v.time_s))}` : "—"} hint={t.earlier_efforts ? `vs median of ${t.earlier_efforts} earlier` : "first effort"} color={v?.time_s != null ? (v.time_s <= 0 ? C.lime : C.amber) : undefined} />
+          <Fact label="Heart rate" value={t.avg_hr ?? "—"} hint={v?.avg_hr != null ? `${signed(v.avg_hr)} bpm vs usual` : undefined} color={C.coral} />
+          <Fact label="Value per beat" value={v?.ef_pct != null ? `${signed(v.ef_pct)}%` : "—"} hint="speed per heartbeat above rest" color={C.sky} />
         </div>
       )}
       <ul className="space-y-1.5 text-sm text-paper">{sentences.map((x) => <li key={x}>{x}</li>)}</ul>
@@ -145,7 +146,7 @@ function Fact({ label, value, hint, color }: { label: string; value: ReactNode; 
   return (
     <div>
       <p className="eyebrow mb-1">{label}</p>
-      <p className="num text-2xl" style={{ color: color ?? "#f2e8cf" }}>{value}</p>
+      <p className="num text-2xl" style={{ color: color ?? C.cream }}>{value}</p>
       {hint && <p className="mt-0.5 text-xs text-dim">{hint}</p>}
     </div>
   );
@@ -159,7 +160,7 @@ function PlannedVsActual({ d }: { d: ActivityDetail }) {
   const diff = actual != null && p.predicted.load ? (actual - p.predicted.load) / p.predicted.load : null;
   const verdict = diff == null ? null : diff > 0.25 ? "Harder than planned" : diff < -0.25 ? "Easier than planned" : "As planned";
   return (
-    <section className="surface flex flex-wrap items-center gap-x-8 gap-y-3 p-5 sm:p-6" style={{ borderLeft: "3px solid #d9b26a" }}>
+    <section className="surface flex flex-wrap items-center gap-x-8 gap-y-3 p-5 sm:p-6" style={{ borderLeft: `3px solid ${C.gold}` }}>
       <div className="min-w-0 flex-1">
         <p className="eyebrow mb-1">Planned</p>
         <p className="text-paper">{p.title}</p>
@@ -233,11 +234,11 @@ function HeadlineStats({ d }: { d: ActivityDetail }) {
   push("Moving", moving ? formatDuration(moving) : null);
   if (a.family === "run" || a.family === "walk") push("Avg pace", formatPace(moving ?? a.duration_s, a.distance_m), "/km");
   else if (a.avg_speed_mps) push("Avg speed", (a.avg_speed_mps * 3.6).toFixed(1), "km/h");
-  push("Avg HR", a.avg_hr ? String(Math.round(a.avg_hr)) : null, "bpm", "#ff6a55");
-  push("Max HR", a.max_hr ? String(Math.round(a.max_hr)) : null, "bpm", "#ff6a55");
+  push("Avg HR", a.avg_hr ? String(Math.round(a.avg_hr)) : null, "bpm", C.coral);
+  push("Max HR", a.max_hr ? String(Math.round(a.max_hr)) : null, "bpm", C.coral);
   push("Calories", a.calories ? String(Math.round(a.calories)) : null, "kcal");
   push("Elevation", a.elevation_gain_m ? String(Math.round(a.elevation_gain_m)) : null, "m");
-  push("Training load", a.training_load ? String(Math.round(a.training_load)) : null, undefined, "#d9b26a");
+  push("Training load", a.training_load ? String(Math.round(a.training_load)) : null, undefined, C.gold);
   push("Aerobic TE", num(s, "aerobicTrainingEffect")?.toFixed(1) ?? null);
   push("Anaerobic TE", num(s, "anaerobicTrainingEffect")?.toFixed(1) ?? null);
   push("Avg cadence", num(s, "averageRunningCadenceInStepsPerMinute")?.toFixed(0) ?? null, "spm");
@@ -258,7 +259,7 @@ function HeadlineStats({ d }: { d: ActivityDetail }) {
           className="border-b border-line/60 px-1 py-5 sm:px-4"
         >
           <p className="eyebrow mb-2">{x.label}</p>
-          <p className="num text-3xl" style={{ color: x.accent ?? "#ecebe6" }}>
+          <p className="num text-3xl" style={{ color: x.accent ?? C.paper }}>
             {x.value}
             {x.unit && <span className="ml-1 text-sm text-mute">{x.unit}</span>}
           </p>
@@ -289,9 +290,9 @@ function SessionCoach({ coach }: { coach: SessionCoachData }) {
         <div className="mb-6">
           <div className="flex h-3 overflow-hidden">
             {[
-              { pct: i.easy_pct, color: "#5be3b0" },
-              { pct: i.moderate_pct, color: "#c8f560" },
-              { pct: i.hard_pct, color: "#ff6a55" },
+              { pct: i.easy_pct, color: C.mint },
+              { pct: i.moderate_pct, color: C.lime },
+              { pct: i.hard_pct, color: C.coral },
             ].map((s, k) => (
               <motion.div
                 key={k}
@@ -366,7 +367,7 @@ function Zones({ d }: { d: ActivityDetail }) {
                 initial={{ width: 0 }}
                 animate={{ width: `${(z.seconds / longest) * 100}%` }}
                 transition={{ duration: 0.9, ease: [0.2, 0.9, 0.1, 1] }}
-                style={{ background: ZONE_COLORS[z.zone] ?? "#f2e8cf", minWidth: z.seconds > 0 ? 3 : 0 }}
+                style={{ background: ZONE_COLORS[z.zone] ?? C.cream, minWidth: z.seconds > 0 ? 3 : 0 }}
               />
             </div>
             <p className="num col-span-2 -mt-1 text-right text-sm text-paper sm:col-span-1 sm:mt-0">
@@ -391,14 +392,14 @@ function ZoneTimeline({ hr, t, zones }: { hr: (number | null)[]; t: (number | nu
         type: "value",
         min: "dataMin",
         max: "dataMax",
-        axisLine: { lineStyle: { color: "#262629" } },
-        axisLabel: { color: "#5c5a55", fontSize: 10, formatter: (v: number) => formatDuration(v) },
+        axisLine: { lineStyle: { color: C.line } },
+        axisLabel: { color: C.faint, fontSize: 10, formatter: (v: number) => formatDuration(v) },
         splitLine: { show: false },
       },
       yAxis: {
         type: "value",
         scale: true,
-        axisLabel: { color: "#5c5a55", fontSize: 10 },
+        axisLabel: { color: C.faint, fontSize: 10 },
         splitLine: { show: false },
       },
       visualMap: {
@@ -406,14 +407,14 @@ function ZoneTimeline({ hr, t, zones }: { hr: (number | null)[]; t: (number | nu
         dimension: 1,
         pieces: [
           { lt: lows[0].low!, color: ZONE_COLORS[0] },
-          ...lows.map((z, i) => ({ gte: z.low!, ...(lows[i + 1] ? { lt: lows[i + 1].low! } : {}), color: ZONE_COLORS[z.zone] ?? "#f2e8cf" })),
+          ...lows.map((z, i) => ({ gte: z.low!, ...(lows[i + 1] ? { lt: lows[i + 1].low! } : {}), color: ZONE_COLORS[z.zone] ?? C.cream })),
         ],
       },
       tooltip: {
         ...chartBase.tooltip,
         formatter: (items: { value: [number, number] }[]) => {
           const p = items[0]?.value;
-          return p && p[1] != null ? `<span style="color:#8d8a82">${formatDuration(p[0])}</span><br/><b>${Math.round(p[1])} bpm</b>` : "";
+          return p && p[1] != null ? `<span style="color:${C.mute}">${formatDuration(p[0])}</span><br/><b>${Math.round(p[1])} bpm</b>` : "";
         },
       },
       series: [
@@ -426,8 +427,8 @@ function ZoneTimeline({ hr, t, zones }: { hr: (number | null)[]; t: (number | nu
           markLine: {
             symbol: "none",
             silent: true,
-            label: { show: true, position: "insideEndTop", color: "#5c5a55", fontSize: 10, formatter: (p: { name: string }) => p.name },
-            lineStyle: { color: "#3a3a3f", type: "dashed" },
+            label: { show: true, position: "insideEndTop", color: C.faint, fontSize: 10, formatter: (p: { name: string }) => p.name },
+            lineStyle: { color: `${C.lineStrong}`, type: "dashed" },
             data: lows.slice(1).map((z) => ({ yAxis: z.low!, name: `Z${z.zone}` })),
           },
         },
@@ -510,7 +511,7 @@ function StreamChart({
   axis: string;
   stats?: { min: number; avg: number; max: number };
 }) {
-  const style = STREAM_STYLE[name] ?? { label: humanize(name), color: "#f2e8cf", unit: "" };
+  const style = STREAM_STYLE[name] ?? { label: humanize(name), color: C.cream, unit: "" };
   const pace = name === "pace";
   const fmt = (v: number) =>
     pace ? `${Math.floor(v)}:${String(Math.round((v % 1) * 60)).padStart(2, "0")}` : Math.abs(v) >= 100 ? v.toFixed(0) : String(+v.toFixed(2));
@@ -530,9 +531,9 @@ function StreamChart({
         type: "value",
         min: "dataMin",
         max: "dataMax",
-        axisLine: { lineStyle: { color: "#262629" } },
+        axisLine: { lineStyle: { color: C.line } },
         axisLabel: {
-          color: "#5c5a55",
+          color: C.faint,
           fontSize: 10,
           formatter: (v: number) => (axis === "distance" ? `${v.toFixed(1)} km` : formatDuration(v)),
         },
@@ -543,8 +544,8 @@ function StreamChart({
         scale: true,
         inverse: pace,
         ...range,
-        axisLabel: { color: "#5c5a55", fontSize: 10, formatter: (v: number) => fmt(v) },
-        splitLine: { lineStyle: { color: "#1c1c1f" } },
+        axisLabel: { color: C.faint, fontSize: 10, formatter: (v: number) => fmt(v) },
+        splitLine: { lineStyle: { color: C.grid } },
       },
       tooltip: {
         ...chartBase.tooltip,
@@ -552,7 +553,7 @@ function StreamChart({
           const p = items[0]?.value;
           if (!p || p[1] == null) return "";
           const where = axis === "distance" ? `${p[0].toFixed(2)} km` : formatDuration(p[0]);
-          return `<span style="color:#8d8a82">${where}</span><br/><b style="color:${style.color}">${fmt(p[1])} ${style.unit}</b> ${style.label}`;
+          return `<span style="color:${C.mute}">${where}</span><br/><b style="color:${style.color}">${fmt(p[1])} ${style.unit}</b> ${style.label}`;
         },
       },
       series: [
@@ -638,7 +639,7 @@ function RouteShape({ route }: { route: [number, number][] }) {
           <motion.path
             d={path}
             fill="none"
-            stroke="#c8f560"
+            stroke={C.lime}
             strokeWidth={5}
             strokeLinejoin="round"
             strokeLinecap="round"
@@ -647,8 +648,8 @@ function RouteShape({ route }: { route: [number, number][] }) {
             animate={{ pathLength: 1 }}
             transition={{ duration: 1.8, ease: "easeInOut" }}
           />
-          <circle cx={start[0]} cy={start[1]} r={14} fill="#0b0b0c" stroke="#c8f560" strokeWidth={5} />
-          <circle cx={end[0]} cy={end[1]} r={14} fill="#ff6a55" />
+          <circle cx={start[0]} cy={start[1]} r={14} fill={C.ink} stroke={C.lime} strokeWidth={5} />
+          <circle cx={end[0]} cy={end[1]} r={14} fill={C.coral} />
         </svg>
     </div>
   );

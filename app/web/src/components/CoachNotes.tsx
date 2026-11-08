@@ -4,21 +4,22 @@ import { motion } from "motion/react";
 import { Link, useLocation } from "react-router-dom";
 import type { Finding, Verdict } from "../lib/types";
 import { CountUp } from "./CountUp";
+import { C } from "../lib/theme";
 
 export const SEVERITY: Record<Finding["severity"], { color: string; icon: typeof Info; label: string }> = {
-  alert: { color: "#ff6a55", icon: AlertTriangle, label: "Act now" },
-  warn: { color: "#ffbe55", icon: AlertTriangle, label: "Fix this" },
-  info: { color: "#6cc7ff", icon: Info, label: "Worth knowing" },
-  good: { color: "#c8f560", icon: CheckCircle2, label: "Working" },
+  alert: { color: C.coral, icon: AlertTriangle, label: "Act now" },
+  warn: { color: C.amber, icon: AlertTriangle, label: "Fix this" },
+  info: { color: C.sky, icon: Info, label: "Worth knowing" },
+  good: { color: C.lime, icon: CheckCircle2, label: "Working" },
 };
 
-export const readyColor = (s: number) => (s >= 85 ? "#c8f560" : s >= 70 ? "#5be3b0" : s >= 50 ? "#ffbe55" : "#ff6a55");
+export const readyColor = (s: number) => (s >= 85 ? C.lime : s >= 70 ? C.mint : s >= 50 ? C.amber : C.coral);
 
 const VERDICT_COLOR: Record<Verdict["tone"], string> = {
-  good: "#c8f560",
-  warn: "#ffbe55",
-  info: "#6cc7ff",
-  key: "#d9b26a",
+  good: C.lime,
+  warn: C.amber,
+  info: C.sky,
+  key: C.gold,
 };
 
 export function VerdictChip({ v, large = false }: { v: Verdict; large?: boolean }) {
@@ -128,7 +129,7 @@ export function Ring({ score, size = 160, label = "readiness" }: { score: number
     >
       <span className="pointer-events-none absolute inset-[12%] rounded-full opacity-25 blur-2xl" style={{ background: color }} />
       <svg viewBox="0 0 160 160" className="relative h-full w-full -rotate-90">
-        <circle cx="80" cy="80" r={r} fill="none" stroke="#1c1c1f" strokeWidth="10" />
+        <circle cx="80" cy="80" r={r} fill="none" stroke={C.grid} strokeWidth="10" />
         <motion.circle
           cx="80" cy="80" r={r} fill="none" stroke={color} strokeWidth="10" strokeLinecap="round"
           strokeDasharray={circ}

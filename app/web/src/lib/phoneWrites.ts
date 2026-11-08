@@ -27,6 +27,7 @@ const RULES: [string, string][] = [
   ["DELETE", "/api/food/(entries|meals)/[^/]+"],
   ["POST", "/api/food/meals/[^/]+/log"],
   ["PUT", "/api/settings/(weather|profile|plan)"],
+  ["PUT", "/api/settings/calories"],
   ["POST", "/api/time-off"],
   ["PUT", "/api/time-off/[^/]+"],
   ["DELETE", "/api/time-off/[^/]+"],

@@ -1,0 +1,2027 @@
+{
+ "overview_0700_nofood": {
+  "energy": {
+   "status": "ok",
+   "day": "2026-10-22",
+   "as_of_min": 420,
+   "as_of": "07:00",
+   "burned": {
+    "total": 706,
+    "active": 177,
+    "resting": 529,
+    "as_of": "07:00"
+   },
+   "eaten": {
+    "kcal": null,
+    "kcal_low": null,
+    "kcal_high": null,
+    "logged": false,
+    "entries": 0,
+    "protein_g": null
+   },
+   "projected": {
+    "value": 2399,
+    "lo": 2305,
+    "hi": 2501,
+    "n": 20,
+    "method": "curve"
+   },
+   "projection_state": "ok",
+   "projection_history_days": 20,
+   "target": {
+    "kcal": 2400,
+    "source": "history",
+    "maintenance_kcal": 2400,
+    "adjustment_kcal": 0,
+    "floor_kcal": 1980,
+    "floor_applied": false,
+    "below_floor": false,
+    "n_days": 20,
+    "pace": null,
+    "hold": null,
+    "protein": {
+     "low_g": 105,
+     "high_g": 151,
+     "per_kg": [
+      1.4,
+      2.0
+     ]
+    }
+   },
+   "left": null,
+   "above_by": null,
+   "workout_active_kcal": null,
+   "eat_back_pct": 50,
+   "eat_back_kcal": 0,
+   "balance": null,
+   "spark": [
+    {
+     "day": "2026-10-18",
+     "total": 2400.0,
+     "eaten": null
+    },
+    {
+     "day": "2026-10-19",
+     "total": 2360.0,
+     "eaten": null
+    },
+    {
+     "day": "2026-10-20",
+     "total": 2440.0,
+     "eaten": null
+    },
+    {
+     "day": "2026-10-21",
+     "total": 2400.0,
+     "eaten": null
+    },
+    {
+     "day": "2026-10-22",
+     "total": 706.0,
+     "eaten": null,
+     "partial": true
+    }
+   ],
+   "yesterday": null,
+   "settings": {
+    "mode": "auto",
+    "manual_kcal": null,
+    "eat_back_pct": 50,
+    "pace": true
+   },
+   "copy": {
+    "footnote": "Garmin burn and food-log kcal are both estimates; individual error can be 10 to 20% or more. Trends over weeks mean more than any single day.",
+    "status": null,
+    "burned": "About 706 kcal burned so far (estimate, as of 07:00)",
+    "eaten": "Nothing logged yet",
+    "target": "Target about 2,400 kcal",
+    "left": null,
+    "projection": "Around 2,399 kcal by the end of the day (range 2,305 to 2,501); typical for this time, 20 past days.",
+    "target_notes": [
+     "Estimated from your last 20 days of Garmin burn.",
+     "Protein for people who train is often put at 105 to 151 g a day (1.4 to 2.0 g per kg)."
+    ],
+    "workout": null,
+    "refuel": null,
+    "partial_log": null
+   }
+  },
+  "phase": {
+   "phase": "morning",
+   "band": "morning",
+   "flags": [],
+   "cards": [
+    "vitals",
+    "now",
+    "readiness",
+    "checkin",
+    "calories",
+    "week",
+    "recent",
+    "more"
+   ],
+   "dimmed": [],
+   "hidden": [],
+   "vitals_order": [
+    "sleep_hours",
+    "hrv",
+    "resting_hr",
+    "body_battery",
+    "stress",
+    "steps"
+   ],
+   "session_state": "open",
+   "hints": {
+    "phase": "morning",
+    "session": "open",
+    "sleep": "recap",
+    "calories": "left",
+    "steps": "tile",
+    "protein_check": false,
+    "yesterday_recap": false
+   },
+   "copy": {
+    "headline": "Here is where your body is this morning.",
+    "session": {
+     "title": "Today's session is still ahead",
+     "detail": "There is time for it; pick the moment that suits you."
+    },
+    "sleep": null,
+    "calories": null,
+    "steps": null,
+    "protein_check": null,
+    "recap": null,
+    "flags": []
+   },
+   "now_local": "07:00",
+   "day": "2026-10-22"
+  },
+  "coach_today": {
+   "kind": "key",
+   "title": "Threshold",
+   "status": null
+  },
+  "metrics": [
+   "hrv",
+   "resting_hr",
+   "sleep_hours",
+   "sleep_score",
+   "body_battery",
+   "stress",
+   "steps"
+  ],
+  "planned_today": []
+ },
+ "overview_1300_nofood": {
+  "energy": {
+   "status": "ok",
+   "day": "2026-10-22",
+   "as_of_min": 780,
+   "as_of": "13:00",
+   "burned": {
+    "total": 1224,
+    "active": 306,
+    "resting": 918,
+    "as_of": "13:00"
+   },
+   "eaten": {
+    "kcal": null,
+    "kcal_low": null,
+    "kcal_high": null,
+    "logged": false,
+    "entries": 0,
+    "protein_g": null
+   },
+   "projected": {
+    "value": 2401,
+    "lo": 2346,
+    "hi": 2459,
+    "n": 20,
+    "method": "curve"
+   },
+   "projection_state": "ok",
+   "projection_history_days": 20,
+   "target": {
+    "kcal": 2400,
+    "source": "history",
+    "maintenance_kcal": 2400,
+    "adjustment_kcal": 0,
+    "floor_kcal": 1980,
+    "floor_applied": false,
+    "below_floor": false,
+    "n_days": 20,
+    "pace": null,
+    "hold": null,
+    "protein": {
+     "low_g": 105,
+     "high_g": 151,
+     "per_kg": [
+      1.4,
+      2.0
+     ]
+    }
+   },
+   "left": null,
+   "above_by": null,
+   "workout_active_kcal": null,
+   "eat_back_pct": 50,
+   "eat_back_kcal": 0,
+   "balance": null,
+   "spark": [
+    {
+     "day": "2026-10-18",
+     "total": 2400.0,
+     "eaten": null
+    },
+    {
+     "day": "2026-10-19",
+     "total": 2360.0,
+     "eaten": null
+    },
+    {
+     "day": "2026-10-20",
+     "total": 2440.0,
+     "eaten": null
+    },
+    {
+     "day": "2026-10-21",
+     "total": 2400.0,
+     "eaten": null
+    },
+    {
+     "day": "2026-10-22",
+     "total": 1224.0,
+     "eaten": null,
+     "partial": true
+    }
+   ],
+   "yesterday": null,
+   "settings": {
+    "mode": "auto",
+    "manual_kcal": null,
+    "eat_back_pct": 50,
+    "pace": true
+   },
+   "copy": {
+    "footnote": "Garmin burn and food-log kcal are both estimates; individual error can be 10 to 20% or more. Trends over weeks mean more than any single day.",
+    "status": null,
+    "burned": "About 1,224 kcal burned so far (estimate, as of 13:00)",
+    "eaten": "Nothing logged yet",
+    "target": "Target about 2,400 kcal",
+    "left": null,
+    "projection": "Around 2,401 kcal by the end of the day (range 2,346 to 2,459); typical for this time, 20 past days.",
+    "target_notes": [
+     "Estimated from your last 20 days of Garmin burn.",
+     "Protein for people who train is often put at 105 to 151 g a day (1.4 to 2.0 g per kg)."
+    ],
+    "workout": null,
+    "refuel": null,
+    "partial_log": null
+   }
+  },
+  "phase": {
+   "phase": "midday",
+   "band": "midday",
+   "flags": [],
+   "cards": [
+    "vitals",
+    "calories",
+    "now",
+    "readiness",
+    "checkin",
+    "week",
+    "recent",
+    "more"
+   ],
+   "dimmed": [],
+   "hidden": [],
+   "vitals_order": [
+    "steps",
+    "sleep_hours",
+    "hrv",
+    "resting_hr",
+    "body_battery",
+    "stress"
+   ],
+   "session_state": "open",
+   "hints": {
+    "phase": "midday",
+    "session": "open",
+    "sleep": "tile",
+    "calories": "left",
+    "steps": "tile",
+    "protein_check": false,
+    "yesterday_recap": false
+   },
+   "copy": {
+    "headline": "Midday: how the day is going so far.",
+    "session": {
+     "title": "Today's session is still ahead",
+     "detail": "There is time for it; pick the moment that suits you."
+    },
+    "sleep": null,
+    "calories": null,
+    "steps": null,
+    "protein_check": null,
+    "recap": null,
+    "flags": []
+   },
+   "now_local": "13:00",
+   "day": "2026-10-22"
+  },
+  "coach_today": {
+   "kind": "key",
+   "title": "Threshold",
+   "status": null
+  },
+  "metrics": [
+   "hrv",
+   "resting_hr",
+   "sleep_hours",
+   "sleep_score",
+   "body_battery",
+   "stress",
+   "steps"
+  ],
+  "planned_today": []
+ },
+ "overview_1300_food": {
+  "energy": {
+   "status": "ok",
+   "day": "2026-10-22",
+   "as_of_min": 780,
+   "as_of": "13:00",
+   "burned": {
+    "total": 1224,
+    "active": 306,
+    "resting": 918,
+    "as_of": "13:00"
+   },
+   "eaten": {
+    "kcal": 1200,
+    "kcal_low": 840,
+    "kcal_high": 1560,
+    "logged": true,
+    "entries": 1,
+    "protein_g": null
+   },
+   "projected": {
+    "value": 2401,
+    "lo": 2346,
+    "hi": 2459,
+    "n": 20,
+    "method": "curve"
+   },
+   "projection_state": "ok",
+   "projection_history_days": 20,
+   "target": {
+    "kcal": 2400,
+    "source": "history",
+    "maintenance_kcal": 2400,
+    "adjustment_kcal": 0,
+    "floor_kcal": 1980,
+    "floor_applied": false,
+    "below_floor": false,
+    "n_days": 20,
+    "pace": null,
+    "hold": null,
+    "protein": {
+     "low_g": 105,
+     "high_g": 151,
+     "per_kg": [
+      1.4,
+      2.0
+     ]
+    }
+   },
+   "left": 1200,
+   "above_by": null,
+   "workout_active_kcal": null,
+   "eat_back_pct": 50,
+   "eat_back_kcal": 0,
+   "balance": {
+    "so_far_kcal": -24
+   },
+   "spark": [
+    {
+     "day": "2026-10-18",
+     "total": 2400.0,
+     "eaten": null
+    },
+    {
+     "day": "2026-10-19",
+     "total": 2360.0,
+     "eaten": null
+    },
+    {
+     "day": "2026-10-20",
+     "total": 2440.0,
+     "eaten": null
+    },
+    {
+     "day": "2026-10-21",
+     "total": 2400.0,
+     "eaten": null
+    },
+    {
+     "day": "2026-10-22",
+     "total": 1224.0,
+     "eaten": 1200,
+     "partial": true
+    }
+   ],
+   "yesterday": null,
+   "settings": {
+    "mode": "auto",
+    "manual_kcal": null,
+    "eat_back_pct": 50,
+    "pace": true
+   },
+   "copy": {
+    "footnote": "Garmin burn and food-log kcal are both estimates; individual error can be 10 to 20% or more. Trends over weeks mean more than any single day.",
+    "status": null,
+    "burned": "About 1,224 kcal burned so far (estimate, as of 13:00)",
+    "eaten": "About 1,200 kcal logged",
+    "target": "Target about 2,400 kcal",
+    "left": "About 1,200 kcal to go toward today's estimate",
+    "projection": "Around 2,401 kcal by the end of the day (range 2,346 to 2,459); typical for this time, 20 past days.",
+    "target_notes": [
+     "Estimated from your last 20 days of Garmin burn.",
+     "Protein for people who train is often put at 105 to 151 g a day (1.4 to 2.0 g per kg)."
+    ],
+    "workout": null,
+    "refuel": null,
+    "partial_log": null
+   }
+  },
+  "phase": {
+   "phase": "midday",
+   "band": "midday",
+   "flags": [
+    "food_logged"
+   ],
+   "cards": [
+    "vitals",
+    "calories",
+    "now",
+    "readiness",
+    "checkin",
+    "week",
+    "recent",
+    "more"
+   ],
+   "dimmed": [],
+   "hidden": [],
+   "vitals_order": [
+    "steps",
+    "sleep_hours",
+    "hrv",
+    "resting_hr",
+    "body_battery",
+    "stress"
+   ],
+   "session_state": "open",
+   "hints": {
+    "phase": "midday",
+    "session": "open",
+    "sleep": "tile",
+    "calories": "left",
+    "steps": "tile",
+    "protein_check": false,
+    "yesterday_recap": false
+   },
+   "copy": {
+    "headline": "Midday: how the day is going so far.",
+    "session": {
+     "title": "Today's session is still ahead",
+     "detail": "There is time for it; pick the moment that suits you."
+    },
+    "sleep": null,
+    "calories": null,
+    "steps": null,
+    "protein_check": null,
+    "recap": null,
+    "flags": []
+   },
+   "now_local": "13:00",
+   "day": "2026-10-22"
+  },
+  "coach_today": {
+   "kind": "key",
+   "title": "Threshold",
+   "status": null
+  },
+  "metrics": [
+   "hrv",
+   "resting_hr",
+   "sleep_hours",
+   "sleep_score",
+   "body_battery",
+   "stress",
+   "steps"
+  ],
+  "planned_today": []
+ },
+ "overview_1700_food": {
+  "energy": {
+   "status": "ok",
+   "day": "2026-10-22",
+   "as_of_min": 1020,
+   "as_of": "17:00",
+   "burned": {
+    "total": 1614,
+    "active": 403,
+    "resting": 1211,
+    "as_of": "17:00"
+   },
+   "eaten": {
+    "kcal": 1400,
+    "kcal_low": 980,
+    "kcal_high": 1820,
+    "logged": true,
+    "entries": 1,
+    "protein_g": null
+   },
+   "projected": {
+    "value": 2400,
+    "lo": 2358,
+    "hi": 2444,
+    "n": 20,
+    "method": "curve"
+   },
+   "projection_state": "ok",
+   "projection_history_days": 20,
+   "target": {
+    "kcal": 2400,
+    "source": "history",
+    "maintenance_kcal": 2400,
+    "adjustment_kcal": 0,
+    "floor_kcal": 1980,
+    "floor_applied": false,
+    "below_floor": false,
+    "n_days": 20,
+    "pace": null,
+    "hold": null,
+    "protein": {
+     "low_g": 105,
+     "high_g": 151,
+     "per_kg": [
+      1.4,
+      2.0
+     ]
+    }
+   },
+   "left": 1000,
+   "above_by": null,
+   "workout_active_kcal": null,
+   "eat_back_pct": 50,
+   "eat_back_kcal": 0,
+   "balance": {
+    "so_far_kcal": -214
+   },
+   "spark": [
+    {
+     "day": "2026-10-18",
+     "total": 2400.0,
+     "eaten": null
+    },
+    {
+     "day": "2026-10-19",
+     "total": 2360.0,
+     "eaten": null
+    },
+    {
+     "day": "2026-10-20",
+     "total": 2440.0,
+     "eaten": null
+    },
+    {
+     "day": "2026-10-21",
+     "total": 2400.0,
+     "eaten": null
+    },
+    {
+     "day": "2026-10-22",
+     "total": 1614.0,
+     "eaten": 1400,
+     "partial": true
+    }
+   ],
+   "yesterday": null,
+   "settings": {
+    "mode": "auto",
+    "manual_kcal": null,
+    "eat_back_pct": 50,
+    "pace": true
+   },
+   "copy": {
+    "footnote": "Garmin burn and food-log kcal are both estimates; individual error can be 10 to 20% or more. Trends over weeks mean more than any single day.",
+    "status": null,
+    "burned": "About 1,614 kcal burned so far (estimate, as of 17:00)",
+    "eaten": "About 1,400 kcal logged",
+    "target": "Target about 2,400 kcal",
+    "left": "About 1,000 kcal to go toward today's estimate",
+    "projection": "Around 2,400 kcal by the end of the day (range 2,358 to 2,444); typical for this time, 20 past days.",
+    "target_notes": [
+     "Estimated from your last 20 days of Garmin burn.",
+     "Protein for people who train is often put at 105 to 151 g a day (1.4 to 2.0 g per kg)."
+    ],
+    "workout": null,
+    "refuel": null,
+    "partial_log": null
+   }
+  },
+  "phase": {
+   "phase": "afternoon",
+   "band": "afternoon",
+   "flags": [
+    "food_logged"
+   ],
+   "cards": [
+    "vitals",
+    "calories",
+    "now",
+    "readiness",
+    "checkin",
+    "week",
+    "recent",
+    "more"
+   ],
+   "dimmed": [],
+   "hidden": [],
+   "vitals_order": [
+    "steps",
+    "sleep_hours",
+    "hrv",
+    "resting_hr",
+    "body_battery",
+    "stress"
+   ],
+   "session_state": "open",
+   "hints": {
+    "phase": "afternoon",
+    "session": "open",
+    "sleep": "tile",
+    "calories": "left",
+    "steps": "tile",
+    "protein_check": false,
+    "yesterday_recap": false
+   },
+   "copy": {
+    "headline": "Afternoon. For some people, hard sessions late in the day make it harder to fall asleep.",
+    "session": {
+     "title": "Today's session is still ahead",
+     "detail": "There is time for it; pick the moment that suits you."
+    },
+    "sleep": null,
+    "calories": null,
+    "steps": null,
+    "protein_check": null,
+    "recap": null,
+    "flags": []
+   },
+   "now_local": "17:00",
+   "day": "2026-10-22"
+  },
+  "coach_today": {
+   "kind": "key",
+   "title": "Threshold",
+   "status": null
+  },
+  "metrics": [
+   "hrv",
+   "resting_hr",
+   "sleep_hours",
+   "sleep_score",
+   "body_battery",
+   "stress",
+   "steps"
+  ],
+  "planned_today": [
+   {
+    "title": "Threshold \u00b7 3 \u00d7 8 min",
+    "status": "planned"
+   }
+  ]
+ },
+ "overview_2130_planned": {
+  "energy": {
+   "status": "ok",
+   "day": "2026-10-22",
+   "as_of_min": 1290,
+   "as_of": "21:30",
+   "burned": {
+    "total": 2087,
+    "active": 522,
+    "resting": 1565,
+    "as_of": "21:30"
+   },
+   "eaten": {
+    "kcal": 1900,
+    "kcal_low": 1330,
+    "kcal_high": 2470,
+    "logged": true,
+    "entries": 1,
+    "protein_g": null
+   },
+   "projected": {
+    "value": 2400,
+    "lo": 2295,
+    "hi": 2504,
+    "n": 20,
+    "method": "curve"
+   },
+   "projection_state": "ok",
+   "projection_history_days": 20,
+   "target": {
+    "kcal": 2400,
+    "source": "history",
+    "maintenance_kcal": 2400,
+    "adjustment_kcal": 0,
+    "floor_kcal": 1980,
+    "floor_applied": false,
+    "below_floor": false,
+    "n_days": 20,
+    "pace": null,
+    "hold": null,
+    "protein": {
+     "low_g": 105,
+     "high_g": 151,
+     "per_kg": [
+      1.4,
+      2.0
+     ]
+    }
+   },
+   "left": 500,
+   "above_by": null,
+   "workout_active_kcal": null,
+   "eat_back_pct": 50,
+   "eat_back_kcal": 0,
+   "balance": {
+    "so_far_kcal": -187
+   },
+   "spark": [
+    {
+     "day": "2026-10-18",
+     "total": 2400.0,
+     "eaten": null
+    },
+    {
+     "day": "2026-10-19",
+     "total": 2360.0,
+     "eaten": null
+    },
+    {
+     "day": "2026-10-20",
+     "total": 2440.0,
+     "eaten": null
+    },
+    {
+     "day": "2026-10-21",
+     "total": 2400.0,
+     "eaten": null
+    },
+    {
+     "day": "2026-10-22",
+     "total": 2087.0,
+     "eaten": 1900,
+     "partial": true
+    }
+   ],
+   "yesterday": null,
+   "settings": {
+    "mode": "auto",
+    "manual_kcal": null,
+    "eat_back_pct": 50,
+    "pace": true
+   },
+   "copy": {
+    "footnote": "Garmin burn and food-log kcal are both estimates; individual error can be 10 to 20% or more. Trends over weeks mean more than any single day.",
+    "status": null,
+    "burned": "About 2,087 kcal burned so far (estimate, as of 21:30)",
+    "eaten": "About 1,900 kcal logged",
+    "target": "Target about 2,400 kcal",
+    "left": "About 500 kcal to go toward today's estimate",
+    "projection": "Around 2,400 kcal by the end of the day (range 2,295 to 2,504); typical for this time, 20 past days.",
+    "target_notes": [
+     "Estimated from your last 20 days of Garmin burn.",
+     "Protein for people who train is often put at 105 to 151 g a day (1.4 to 2.0 g per kg)."
+    ],
+    "workout": null,
+    "refuel": null,
+    "partial_log": "Only 1 entry logged so far, so the total may be partial."
+   }
+  },
+  "phase": {
+   "phase": "late",
+   "band": "late",
+   "flags": [
+    "food_logged"
+   ],
+   "cards": [
+    "now",
+    "vitals",
+    "calories",
+    "week",
+    "readiness",
+    "more"
+   ],
+   "dimmed": [
+    "readiness"
+   ],
+   "hidden": [
+    "checkin",
+    "recent"
+   ],
+   "vitals_order": [
+    "steps",
+    "stress",
+    "body_battery",
+    "sleep_hours",
+    "hrv",
+    "resting_hr"
+   ],
+   "session_state": "deferred",
+   "hints": {
+    "phase": "late",
+    "session": "deferred",
+    "sleep": "tile",
+    "calories": "day_total",
+    "steps": "tile",
+    "protein_check": false,
+    "yesterday_recap": false
+   },
+   "copy": {
+    "headline": "The day is done. Sleep when you can; tomorrow's plan is ready.",
+    "session": {
+     "title": "Not today",
+     "detail": "The week still works; tomorrow's plan starts from where it stands."
+    },
+    "sleep": null,
+    "calories": "Day total so far",
+    "steps": null,
+    "protein_check": null,
+    "recap": null,
+    "flags": []
+   },
+   "now_local": "21:30",
+   "day": "2026-10-22"
+  },
+  "coach_today": {
+   "kind": "key",
+   "title": "Not today",
+   "status": "deferred"
+  },
+  "metrics": [
+   "hrv",
+   "resting_hr",
+   "sleep_hours",
+   "sleep_score",
+   "body_battery",
+   "stress",
+   "steps"
+  ],
+  "planned_today": [
+   {
+    "title": "Threshold \u00b7 3 \u00d7 8 min",
+    "status": "planned"
+   }
+  ]
+ },
+ "overview_2330_food": {
+  "energy": {
+   "status": "insufficient",
+   "day": "2026-10-22",
+   "as_of_min": 1410,
+   "as_of": "23:30",
+   "burned": {
+    "total": 2308,
+    "active": 577,
+    "resting": 1731,
+    "as_of": "23:30"
+   },
+   "eaten": {
+    "kcal": 2200,
+    "kcal_low": 1540,
+    "kcal_high": 2860,
+    "logged": true,
+    "entries": 1,
+    "protein_g": null
+   },
+   "projected": null,
+   "projection_state": "hidden",
+   "projection_history_days": 20,
+   "target": {
+    "kcal": 2400,
+    "source": "history",
+    "maintenance_kcal": 2400,
+    "adjustment_kcal": 0,
+    "floor_kcal": 1980,
+    "floor_applied": false,
+    "below_floor": false,
+    "n_days": 20,
+    "pace": null,
+    "hold": null,
+    "protein": {
+     "low_g": 105,
+     "high_g": 151,
+     "per_kg": [
+      1.4,
+      2.0
+     ]
+    }
+   },
+   "left": 200,
+   "above_by": null,
+   "workout_active_kcal": null,
+   "eat_back_pct": 50,
+   "eat_back_kcal": 0,
+   "balance": {
+    "so_far_kcal": -108
+   },
+   "spark": [
+    {
+     "day": "2026-10-18",
+     "total": 2400.0,
+     "eaten": null
+    },
+    {
+     "day": "2026-10-19",
+     "total": 2360.0,
+     "eaten": null
+    },
+    {
+     "day": "2026-10-20",
+     "total": 2440.0,
+     "eaten": null
+    },
+    {
+     "day": "2026-10-21",
+     "total": 2400.0,
+     "eaten": null
+    },
+    {
+     "day": "2026-10-22",
+     "total": 2308.0,
+     "eaten": 2200,
+     "partial": true
+    }
+   ],
+   "yesterday": null,
+   "settings": {
+    "mode": "auto",
+    "manual_kcal": null,
+    "eat_back_pct": 50,
+    "pace": true
+   },
+   "copy": {
+    "footnote": "Garmin burn and food-log kcal are both estimates; individual error can be 10 to 20% or more. Trends over weeks mean more than any single day.",
+    "status": "Not enough history yet for a projection (it needs about a week of days).",
+    "burned": "About 2,308 kcal burned so far (estimate, as of 23:30)",
+    "eaten": "About 2,200 kcal logged",
+    "target": "Target about 2,400 kcal",
+    "left": "About 200 kcal to go toward today's estimate",
+    "projection": null,
+    "target_notes": [
+     "Estimated from your last 20 days of Garmin burn.",
+     "Protein for people who train is often put at 105 to 151 g a day (1.4 to 2.0 g per kg)."
+    ],
+    "workout": null,
+    "refuel": null,
+    "partial_log": "Only 1 entry logged so far, so the total may be partial."
+   }
+  },
+  "phase": {
+   "phase": "late",
+   "band": "late",
+   "flags": [
+    "food_logged"
+   ],
+   "cards": [
+    "now",
+    "vitals",
+    "calories",
+    "week",
+    "readiness",
+    "more"
+   ],
+   "dimmed": [
+    "readiness"
+   ],
+   "hidden": [
+    "checkin",
+    "recent"
+   ],
+   "vitals_order": [
+    "steps",
+    "stress",
+    "body_battery",
+    "sleep_hours",
+    "hrv",
+    "resting_hr"
+   ],
+   "session_state": "deferred",
+   "hints": {
+    "phase": "late",
+    "session": "deferred",
+    "sleep": "tile",
+    "calories": "day_total",
+    "steps": "tile",
+    "protein_check": false,
+    "yesterday_recap": false
+   },
+   "copy": {
+    "headline": "The day is done. Sleep when you can; tomorrow's plan is ready.",
+    "session": {
+     "title": "Not today",
+     "detail": "The week still works; tomorrow's plan starts from where it stands."
+    },
+    "sleep": null,
+    "calories": "Day total so far",
+    "steps": null,
+    "protein_check": null,
+    "recap": null,
+    "flags": []
+   },
+   "now_local": "23:30",
+   "day": "2026-10-22"
+  },
+  "coach_today": {
+   "kind": "key",
+   "title": "Not today",
+   "status": "deferred"
+  },
+  "metrics": [
+   "hrv",
+   "resting_hr",
+   "sleep_hours",
+   "sleep_score",
+   "body_battery",
+   "stress",
+   "steps"
+  ],
+  "planned_today": [
+   {
+    "title": "Threshold \u00b7 3 \u00d7 8 min",
+    "status": "planned"
+   }
+  ]
+ },
+ "overview_0030_justdawn": {
+  "energy": {
+   "status": "just_started",
+   "day": "2026-10-22",
+   "as_of_min": null,
+   "as_of": null,
+   "burned": null,
+   "eaten": {
+    "kcal": null,
+    "kcal_low": null,
+    "kcal_high": null,
+    "logged": false,
+    "entries": 0,
+    "protein_g": null
+   },
+   "projected": null,
+   "projection_state": null,
+   "projection_history_days": 0,
+   "target": {
+    "kcal": 2400,
+    "source": "history",
+    "maintenance_kcal": 2400,
+    "adjustment_kcal": 0,
+    "floor_kcal": 1980,
+    "floor_applied": false,
+    "below_floor": false,
+    "n_days": 20,
+    "pace": null,
+    "hold": null,
+    "protein": {
+     "low_g": 105,
+     "high_g": 151,
+     "per_kg": [
+      1.4,
+      2.0
+     ]
+    }
+   },
+   "left": null,
+   "above_by": null,
+   "workout_active_kcal": null,
+   "eat_back_pct": 50,
+   "eat_back_kcal": 0,
+   "balance": null,
+   "spark": [
+    {
+     "day": "2026-10-18",
+     "total": 2400.0,
+     "eaten": null
+    },
+    {
+     "day": "2026-10-19",
+     "total": 2360.0,
+     "eaten": null
+    },
+    {
+     "day": "2026-10-20",
+     "total": 2440.0,
+     "eaten": null
+    },
+    {
+     "day": "2026-10-21",
+     "total": 2400.0,
+     "eaten": null
+    },
+    {
+     "day": "2026-10-22",
+     "total": null,
+     "eaten": null,
+     "partial": true
+    }
+   ],
+   "yesterday": {
+    "day": "2026-10-21",
+    "total": 2400.0,
+    "eaten": null
+   },
+   "settings": {
+    "mode": "auto",
+    "manual_kcal": null,
+    "eat_back_pct": 50,
+    "pace": true
+   },
+   "copy": {
+    "footnote": "Garmin burn and food-log kcal are both estimates; individual error can be 10 to 20% or more. Trends over weeks mean more than any single day.",
+    "status": "Today has just started; burn and food totals begin from here.",
+    "burned": null,
+    "eaten": "Nothing logged yet",
+    "target": "Target about 2,400 kcal",
+    "left": null,
+    "projection": null,
+    "target_notes": [
+     "Estimated from your last 20 days of Garmin burn.",
+     "Protein for people who train is often put at 105 to 151 g a day (1.4 to 2.0 g per kg)."
+    ],
+    "workout": null,
+    "refuel": null,
+    "partial_log": null
+   }
+  },
+  "phase": {
+   "phase": "late",
+   "band": "late",
+   "flags": [
+    "new_day"
+   ],
+   "cards": [
+    "now",
+    "vitals",
+    "calories",
+    "week",
+    "readiness",
+    "more"
+   ],
+   "dimmed": [
+    "readiness"
+   ],
+   "hidden": [
+    "checkin",
+    "recent"
+   ],
+   "vitals_order": [
+    "steps",
+    "stress",
+    "body_battery",
+    "sleep_hours",
+    "hrv",
+    "resting_hr"
+   ],
+   "session_state": "upcoming",
+   "hints": {
+    "phase": "late",
+    "session": "upcoming",
+    "sleep": "tile",
+    "calories": "day_total",
+    "steps": "tile",
+    "protein_check": false,
+    "yesterday_recap": true
+   },
+   "copy": {
+    "headline": "The day is done. Sleep when you can; tomorrow's plan is ready.",
+    "session": {
+     "title": "Today's plan starts after you have slept",
+     "detail": "Nothing is expected overnight."
+    },
+    "sleep": null,
+    "calories": "Day total so far",
+    "steps": null,
+    "protein_check": null,
+    "recap": "A new day has just started; yesterday's totals are shown for reference.",
+    "flags": []
+   },
+   "now_local": "00:30",
+   "day": "2026-10-22"
+  },
+  "coach_today": {
+   "kind": "key",
+   "title": "Not today",
+   "status": "deferred"
+  },
+  "metrics": [
+   "hrv",
+   "resting_hr",
+   "sleep_hours",
+   "sleep_score",
+   "body_battery",
+   "stress",
+   "steps"
+  ],
+  "planned_today": []
+ },
+ "overview_1300_no_kcal": {
+  "energy": {
+   "status": "no_garmin_kcal",
+   "day": "2026-10-22",
+   "as_of_min": null,
+   "as_of": null,
+   "burned": null,
+   "eaten": {
+    "kcal": 1200,
+    "kcal_low": 840,
+    "kcal_high": 1560,
+    "logged": true,
+    "entries": 1,
+    "protein_g": null
+   },
+   "projected": null,
+   "projection_state": null,
+   "projection_history_days": 0,
+   "target": null,
+   "left": null,
+   "above_by": null,
+   "workout_active_kcal": null,
+   "eat_back_pct": 50,
+   "eat_back_kcal": 0,
+   "balance": null,
+   "spark": [
+    {
+     "day": "2026-10-18",
+     "total": null,
+     "eaten": null
+    },
+    {
+     "day": "2026-10-19",
+     "total": null,
+     "eaten": null
+    },
+    {
+     "day": "2026-10-20",
+     "total": null,
+     "eaten": null
+    },
+    {
+     "day": "2026-10-21",
+     "total": null,
+     "eaten": null
+    },
+    {
+     "day": "2026-10-22",
+     "total": null,
+     "eaten": 1200,
+     "partial": true
+    }
+   ],
+   "yesterday": null,
+   "settings": {
+    "mode": "auto",
+    "manual_kcal": null,
+    "eat_back_pct": 50,
+    "pace": true
+   },
+   "copy": {
+    "footnote": "Garmin burn and food-log kcal are both estimates; individual error can be 10 to 20% or more. Trends over weeks mean more than any single day.",
+    "status": "Your Garmin has not reported calories for today yet.",
+    "burned": null,
+    "eaten": "About 1,200 kcal logged",
+    "target": "Add height, birth date and sex in Settings, or wait for two weeks of Garmin data, to estimate a target.",
+    "left": null,
+    "projection": null,
+    "target_notes": [],
+    "workout": null,
+    "refuel": null,
+    "partial_log": null
+   }
+  },
+  "phase": {
+   "phase": "midday",
+   "band": "midday",
+   "flags": [
+    "food_logged"
+   ],
+   "cards": [
+    "vitals",
+    "calories",
+    "now",
+    "readiness",
+    "checkin",
+    "week",
+    "recent",
+    "more"
+   ],
+   "dimmed": [],
+   "hidden": [],
+   "vitals_order": [
+    "steps",
+    "sleep_hours",
+    "hrv",
+    "resting_hr",
+    "body_battery",
+    "stress"
+   ],
+   "session_state": "open",
+   "hints": {
+    "phase": "midday",
+    "session": "open",
+    "sleep": "tile",
+    "calories": "left",
+    "steps": "tile",
+    "protein_check": false,
+    "yesterday_recap": false
+   },
+   "copy": {
+    "headline": "Midday: how the day is going so far.",
+    "session": {
+     "title": "Today's session is still ahead",
+     "detail": "There is time for it; pick the moment that suits you."
+    },
+    "sleep": null,
+    "calories": null,
+    "steps": null,
+    "protein_check": null,
+    "recap": null,
+    "flags": []
+   },
+   "now_local": "13:00",
+   "day": "2026-10-22"
+  },
+  "coach_today": {
+   "kind": "key",
+   "title": "Threshold",
+   "status": null
+  },
+  "metrics": [
+   "hrv",
+   "resting_hr",
+   "sleep_hours",
+   "sleep_score",
+   "body_battery",
+   "stress",
+   "steps"
+  ],
+  "planned_today": []
+ },
+ "overview_1300_insufficient": {
+  "energy": {
+   "status": "insufficient",
+   "day": "2026-10-22",
+   "as_of_min": 780,
+   "as_of": "13:00",
+   "burned": {
+    "total": 1224,
+    "active": 306,
+    "resting": 918,
+    "as_of": "13:00"
+   },
+   "eaten": {
+    "kcal": 1200,
+    "kcal_low": 840,
+    "kcal_high": 1560,
+    "logged": true,
+    "entries": 1,
+    "protein_g": null
+   },
+   "projected": null,
+   "projection_state": "insufficient",
+   "projection_history_days": 3,
+   "target": null,
+   "left": null,
+   "above_by": null,
+   "workout_active_kcal": null,
+   "eat_back_pct": 50,
+   "eat_back_kcal": 0,
+   "balance": {
+    "so_far_kcal": -24
+   },
+   "spark": [
+    {
+     "day": "2026-10-18",
+     "total": null,
+     "eaten": null
+    },
+    {
+     "day": "2026-10-19",
+     "total": 2360.0,
+     "eaten": null
+    },
+    {
+     "day": "2026-10-20",
+     "total": 2440.0,
+     "eaten": null
+    },
+    {
+     "day": "2026-10-21",
+     "total": 2400.0,
+     "eaten": null
+    },
+    {
+     "day": "2026-10-22",
+     "total": 1224.0,
+     "eaten": 1200,
+     "partial": true
+    }
+   ],
+   "yesterday": null,
+   "settings": {
+    "mode": "auto",
+    "manual_kcal": null,
+    "eat_back_pct": 50,
+    "pace": true
+   },
+   "copy": {
+    "footnote": "Garmin burn and food-log kcal are both estimates; individual error can be 10 to 20% or more. Trends over weeks mean more than any single day.",
+    "status": "Not enough history yet for a projection (it needs about a week of days).",
+    "burned": "About 1,224 kcal burned so far (estimate, as of 13:00)",
+    "eaten": "About 1,200 kcal logged",
+    "target": "Add height, birth date and sex in Settings, or wait for two weeks of Garmin data, to estimate a target.",
+    "left": null,
+    "projection": null,
+    "target_notes": [],
+    "workout": null,
+    "refuel": null,
+    "partial_log": null
+   }
+  },
+  "phase": {
+   "phase": "midday",
+   "band": "midday",
+   "flags": [
+    "food_logged"
+   ],
+   "cards": [
+    "vitals",
+    "calories",
+    "now",
+    "readiness",
+    "checkin",
+    "week",
+    "recent",
+    "more"
+   ],
+   "dimmed": [],
+   "hidden": [],
+   "vitals_order": [
+    "steps",
+    "sleep_hours",
+    "hrv",
+    "resting_hr",
+    "body_battery",
+    "stress"
+   ],
+   "session_state": "open",
+   "hints": {
+    "phase": "midday",
+    "session": "open",
+    "sleep": "tile",
+    "calories": "left",
+    "steps": "tile",
+    "protein_check": false,
+    "yesterday_recap": false
+   },
+   "copy": {
+    "headline": "Midday: how the day is going so far.",
+    "session": {
+     "title": "Today's session is still ahead",
+     "detail": "There is time for it; pick the moment that suits you."
+    },
+    "sleep": null,
+    "calories": null,
+    "steps": null,
+    "protein_check": null,
+    "recap": null,
+    "flags": []
+   },
+   "now_local": "13:00",
+   "day": "2026-10-22"
+  },
+  "coach_today": {
+   "kind": "key",
+   "title": "Threshold",
+   "status": null
+  },
+  "metrics": [
+   "hrv",
+   "resting_hr",
+   "sleep_hours",
+   "sleep_score",
+   "body_battery",
+   "stress",
+   "steps"
+  ],
+  "planned_today": []
+ },
+ "overview_1300_timeoff": {
+  "energy": {
+   "status": "ok",
+   "day": "2026-10-22",
+   "as_of_min": 780,
+   "as_of": "13:00",
+   "burned": {
+    "total": 1224,
+    "active": 306,
+    "resting": 918,
+    "as_of": "13:00"
+   },
+   "eaten": {
+    "kcal": 1200,
+    "kcal_low": 840,
+    "kcal_high": 1560,
+    "logged": true,
+    "entries": 1,
+    "protein_g": null
+   },
+   "projected": {
+    "value": 2401,
+    "lo": 2346,
+    "hi": 2459,
+    "n": 20,
+    "method": "curve"
+   },
+   "projection_state": "ok",
+   "projection_history_days": 20,
+   "target": {
+    "kcal": 2400,
+    "source": "history",
+    "maintenance_kcal": 2400,
+    "adjustment_kcal": 0,
+    "floor_kcal": 1980,
+    "floor_applied": false,
+    "below_floor": false,
+    "n_days": 20,
+    "pace": null,
+    "hold": null,
+    "protein": {
+     "low_g": 105,
+     "high_g": 151,
+     "per_kg": [
+      1.4,
+      2.0
+     ]
+    }
+   },
+   "left": 1200,
+   "above_by": null,
+   "workout_active_kcal": null,
+   "eat_back_pct": 50,
+   "eat_back_kcal": 0,
+   "balance": {
+    "so_far_kcal": -24
+   },
+   "spark": [
+    {
+     "day": "2026-10-18",
+     "total": 2400.0,
+     "eaten": null
+    },
+    {
+     "day": "2026-10-19",
+     "total": 2360.0,
+     "eaten": null
+    },
+    {
+     "day": "2026-10-20",
+     "total": 2440.0,
+     "eaten": null
+    },
+    {
+     "day": "2026-10-21",
+     "total": 2400.0,
+     "eaten": null
+    },
+    {
+     "day": "2026-10-22",
+     "total": 1224.0,
+     "eaten": 1200,
+     "partial": true
+    }
+   ],
+   "yesterday": null,
+   "settings": {
+    "mode": "auto",
+    "manual_kcal": null,
+    "eat_back_pct": 50,
+    "pace": true
+   },
+   "copy": {
+    "footnote": "Garmin burn and food-log kcal are both estimates; individual error can be 10 to 20% or more. Trends over weeks mean more than any single day.",
+    "status": null,
+    "burned": "About 1,224 kcal burned so far (estimate, as of 13:00)",
+    "eaten": "About 1,200 kcal logged",
+    "target": "Target about 2,400 kcal",
+    "left": "About 1,200 kcal to go toward today's estimate",
+    "projection": "Around 2,401 kcal by the end of the day (range 2,346 to 2,459); typical for this time, 20 past days.",
+    "target_notes": [
+     "Estimated from your last 20 days of Garmin burn.",
+     "Protein for people who train is often put at 105 to 151 g a day (1.4 to 2.0 g per kg)."
+    ],
+    "workout": null,
+    "refuel": null,
+    "partial_log": null
+   }
+  },
+  "phase": {
+   "phase": "time_off",
+   "band": "midday",
+   "flags": [
+    "food_logged"
+   ],
+   "cards": [
+    "now",
+    "vitals",
+    "calories",
+    "checkin",
+    "more"
+   ],
+   "dimmed": [],
+   "hidden": [
+    "readiness",
+    "week",
+    "recent"
+   ],
+   "vitals_order": [
+    "steps",
+    "sleep_hours",
+    "hrv",
+    "resting_hr",
+    "body_battery",
+    "stress"
+   ],
+   "session_state": "none",
+   "hints": {
+    "phase": "time_off",
+    "session": "none",
+    "sleep": "tile",
+    "calories": "left",
+    "steps": "tile",
+    "protein_check": false,
+    "yesterday_recap": false
+   },
+   "copy": {
+    "headline": "Time off: nothing is missed.",
+    "session": null,
+    "sleep": null,
+    "calories": null,
+    "steps": null,
+    "protein_check": null,
+    "recap": null,
+    "flags": []
+   },
+   "now_local": "13:00",
+   "day": "2026-10-22"
+  },
+  "coach_today": {
+   "kind": "key",
+   "title": "Threshold",
+   "status": null
+  },
+  "metrics": [
+   "hrv",
+   "resting_hr",
+   "sleep_hours",
+   "sleep_score",
+   "body_battery",
+   "stress",
+   "steps"
+  ],
+  "planned_today": []
+ },
+ "overview_1300_manual": {
+  "energy": {
+   "status": "ok",
+   "day": "2026-10-22",
+   "as_of_min": 780,
+   "as_of": "13:00",
+   "burned": {
+    "total": 1224,
+    "active": 306,
+    "resting": 918,
+    "as_of": "13:00"
+   },
+   "eaten": {
+    "kcal": 1200,
+    "kcal_low": 840,
+    "kcal_high": 1560,
+    "logged": true,
+    "entries": 1,
+    "protein_g": null
+   },
+   "projected": {
+    "value": 2401,
+    "lo": 2346,
+    "hi": 2459,
+    "n": 20,
+    "method": "curve"
+   },
+   "projection_state": "ok",
+   "projection_history_days": 20,
+   "target": {
+    "kcal": 1300,
+    "source": "manual",
+    "maintenance_kcal": 2400,
+    "adjustment_kcal": 0,
+    "floor_kcal": 1980,
+    "floor_applied": false,
+    "below_floor": true,
+    "n_days": 20,
+    "pace": null,
+    "hold": null,
+    "protein": {
+     "low_g": 105,
+     "high_g": 151,
+     "per_kg": [
+      1.4,
+      2.0
+     ]
+    }
+   },
+   "left": 100,
+   "above_by": null,
+   "workout_active_kcal": null,
+   "eat_back_pct": 50,
+   "eat_back_kcal": 0,
+   "balance": {
+    "so_far_kcal": -24
+   },
+   "spark": [
+    {
+     "day": "2026-10-18",
+     "total": 2400.0,
+     "eaten": null
+    },
+    {
+     "day": "2026-10-19",
+     "total": 2360.0,
+     "eaten": null
+    },
+    {
+     "day": "2026-10-20",
+     "total": 2440.0,
+     "eaten": null
+    },
+    {
+     "day": "2026-10-21",
+     "total": 2400.0,
+     "eaten": null
+    },
+    {
+     "day": "2026-10-22",
+     "total": 1224.0,
+     "eaten": 1200,
+     "partial": true
+    }
+   ],
+   "yesterday": null,
+   "settings": {
+    "mode": "manual",
+    "manual_kcal": 1300,
+    "eat_back_pct": 50,
+    "pace": true
+   },
+   "copy": {
+    "footnote": "Garmin burn and food-log kcal are both estimates; individual error can be 10 to 20% or more. Trends over weeks mean more than any single day.",
+    "status": null,
+    "burned": "About 1,224 kcal burned so far (estimate, as of 13:00)",
+    "eaten": "About 1,200 kcal logged",
+    "target": "Target about 1,300 kcal",
+    "left": "About 100 kcal to go toward today's estimate",
+    "projection": "Around 2,401 kcal by the end of the day (range 2,346 to 2,459); typical for this time, 20 past days.",
+    "target_notes": [
+     "Your own target.",
+     "Below your estimated resting burn; consider checking with a professional.",
+     "Protein for people who train is often put at 105 to 151 g a day (1.4 to 2.0 g per kg)."
+    ],
+    "workout": null,
+    "refuel": null,
+    "partial_log": null
+   }
+  },
+  "phase": {
+   "phase": "midday",
+   "band": "midday",
+   "flags": [
+    "food_logged"
+   ],
+   "cards": [
+    "vitals",
+    "calories",
+    "now",
+    "readiness",
+    "checkin",
+    "week",
+    "recent",
+    "more"
+   ],
+   "dimmed": [],
+   "hidden": [],
+   "vitals_order": [
+    "steps",
+    "sleep_hours",
+    "hrv",
+    "resting_hr",
+    "body_battery",
+    "stress"
+   ],
+   "session_state": "open",
+   "hints": {
+    "phase": "midday",
+    "session": "open",
+    "sleep": "tile",
+    "calories": "left",
+    "steps": "tile",
+    "protein_check": false,
+    "yesterday_recap": false
+   },
+   "copy": {
+    "headline": "Midday: how the day is going so far.",
+    "session": {
+     "title": "Today's session is still ahead",
+     "detail": "There is time for it; pick the moment that suits you."
+    },
+    "sleep": null,
+    "calories": null,
+    "steps": null,
+    "protein_check": null,
+    "recap": null,
+    "flags": []
+   },
+   "now_local": "13:00",
+   "day": "2026-10-22"
+  },
+  "coach_today": {
+   "kind": "key",
+   "title": "Threshold",
+   "status": null
+  },
+  "metrics": [
+   "hrv",
+   "resting_hr",
+   "sleep_hours",
+   "sleep_score",
+   "body_battery",
+   "stress",
+   "steps"
+  ],
+  "planned_today": []
+ },
+ "settings_get": {
+  "mode": "auto",
+  "manual_kcal": null,
+  "eat_back_pct": 50,
+  "pace": true,
+  "ranges": {
+   "manual_kcal": [
+    800,
+    6000
+   ],
+   "eat_back_pct": [
+    0,
+    100
+   ]
+  },
+  "floor_kcal": 1500.0
+ },
+ "settings_put_0": {
+  "body": {
+   "mode": "manual",
+   "manual_kcal": 2300,
+   "eat_back_pct": 25
+  },
+  "status": 200,
+  "resp": {
+   "mode": "manual",
+   "manual_kcal": 2300,
+   "eat_back_pct": 25,
+   "pace": true,
+   "ranges": {
+    "manual_kcal": [
+     800,
+     6000
+    ],
+    "eat_back_pct": [
+     0,
+     100
+    ]
+   },
+   "floor_kcal": 1500.0
+  }
+ },
+ "settings_put_1": {
+  "body": {
+   "manual_kcal": 100
+  },
+  "status": 422,
+  "resp": {
+   "detail": [
+    {
+     "type": "greater_than_equal",
+     "loc": [
+      "body",
+      "manual_kcal"
+     ],
+     "msg": "Input should be greater than or equal to 800",
+     "input": 100,
+     "ctx": {
+      "ge": 800
+     }
+    }
+   ]
+  }
+ },
+ "settings_put_2": {
+  "body": {
+   "manual_kcal": 99999
+  },
+  "status": 422,
+  "resp": {
+   "detail": [
+    {
+     "type": "less_than_equal",
+     "loc": [
+      "body",
+      "manual_kcal"
+     ],
+     "msg": "Input should be less than or equal to 6000",
+     "input": 99999,
+     "ctx": {
+      "le": 6000
+     }
+    }
+   ]
+  }
+ },
+ "settings_put_3": {
+  "body": {
+   "eat_back_pct": 150
+  },
+  "status": 422,
+  "resp": {
+   "detail": [
+    {
+     "type": "less_than_equal",
+     "loc": [
+      "body",
+      "eat_back_pct"
+     ],
+     "msg": "Input should be less than or equal to 100",
+     "input": 150,
+     "ctx": {
+      "le": 100
+     }
+    }
+   ]
+  }
+ },
+ "settings_put_4": {
+  "body": {
+   "mode": "manual",
+   "manual_kcal": null
+  },
+  "status": 400,
+  "resp": {
+   "detail": "a manual target needs a number of kcal"
+  }
+ },
+ "settings_put_5": {
+  "body": {
+   "target_kcal": 2000
+  },
+  "status": 200,
+  "resp": {
+   "mode": "manual",
+   "manual_kcal": 2300,
+   "eat_back_pct": 25,
+   "pace": true,
+   "ranges": {
+    "manual_kcal": [
+     800,
+     6000
+    ],
+    "eat_back_pct": [
+     0,
+     100
+    ]
+   },
+   "floor_kcal": 1500.0
+  }
+ }
+}

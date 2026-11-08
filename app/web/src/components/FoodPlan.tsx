@@ -2,6 +2,7 @@ import { Link } from "react-router-dom";
 import { bandPositions, PHASE_LABEL, STATE_COLOR, stateFor } from "../lib/food";
 import { formatDate } from "../lib/format";
 import type { FoodPlan, FoodView, Meal } from "../lib/types";
+import { C } from "../lib/theme";
 
 const fmt = (n: number) => Math.round(n).toLocaleString("en-US");
 const MEAL_NAME: Record<Meal, string> = { breakfast: "Breakfast", lunch: "Lunch", snack: "Snacks", dinner: "Dinner" };
@@ -11,7 +12,7 @@ function RangeBar({ target, logged, point, color }: { target: [number, number] |
   const p = bandPositions(target, logged, point);
   return (
     <div className="relative mt-4 h-3 bg-line/60" aria-hidden>
-      {p.target && <div className="absolute inset-y-0 bg-white/15" style={{ left: `${p.target[0]}%`, width: `${p.target[1] - p.target[0]}%` }} />}
+      {p.target && <div className="absolute inset-y-0 bg-paper/15" style={{ left: `${p.target[0]}%`, width: `${p.target[1] - p.target[0]}%` }} />}
       {p.logged && <div className="absolute top-1/2 h-1.5 -translate-y-1/2" style={{ left: `${p.logged[0]}%`, width: `${Math.max(p.logged[1] - p.logged[0], 1)}%`, background: `${color}66` }} />}
       {p.point != null && <div className="absolute top-[-3px] h-[18px] w-0.5" style={{ left: `${p.point}%`, background: color }} />}
     </div>
@@ -129,7 +130,7 @@ export function ProteinCard({ data }: { data: FoodView }) {
                     <span className="w-16 shrink-0 text-mute">{MEAL_NAME[m]}</span>
                     <div className="relative h-2 flex-1 bg-line/60">
                       <div className="absolute inset-y-0 left-0" style={{ width: `${Math.min(100, (v / (mealMax * 1.3)) * 100)}%`, background: inRange ? STATE_COLOR.within : STATE_COLOR.under }} />
-                      <div className="absolute inset-y-[-2px] w-0.5 bg-white/40" style={{ left: `${(t.protein_per_meal_g[0] / (mealMax * 1.3)) * 100}%` }} />
+                      <div className="absolute inset-y-[-2px] w-0.5 bg-paper/40" style={{ left: `${(t.protein_per_meal_g[0] / (mealMax * 1.3)) * 100}%` }} />
                     </div>
                     <span className="num w-10 shrink-0 text-right text-paper">{Math.round(v)} g</span>
                   </div>
@@ -173,8 +174,8 @@ export function WeekCard({ data }: { data: FoodView }) {
               ) : (
                 <line x1={cx - 9} x2={cx + 9} y1={base - 1} y2={base - 1} stroke={STATE_COLOR.not_logged} strokeDasharray="3 3" />
               )}
-              {t.burn != null && <line x1={cx - 12} x2={cx + 12} y1={y(t.burn)} y2={y(t.burn)} stroke="#ecebe6" strokeWidth={1} strokeDasharray="2 2" opacity={0.7} />}
-              <text x={cx} y={H - 2} textAnchor="middle" fontSize={8} fill="#8d8a82">{formatDate(t.day).slice(0, 3)}</text>
+              {t.burn != null && <line x1={cx - 12} x2={cx + 12} y1={y(t.burn)} y2={y(t.burn)} stroke={C.paper} strokeWidth={1} strokeDasharray="2 2" opacity={0.7} />}
+              <text x={cx} y={H - 2} textAnchor="middle" fontSize={8} fill={C.mute}>{formatDate(t.day).slice(0, 3)}</text>
             </g>
           );
         })}

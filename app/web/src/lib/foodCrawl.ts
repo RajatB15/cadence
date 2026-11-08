@@ -1,7 +1,8 @@
 import type { FoodCrawlProgress } from "./types";
+import { C } from "./theme";
 
-export const CRAWL_COLOR = { parsed: "#c8f560", failed: "#ff6a55", untried: "#5c5a55" } as const;
-export const LIBRARY_COLOR = { dishes: "#6cc7ff", merged: "#9b8cff", dropped: "#ffbe55", noName: "#8d8a82" } as const;
+export const CRAWL_COLOR = { parsed: C.lime, failed: C.coral, untried: C.faint } as const;
+export const LIBRARY_COLOR = { dishes: C.sky, merged: C.violet, dropped: C.amber, noName: C.mute } as const;
 
 export interface Segment {
   key: string;

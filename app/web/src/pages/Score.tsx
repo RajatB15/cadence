@@ -10,10 +10,11 @@ import { ErrorBlock, LoadingBlock, PageHeader, Segmented } from "../components/S
 import { api } from "../lib/api";
 import { formatDate } from "../lib/format";
 import type { ScoreFactor, ScoreReport } from "../lib/types";
+import { C } from "../lib/theme";
 
 type Report = Extract<ScoreReport, { has_data: true }>;
 
-const GROUP_COLOR: Record<string, string> = { train: "#c8f560", recover: "#9b8cff", sleep: "#6cc7ff", move: "#ffbe55" };
+const GROUP_COLOR: Record<string, string> = { train: C.lime, recover: C.violet, sleep: C.sky, move: C.amber };
 
 export function ScorePage() {
   const [days, setDays] = useState(90);
@@ -59,10 +60,10 @@ function Hero({ r }: { r: Report }) {
         indicator: r.factors.map((f) => ({ name: f.label, max: 100 })),
         radius: "68%",
         splitNumber: 4,
-        axisName: { color: "#8d8a82", fontSize: 10 },
-        splitLine: { lineStyle: { color: "#262629" } },
+        axisName: { color: C.mute, fontSize: 10 },
+        splitLine: { lineStyle: { color: C.line } },
         splitArea: { show: false },
-        axisLine: { lineStyle: { color: "#262629" } },
+        axisLine: { lineStyle: { color: C.line } },
       },
       series: [
         {
@@ -115,7 +116,7 @@ function GroupRing({ score, color }: { score: number; color: string }) {
   return (
     <div className="relative h-24 w-24">
       <svg viewBox="0 0 80 80" className="h-full w-full -rotate-90">
-        <circle cx="40" cy="40" r={r} fill="none" stroke="#1c1c1f" strokeWidth="6" />
+        <circle cx="40" cy="40" r={r} fill="none" stroke={C.grid} strokeWidth="6" />
         <motion.circle
           cx="40" cy="40" r={r} fill="none" stroke={color} strokeWidth="6" strokeLinecap="round" strokeDasharray={circ}
           initial={{ strokeDashoffset: circ }}
@@ -236,13 +237,13 @@ function History({ r, days, setDays }: { r: Report; days: number; setDays: (d: n
       series: [
         {
           name: "Cadence", type: "line", data: r.history.map((h) => [h.day, h.score]), symbol: "none", smooth: 0.3,
-          lineStyle: { color: "#f2e8cf", width: 3 },
-          areaStyle: { color: "rgba(242,232,207,0.06)" },
+          lineStyle: { color: C.cream, width: 3 },
+          areaStyle: { color: `${C.cream}0f` },
           markArea: {
             silent: true,
             data: [
-              [{ yAxis: 85, itemStyle: { color: "rgba(200,245,96,0.06)" } }, { yAxis: 100 }],
-              [{ yAxis: 0, itemStyle: { color: "rgba(255,106,85,0.05)" } }, { yAxis: 55 }],
+              [{ yAxis: 85, itemStyle: { color: `${C.lime}0f` } }, { yAxis: 100 }],
+              [{ yAxis: 0, itemStyle: { color: `${C.coral}0d` } }, { yAxis: 55 }],
             ],
           },
         },

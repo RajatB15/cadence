@@ -9,22 +9,23 @@ import type { EvidenceMarker, FitnessEvidence, SeriesTrend, TrainingStatusKey, T
 import { Chart, chartBase, type ChartOption } from "./Chart";
 import { readyColor } from "./CoachNotes";
 import { ErrorBlock, LoadingBlock, Segmented } from "./Shell";
+import { C } from "../lib/theme";
 
 const RANGES = [{ value: 7, label: "7D" }, { value: 28, label: "4W" }, { value: 84, label: "12W" }];
 type Ready = Extract<SeriesTrend, { has_data: true }>;
 
 const DIRECTION = {
-  up: { Icon: ArrowUpRight, color: "#c8f560", word: "Heading up" },
-  down: { Icon: ArrowDownRight, color: "#ff6a55", word: "Heading down" },
-  steady: { Icon: ArrowRight, color: "#6cc7ff", word: "No clear direction" },
-  unknown: { Icon: HelpCircle, color: "#5c5a55", word: "Too early to say" },
+  up: { Icon: ArrowUpRight, color: C.lime, word: "Heading up" },
+  down: { Icon: ArrowDownRight, color: C.coral, word: "Heading down" },
+  steady: { Icon: ArrowRight, color: C.sky, word: "No clear direction" },
+  unknown: { Icon: HelpCircle, color: C.faint, word: "Too early to say" },
 } as const;
 
 function Stat({ label, value, sub, color }: { label: string; value: string; sub?: string | null; color?: string }) {
   return (
     <div>
       <p className="eyebrow mb-1">{label}</p>
-      <p className="num text-2xl" style={{ color: color ?? "#ecebe6" }}>{value}</p>
+      <p className="num text-2xl" style={{ color: color ?? C.paper }}>{value}</p>
       {sub && <p className="mt-0.5 text-[11px] leading-snug text-dim">{sub}</p>}
     </div>
   );
@@ -45,14 +46,14 @@ function seriesOption(t: Ready, name: string): ChartOption {
       series: [{
         name, type: "bar", barMaxWidth: 26,
         data: t.values.map((v) => ({ value: v.value, itemStyle: { color: readyColor(v.value) } })),
-        markLine: t.avg == null ? undefined : { silent: true, symbol: "none", lineStyle: { color: "#8d8a82", type: "dashed" }, label: { color: "#8d8a82", formatter: "avg {c}" }, data: [{ yAxis: t.avg }] },
+        markLine: t.avg == null ? undefined : { silent: true, symbol: "none", lineStyle: { color: C.mute, type: "dashed" }, label: { color: C.mute, formatter: "avg {c}" }, data: [{ yAxis: t.avg }] },
       }],
     };
   }
   return {
     ...base,
     series: [
-      { name: "Daily", type: "line", symbol: "none", data: t.values.map((v) => [v.day, v.value]), lineStyle: { color: "#5c5a55", width: 1 }, z: 1 },
+      { name: "Daily", type: "line", symbol: "none", data: t.values.map((v) => [v.day, v.value]), lineStyle: { color: C.faint, width: 1 }, z: 1 },
       {
         name: "Weekly average", type: "line", symbol: "circle", symbolSize: 6, smooth: 0.25, z: 3,
         data: t.buckets.map((b) => {
@@ -60,8 +61,8 @@ function seriesOption(t: Ready, name: string): ChartOption {
           mid.setDate(mid.getDate() + 3);
           return [mid.getTime(), b.avg];
         }),
-        lineStyle: { color: "#d9b26a", width: 2.5 }, itemStyle: { color: "#d9b26a" },
-        markArea: { silent: true, data: [[{ yAxis: 70, itemStyle: { color: "rgba(200,245,96,0.05)" } }, { yAxis: 100 }], [{ yAxis: 0, itemStyle: { color: "rgba(255,106,85,0.05)" } }, { yAxis: 50 }]] },
+        lineStyle: { color: C.gold, width: 2.5 }, itemStyle: { color: C.gold },
+        markArea: { silent: true, data: [[{ yAxis: 70, itemStyle: { color: `${C.lime}0d` } }, { yAxis: 100 }], [{ yAxis: 0, itemStyle: { color: `${C.coral}0d` } }, { yAxis: 50 }]] },
       },
     ],
   };
@@ -127,14 +128,14 @@ function statusOption(t: Extract<TrainingTrend, { has_data: true }>): ChartOptio
     } },
     series: [
       { name: "Load", type: "bar", barMaxWidth: 28, data: t.weeks.map((w) => ({ value: w.load, itemStyle: { color: STATUS_STYLE[w.status].color } })) },
-      { name: "Usual (7 × fitness)", type: "line", symbol: "none", step: "middle", data: t.weeks.map((w) => w.expected), lineStyle: { color: "#ecebe6", width: 1.2, type: "dashed" }, z: 3 },
+      { name: "Usual (7 × fitness)", type: "line", symbol: "none", step: "middle", data: t.weeks.map((w) => w.expected), lineStyle: { color: C.paper, width: 1.2, type: "dashed" }, z: 3 },
     ],
   };
 }
 
-const MARKER_STYLE = { better: { color: "#c8f560", sign: "▲", word: "improving" }, worse: { color: "#ff6a55", sign: "▼", word: "worsening" },
-  flat: { color: "#8d8a82", sign: "●", word: "unchanged" }, missing: { color: "#5c5a55", sign: "–", word: "not enough data" } } as const;
-const VERDICT_COLOR = { adapting: "#c8f560", not_adapting: "#ff9f5a", fading: "#ff6a55", mixed: "#6cc7ff", unknown: "#5c5a55" } as const;
+const MARKER_STYLE = { better: { color: C.lime, sign: "▲", word: "improving" }, worse: { color: C.coral, sign: "▼", word: "worsening" },
+  flat: { color: C.mute, sign: "●", word: "unchanged" }, missing: { color: C.faint, sign: "–", word: "not enough data" } } as const;
+const VERDICT_COLOR = { adapting: C.lime, not_adapting: C.gold, fading: C.coral, mixed: C.sky, unknown: C.faint } as const;
 
 const SHORT: Record<string, string> = { efficiency: "Efficiency", critical_speed: "Crit. speed", vo2max: "VO₂max", resting_hr: "Resting HR", hrv: "HRV", drift: "HR drift" };
 
@@ -195,7 +196,7 @@ export function StatusPanel() {
   const t = q.data?.has_data ? q.data : null;
   const option = useMemo(() => (t ? statusOption(t) : null), [t]);
   const now = t?.current;
-  const color = now ? STATUS_STYLE[now.status].color : "#5c5a55";
+  const color = now ? STATUS_STYLE[now.status].color : C.faint;
   return (
     <section aria-label="Training status history">
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">

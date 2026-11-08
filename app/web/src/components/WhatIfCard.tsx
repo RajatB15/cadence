@@ -1,11 +1,12 @@
 import { Sparkles } from "lucide-react";
 import { Link } from "react-router-dom";
 import type { WhatIfCard as Card } from "../lib/types";
+import { C } from "../lib/theme";
 
 /** An encouraging, honest nudge from the what-if replay: what an easier day would have bought, or praise when there was nothing to fix. */
 export function WhatIfCard({ card }: { card: Card | null | undefined }) {
   if (!card) return null;
-  const color = card.tone === "good" ? "#c8f560" : "#6cc7ff";
+  const color = card.tone === "good" ? C.lime : C.sky;
   return (
     <section className="surface flex items-start gap-4 p-5 sm:p-6" style={{ borderLeft: `3px solid ${color}` }}>
       <Sparkles size={20} className="mt-0.5 shrink-0" style={{ color }} />

@@ -10,6 +10,7 @@ import {
 import * as echarts from "echarts/core";
 import { CanvasRenderer } from "echarts/renderers";
 import { useEffect, useRef, useState } from "react";
+import { C } from "../lib/theme";
 
 echarts.use([
   LineChart,
@@ -30,32 +31,32 @@ export type ChartOption = echarts.EChartsCoreOption;
 
 export const chartBase = {
   backgroundColor: "transparent",
-  textStyle: { fontFamily: "Manrope Variable, sans-serif", color: "#8d8a82" },
+  textStyle: { fontFamily: "Manrope Variable, sans-serif", color: C.mute },
   animationDuration: 900,
   animationEasing: "cubicOut" as const,
   grid: { left: 8, right: 16, top: 24, bottom: 8, containLabel: true },
   tooltip: {
     trigger: "axis",
     confine: true,
-    backgroundColor: "#121213",
-    borderColor: "#34343a",
+    backgroundColor: C.coal,
+    borderColor: C.lineStrong,
     borderWidth: 1,
     padding: [10, 12],
-    textStyle: { color: "#ecebe6", fontSize: 12 },
-    axisPointer: { type: "line", lineStyle: { color: "#5c5a55", type: "dashed" } },
+    textStyle: { color: C.paper, fontSize: 12 },
+    axisPointer: { type: "line", lineStyle: { color: C.faint, type: "dashed" } },
   },
   xAxis: {
     type: "time",
-    axisLine: { lineStyle: { color: "#262629" } },
+    axisLine: { lineStyle: { color: C.line } },
     axisTick: { show: false },
-    axisLabel: { color: "#8d8a82", fontSize: 11, hideOverlap: true },
+    axisLabel: { color: C.mute, fontSize: 11, hideOverlap: true },
     splitLine: { show: false },
   },
   yAxis: {
     type: "value",
     scale: true,
-    axisLabel: { color: "#8d8a82", fontSize: 11 },
-    splitLine: { lineStyle: { color: "#1c1c1f" } },
+    axisLabel: { color: C.mute, fontSize: 11 },
+    splitLine: { lineStyle: { color: C.grid } },
   },
 };
 

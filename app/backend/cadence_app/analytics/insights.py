@@ -22,6 +22,7 @@ from cadence_app import weather as weather_store
 from cadence_app import wellbeing_store
 from cadence_app.activity_types import activity_family
 from cadence_app.analytics import athlete as A
+from cadence_app.analytics import dayphase as DP
 from cadence_app.analytics import banister as B
 from cadence_app.analytics import channels as CH
 from cadence_app.analytics import fatigue_fit as FF
@@ -1240,3 +1241,63 @@ def recommend(r: dict | None, p: dict | None, yesterday_load: float, warnings: d
             detail += " Yesterday's session may still be settling."
         return {"headline": "Keep it easy", "detail": detail, "reasons": reasons}
     return {"headline": "Recover", "detail": "Recovery markers are well below your normal. Rest, walk, sleep early.", "reasons": reasons}
+
+
+# ---- Home day phase: facts about today, pure given the context -------------------------------------------------------
+
+
+def to_local(now_utc: datetime, tz_name: str | None) -> datetime:
+    """The user's wall-clock time (naive) from a naive-UTC instant, with their zone and never the server's."""
+    return now_utc.replace(tzinfo=timezone.utc).astimezone(localtime.zone(tz_name)).replace(tzinfo=None)
+
+
+def day_state(c: dict, today: date) -> dict:
+    """Time off, check-in and hold-back reasons for `today` (used by the phase engine and the calorie-target adjustment)."""
+    weight, _ret, owner = timeoff_mod.day_factors(c.get("time_off") or [], c.get("plan_settings") or timeoff_mod.clean_settings(None), today, today)
+    off = owner["kind"] if owner is not None and weight < 1 else None
+    entry = (c.get("wellbeing") or {}).get(today) or {}
+    return {"time_off": off, "illness": entry.get("illness") or 0, "pain": entry.get("pain_level") or 0, "soreness": entry.get("soreness") or 0}
+
+
+def energy_hold(c: dict | None, brief: dict | None, today: date) -> str | None:
+    """Why the weight-goal part of the calorie target is paused today, if it is."""
+    if c is None:
+        return None
+    st = day_state(c, today)
+    if st["time_off"] in ("sick", "injury") or st["illness"] >= 1:
+        return "unwell"
+    if st["time_off"]:
+        return "time_off"
+    if ((brief or {}).get("status") or {}).get("status") == "overloading":
+        return "hard_block"
+    return None
+
+
+def phase_facts(c: dict | None, brief: dict | None, now_local: datetime, *, session_ends: list[datetime] | None = None, steps: float | None = None,
+                garmin_today: bool = True, sleep_synced: bool = True, food_logged: bool = False, step_goal: float | None = None) -> DP.Facts:
+    """Facts for `dayphase.phase`. `session_ends` are today's training sessions' end times on the user's wall clock."""
+    today = now_local.date()
+    ends = sorted(session_ends or [])
+    f = DP.Facts(now=now_local, last_session_end=ends[-1] if ends else None, sessions_today=len(ends), steps=steps, step_goal=step_goal,
+                 garmin_today=garmin_today, sleep_synced=sleep_synced, food_logged=food_logged)
+    if c is not None:
+        st = day_state(c, today)
+        f.time_off, f.illness, f.pain, f.soreness = st["time_off"], st["illness"], st["pain"], st["soreness"]
+        g = c.get("goal")
+        if g and g.get("date") is not None and (g["date"] - today).days >= 0:
+            f.race_days = (g["date"] - today).days
+    if brief:
+        t = brief.get("today") or {}
+        kind = t.get("kind")
+        if kind == "done":
+            f.plan_status = "done" if t.get("status") in ("matched", "over", "extra", None) else "not_done"
+            f.plan_kind = None if t.get("status") == "extra" else "easy" if f.plan_status == "not_done" else None
+        elif kind in ("key", "long", "easy", "strength"):
+            f.plan_kind, f.plan_status = kind, "not_done"
+        elif kind == "rest":
+            f.plan_kind = "rest"
+        r = brief.get("readiness") or {}
+        f.readiness = r.get("morning_score", r.get("score"))
+        f.strain_used = ((brief.get("strain") or {}).get("status")) in ("in", "above")
+        f.says_less = bool((brief.get("wellbeing") or {}).get("level") in ("rest", "easy"))
+    return f

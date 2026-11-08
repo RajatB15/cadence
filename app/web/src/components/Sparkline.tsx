@@ -1,4 +1,4 @@
-import { motion } from "motion/react";
+import { motion, useReducedMotion } from "motion/react";
 import { useId } from "react";
 
 interface Props {
@@ -7,10 +7,14 @@ interface Props {
   width?: number;
   height?: number;
   className?: string;
+  /** Dashed "usual" line, drawn at this value when it lies within the series range. */
+  baseline?: number | null;
 }
 
-export function Sparkline({ values, color, width = 160, height = 44, className }: Props) {
+export function Sparkline({ values, color, width = 160, height = 44, className, baseline }: Props) {
   const id = useId();
+  const reduce = useReducedMotion();
+  const still = Boolean(reduce);
   if (values.length < 2) return <div style={{ height }} className={className} />;
   const min = Math.min(...values);
   const max = Math.max(...values);
@@ -22,6 +26,7 @@ export function Sparkline({ values, color, width = 160, height = 44, className }
   ]);
   const line = pts.map(([x, y], i) => `${i ? "L" : "M"}${x.toFixed(1)},${y.toFixed(1)}`).join(" ");
   const [lx, ly] = pts[pts.length - 1];
+  const by = baseline != null && baseline >= min && baseline <= max ? pad + (1 - (baseline - min) / span) * (height - pad * 2) : null;
   return (
     <svg
       viewBox={`0 0 ${width} ${height}`}
@@ -38,17 +43,18 @@ export function Sparkline({ values, color, width = 160, height = 44, className }
         <clipPath id={`${id}-reveal`}>
           <motion.rect
             x="-4" y="-4" height={height + 8}
-            initial={{ width: 0 }}
+            initial={{ width: still ? width + 8 : 0 }}
             whileInView={{ width: width + 8 }}
             viewport={{ once: true }}
             transition={{ duration: 1.2, ease: [0.2, 0.9, 0.1, 1] }}
           />
         </clipPath>
       </defs>
+      {by != null && <line x1="0" x2={width} y1={by} y2={by} stroke={color} strokeOpacity="0.45" strokeWidth="1" strokeDasharray="3 4" vectorEffect="non-scaling-stroke" />}
       <motion.path
         d={`${line} L${width},${height} L0,${height} Z`}
         fill={`url(#${id})`}
-        initial={{ opacity: 0 }}
+        initial={{ opacity: still ? 1 : 0 }}
         whileInView={{ opacity: 1 }}
         viewport={{ once: true }}
         transition={{ duration: 0.8, delay: 0.5 }}
@@ -67,7 +73,7 @@ export function Sparkline({ values, color, width = 160, height = 44, className }
         strokeWidth="5"
         strokeLinecap="round"
         vectorEffect="non-scaling-stroke"
-        initial={{ opacity: 0 }}
+        initial={{ opacity: still ? 1 : 0 }}
         whileInView={{ opacity: 1 }}
         viewport={{ once: true }}
         transition={{ delay: 1.1 }}

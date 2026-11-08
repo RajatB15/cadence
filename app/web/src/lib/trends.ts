@@ -1,15 +1,16 @@
 import type { TimeOffItem, TimeOffKind, TrainingStatusKey } from "./types";
+import { C } from "./theme";
 
 export const STATUS_STYLE: Record<TrainingStatusKey, { color: string; short: string }> = {
-  progressing: { color: "#c8f560", short: "Up" },
-  not_adapting: { color: "#ff9f5a", short: "Stuck" },
-  maintaining: { color: "#6cc7ff", short: "Hold" },
-  overloading: { color: "#ff6a55", short: "Over" },
-  deloading: { color: "#ffbe55", short: "Easy" },
-  returning: { color: "#b794f6", short: "Back" },
-  off: { color: "#8d8a82", short: "Off" },
-  detraining: { color: "#ff9f5a", short: "Slip" },
-  unknown: { color: "#5c5a55", short: "–" },
+  progressing: { color: C.lime, short: "Up" },
+  not_adapting: { color: C.gold, short: "Stuck" },
+  maintaining: { color: C.sky, short: "Hold" },
+  overloading: { color: C.coral, short: "Over" },
+  deloading: { color: C.amber, short: "Easy" },
+  returning: { color: C.violet, short: "Back" },
+  off: { color: C.mute, short: "Off" },
+  detraining: { color: C.gold, short: "Slip" },
+  unknown: { color: C.faint, short: "–" },
 };
 
 export const KIND_LABEL: Record<TimeOffKind, string> = { travel: "Travel", vacation: "Holiday", sick: "Ill", injury: "Injured" };

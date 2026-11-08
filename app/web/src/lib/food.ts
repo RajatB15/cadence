@@ -1,4 +1,5 @@
 import type { FoodDaySummary, FoodEntry, FoodMicro, Meal } from "./types";
+import { C } from "./theme";
 
 export const MEALS = [
   { value: "breakfast", label: "Breakfast" },
@@ -142,11 +143,11 @@ export type DayState = "not_logged" | "no_target" | "under" | "within" | "over";
 
 /** Colour for a day against the target band; unknown stays neutral rather than looking like zero. */
 export const STATE_COLOR: Record<DayState, string> = {
-  within: "#c8f560",
-  under: "#6cc7ff",
-  over: "#ffbe55",
-  no_target: "#d9b26a",
-  not_logged: "#5c5a55",
+  within: C.lime,
+  under: C.sky,
+  over: C.amber,
+  no_target: C.gold,
+  not_logged: C.faint,
 };
 
 /** The same ranged comparison the server uses, so each day in the week chart can be coloured on its own. */
