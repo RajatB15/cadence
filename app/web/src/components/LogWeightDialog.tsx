@@ -42,9 +42,9 @@ export function LogWeightDialog({ hintKg, defaultOpen = false, label = "Log weig
         <Plus size={16} /> {label}
       </Dialog.Trigger>
       <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm" />
-        <Dialog.Content className="surface fixed top-1/2 left-1/2 z-50 max-h-[92dvh] w-[min(92vw,460px)] -translate-x-1/2 -translate-y-1/2 overflow-y-auto p-8">
-          <Dialog.Close className="absolute top-4 right-4 p-1 text-mute hover:text-paper" aria-label="Close">
+        <Dialog.Overlay className="dialog-overlay" />
+        <Dialog.Content className="surface dialog-content">
+          <Dialog.Close className="dialog-close" aria-label="Close">
             <X size={18} />
           </Dialog.Close>
           <Dialog.Title className="font-display text-4xl text-cream">Log your weight</Dialog.Title>

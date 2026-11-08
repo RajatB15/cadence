@@ -2,6 +2,7 @@ import { clsx } from "clsx";
 import { Scale } from "lucide-react";
 import { useCallback, type CSSProperties } from "react";
 import { Link } from "react-router-dom";
+import { AccentEdge } from "../Card";
 import { Sparkline } from "../Sparkline";
 import { CountUp } from "../CountUp";
 import { deltaTone, formatMetric, formatShortDate } from "../../lib/format";
@@ -10,15 +11,10 @@ import { METRIC_STYLES, fallbackStyle } from "../../lib/metrics";
 import { C } from "../../lib/theme";
 import type { MetricSummary, Overview } from "../../lib/types";
 
-const TILE = "surface surface-hover group relative flex min-h-[112px] w-[132px] shrink-0 snap-start flex-col overflow-hidden p-3.5 sm:w-auto";
+const TILE = "surface surface-hover press group relative flex min-h-[112px] w-[132px] shrink-0 snap-start flex-col overflow-hidden p-3.5 sm:w-auto";
 
 function Accent({ color }: { color: string }) {
-  return (
-    <>
-      <span aria-hidden className="absolute inset-x-0 top-0 h-[3px]" style={{ background: color }} />
-      <span aria-hidden className="pointer-events-none absolute inset-0 opacity-[0.10]" style={{ background: `linear-gradient(160deg, ${color}, transparent 60%)` }} />
-    </>
-  );
+  return <AccentEdge color={color} strength={0.16} />;
 }
 
 export function VitalTile({ m, today, index = 0 }: { m: MetricSummary; today: string; index?: number }) {
@@ -72,8 +68,8 @@ export function VitalsRail({ metrics, weight, today, phase, order }: { metrics: 
   return (
     <section aria-label="Vitals">
       <div className="mb-3 flex items-baseline justify-between">
-        <p className="eyebrow">Today vs your usual</p>
-        <p className="eyebrow !text-dim">7-day line, dashed = usual</p>
+        <p className="eyebrow">Vitals · today vs your usual</p>
+        <p className="eyebrow hidden !text-dim sm:block">7-day line, dashed = usual</p>
       </div>
       <div className="-mx-5 flex snap-x snap-mandatory gap-3 overflow-x-auto scroll-px-5 px-5 pb-2 [scrollbar-width:none] sm:mx-0 sm:grid sm:grid-cols-3 sm:overflow-visible sm:px-0 lg:grid-cols-7 [&::-webkit-scrollbar]:hidden">
         {tiles.map((m, i) => (

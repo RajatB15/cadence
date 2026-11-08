@@ -81,14 +81,21 @@ def record_snapshot(session: Session, source_id: str, tz_name: str | None = None
     return True
 
 
-def _food_by_day(session: Session, since: date, today: date, weight_kg: float | None) -> dict[date, dict]:
+def _food_by_day(session: Session, since: date, today: date, weight_kg: float | None, now_min: int | None = None) -> dict[date, dict]:
+    """Day totals from the entries that still exist. For today, entries with a real time eaten later than `now_min` are left
+    out of 'eaten so far' (and reported under `later`); entries with only a day, or a default time, count as before."""
     by_day: dict[date, list[dict]] = {}
-    for e in session.scalars(select(FoodEntry).where(FoodEntry.day >= since, FoodEntry.day <= today)):
+    for e in session.scalars(foodlog.active_entries().where(FoodEntry.day >= since, FoodEntry.day <= today)):
         by_day.setdefault(e.day, []).append({**foodlog.entry_dict(e), "kcal": e.kcal})
-    return {d: foodlog.day_summary(items, weight_kg) for d, items in by_day.items()}
+    out = {}
+    for d, items in by_day.items():
+        counted, later = (energy.split_eaten(items, now_min) if d == today else (items, []))
+        out[d] = {**foodlog.day_summary(counted, weight_kg), "later": energy.later_summary(later)}
+    return out
 
 
-def load(session: Session, source_id: str, today: date, tz_name: str | None, weight_kg: float | None, hold: str | None) -> dict:
+def load(session: Session, source_id: str, today: date, tz_name: str | None, weight_kg: float | None, hold: str | None,
+         now_min: int | None = None) -> dict:
     """Everything `energy.assemble` needs, as keyword arguments (minus now_min)."""
     since = today - timedelta(days=LOOKBACK_DAYS)
     metrics: dict[date, dict[str, float]] = {}
@@ -120,7 +127,7 @@ def load(session: Session, source_id: str, today: date, tz_name: str | None, wei
         pace = {"target_kg": float(json.loads(goal.spec)["target_kg"]), "days_left": (goal.target_date - today).days}
     elif goal is not None:
         pace = {"target_kg": float(json.loads(goal.spec)["target_kg"]), "days_left": 12 * 7}  # no date: a deliberately slow default horizon
-    return {"finals": finals, "snapshots": snaps, "burn": burn, "workouts": workouts, "food": _food_by_day(session, today - timedelta(days=energy.SPARK_DAYS), today, weight_kg),
+    return {"finals": finals, "snapshots": snaps, "burn": burn, "workouts": workouts, "food": _food_by_day(session, today - timedelta(days=energy.SPARK_DAYS), today, weight_kg, now_min),
             "settings": load_settings(session), "profile": prof, "weight_kg": weight_kg, "pace": pace, "hold": hold}
 
 

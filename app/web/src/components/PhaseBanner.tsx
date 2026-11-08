@@ -1,3 +1,4 @@
+import { edge } from "../lib/color";
 import { useQuery } from "@tanstack/react-query";
 import { ChevronRight } from "lucide-react";
 import { Link } from "react-router-dom";
@@ -12,7 +13,7 @@ export function PhaseBanner() {
   return (
     <section aria-label="Current phase" className="space-y-2">
       {items.slice(0, 2).map((p) => (
-        <Link key={p.id} to={`/phases/${p.id}`} className="surface surface-hover group relative flex items-center gap-4 overflow-hidden py-3 pr-4 pl-5" style={{ borderLeft: `3px solid ${p.color}` }}>
+        <Link key={p.id} to={`/phases/${p.id}`} className="surface edge surface-hover group relative flex items-center gap-4 overflow-hidden py-3 pr-4 pl-5" style={edge(p.color)}>
           <span className="text-2xl" aria-hidden>{p.emoji || "◎"}</span>
           <span className="min-w-0 flex-1">
             <span className="flex flex-wrap items-baseline gap-x-3">

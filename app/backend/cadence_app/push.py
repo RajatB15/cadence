@@ -339,7 +339,17 @@ class Scheduler:
             every = min(every, timedelta(hours=1))
         return last is None or now_utc - last >= every
 
+    def purge_food(self, now_utc: datetime) -> None:
+        """Removed food entries are kept for a week (undo), then hard-deleted."""
+        from cadence_app import foodlog  # local import: foodlog pulls in the catalogue code push does not need
+        try:
+            with self.factory() as session:
+                foodlog.purge_deleted(session, now_utc)
+        except Exception:  # pylint: disable=broad-exception-caught  # housekeeping must never stop the tick
+            log.exception("Purging removed food entries failed")
+
     def run_once(self, now_local: datetime, now_utc: datetime) -> list[str]:
+        self.purge_food(now_utc)
         if self.sync_due(now_local, now_utc):
             try:
                 self.sync("quick")

@@ -1,11 +1,12 @@
+import { EmptyCard } from "../components/EmptyState";
 import * as Dialog from "@radix-ui/react-dialog";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { clsx } from "clsx";
-import { Bike, Check, Flag, Footprints, Plus, Route, Scale, Target, Trash2, Waves, X } from "lucide-react";
+import { Bike, Check, Footprints, Plus, Route, Scale, Target, Trash2, Waves, X } from "lucide-react";
 import { useMemo, useState, type FormEvent, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { Chart, chartBase, type ChartOption } from "../components/Chart";
-import { ErrorBlock, LoadingBlock, PageHeader, Segmented } from "../components/Shell";
+import { ErrorBlock, PageSkeleton, PageHeader, Segmented } from "../components/Shell";
 import { READ_ONLY, api } from "../lib/api";
 import { formatDate } from "../lib/format";
 import { clockTime as hms, countdown, distanceLabel as km, pacePer, parseTime, signed } from "../lib/goals";
@@ -40,7 +41,7 @@ export function GoalsPage() {
           <button type="button" className="pop" onClick={() => setEditing("new")}><Plus size={16} /> New goal</button>
         )}
       </PageHeader>
-      {q.isPending ? <LoadingBlock height={420} /> : q.isError ? <ErrorBlock error={q.error} retry={() => q.refetch()} /> : (
+      {q.isPending ? <PageSkeleton kind="list" /> : q.isError ? <ErrorBlock error={q.error} retry={() => q.refetch()} /> : (
         <Body d={q.data} edit={(g) => setEditing(g)} />
       )}
       {!READ_ONLY && <GoalDialog target={editing} onClose={() => setEditing(null)} />}
@@ -53,18 +54,16 @@ function Body({ d, edit }: { d: GoalsResponse; edit: (g: GoalView) => void }) {
   const closed = d.goals.filter((g) => g.status !== "active");
   if (!d.goals.length) {
     return (
-      <div className="surface p-10 text-center">
-        <Flag size={28} className="mx-auto mb-4 text-gold" />
-        <p className="font-display text-3xl text-cream">Nothing to aim at yet.</p>
-        <p className="mx-auto mt-3 max-w-xl text-sm text-mute">
+      <EmptyCard title="Nothing to aim at yet.">
+        <span className="block max-w-xl">
           Set a race, a target time or speed, a distance you want to cover in one go, or a weight. Cadence says how reachable it looks from your own data, with the uncertainty, and what the weeks ahead should look like.
-        </p>
-      </div>
+        </span>
+      </EmptyCard>
     );
   }
   return (
     <div className="space-y-6">
-      {!d.has_training && <p className="surface p-5 text-sm text-mute">No training data yet, so run, ride and swim goals can't be assessed. Weight goals can.</p>}
+      {!d.has_training && <EmptyCard compact title="No training data yet">Run, ride and swim goals can't be assessed until sessions sync. Weight goals can.</EmptyCard>}
       {active.map((g) => <GoalCard key={g.id} g={g} planGoal={g.id === d.plan_goal_id} edit={edit} />)}
       {!active.length && <p className="text-sm text-mute">No active goals.</p>}
       {closed.length > 0 && (
@@ -128,7 +127,7 @@ function GoalCard({ g, planGoal, edit }: { g: GoalView; planGoal: boolean; edit:
           </div>
         </div>
         {band && (
-          <div className="text-right">
+          <div className="w-full sm:w-auto sm:text-right">
             <p className="eyebrow mb-1">{g.outlook?.heuristic ? "Outlook (heuristic)" : "Outlook"}</p>
             <p className="font-display text-3xl capitalize" style={{ color: BAND_COLOR[band] }}>{band}</p>
             {g.outlook?.probability != null && <p className="num text-xs text-dim">{g.outlook.probability >= 0.95 ? "over 95%" : g.outlook.probability <= 0.05 ? "under 5%" : `about ${Math.round(g.outlook.probability * 100)}%`}</p>}
@@ -300,9 +299,9 @@ function GoalDialog({ target, onClose }: { target: GoalView | "new" | null; onCl
   return (
     <Dialog.Root open={open} onOpenChange={(o) => !o && onClose()}>
       <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm" />
-        <Dialog.Content className="surface fixed top-1/2 left-1/2 z-50 max-h-[92dvh] w-[min(94vw,520px)] -translate-x-1/2 -translate-y-1/2 overflow-y-auto p-6 sm:p-8" aria-describedby={undefined}>
-          <Dialog.Close className="absolute top-4 right-4 p-1 text-mute hover:text-paper" aria-label="Close"><X size={18} /></Dialog.Close>
+        <Dialog.Overlay className="dialog-overlay" />
+        <Dialog.Content className="surface dialog-content" aria-describedby={undefined}>
+          <Dialog.Close className="dialog-close" aria-label="Close"><X size={18} /></Dialog.Close>
           <Dialog.Title className="font-display text-4xl text-cream">{edit ? "Edit goal" : "New goal"}</Dialog.Title>
           {open && <GoalForm key={edit?.id ?? "new"} edit={edit} onDone={onClose} />}
         </Dialog.Content>

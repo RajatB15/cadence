@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import date, datetime
+from datetime import date, datetime, time
 
 from sqlalchemy import (
     BigInteger,
@@ -14,6 +14,7 @@ from sqlalchemy import (
     LargeBinary,
     String,
     Text,
+    Time,
     UniqueConstraint,
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
@@ -328,6 +329,8 @@ class FoodDish(Base):
     micros_100g: Mapped[str | None] = mapped_column(Text)  # tracked micronutrients per 100 g, JSON {key: amount}; absent key = unknown
     edited: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")  # you changed it; the catalogue won't overwrite
     created_at: Mapped[datetime] = mapped_column(DateTime)
+    barcode: Mapped[str | None] = mapped_column(String(20))  # your own saved product's code (digits); unique where set. Never looked up online
+    pinned: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
 
 
 class FoodEntry(Base):
@@ -351,6 +354,26 @@ class FoodEntry(Base):
     logged_at: Mapped[datetime] = mapped_column(DateTime)
     # Optional idempotency key supplied by the client: a retried POST with the same key returns this entry instead of logging again.
     client_key: Mapped[str | None] = mapped_column(String(64), unique=True)
+    # Local wall-clock time of eating (the user's zone). None = only the day is known; never invented.
+    eaten_at: Mapped[time | None] = mapped_column(Time)
+    # eaten_at was filled in from a meal-time default (older rows), so nothing may treat it as when it was really eaten.
+    eaten_at_est: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime, index=True)  # soft delete: set = removed (undo window), purged later
+    source: Mapped[str] = mapped_column(String(12), default="manual", server_default="manual")  # manual | quick | chip | scan | copy
+
+
+class FoodPortionMemory(Base):
+    """The amount last logged for a dish, so the next log starts from it. `streak` counts consecutive identical amounts."""
+
+    __tablename__ = "food_portion_memory"
+
+    dish_id: Mapped[int] = mapped_column(ForeignKey("food_dishes.id", ondelete="CASCADE"), primary_key=True)
+    servings: Mapped[float] = mapped_column(Float)
+    unit: Mapped[str | None] = mapped_column(String(40))
+    grams: Mapped[float | None] = mapped_column(Float)
+    n: Mapped[int] = mapped_column(Integer, default=1, server_default="1")
+    streak: Mapped[int] = mapped_column(Integer, default=1, server_default="1")
+    updated_at: Mapped[datetime] = mapped_column(DateTime)
 
 
 class FoodMeal(Base):
@@ -362,6 +385,7 @@ class FoodMeal(Base):
     name: Mapped[str] = mapped_column(String(80), unique=True)
     created_at: Mapped[datetime] = mapped_column(DateTime)
     last_used: Mapped[datetime | None] = mapped_column(DateTime)
+    pinned: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
 
 
 class FoodMealItem(Base):

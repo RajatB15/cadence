@@ -1,3 +1,5 @@
+import type { FoodBarcodeResult, FoodBatchResult, FoodBulkBody, FoodQuick, FoodSuggest } from "./foodTypes";
+import type { LogItem } from "./foodRow";
 import type { CustomSpec } from "./customSession";
 import { phoneMayWrite } from "./phoneWrites";
 import type {
@@ -358,8 +360,22 @@ export const api = {
   deleteFoodMeal: (id: number) => request<{ deleted: number }>(`/api/food/meals/${id}`, { method: "DELETE" }),
   logFoodMeal: (id: number, input: { day: string; meal: Meal; scale: number; eating_out?: boolean }) =>
     request<{ entries: unknown[] }>(`/api/food/meals/${id}/log`, { method: "POST", body: JSON.stringify(input) }),
-  copyFoodDay: (source: string, target: string) =>
-    request<{ copied: number }>("/api/food/copy", { method: "POST", body: JSON.stringify({ source, target }) }),
+  copyFoodDay: (source: string, target: string, opts?: { meal?: Meal; target_meal?: Meal; entry_ids?: number[] }) =>
+    request<{ copied: number; entries?: unknown[] }>("/api/food/copy", { method: "POST", body: JSON.stringify({ source, target, ...opts }) }),
+  /** One request for a whole draft; `key` is both the Idempotency-Key header and the client_key field. */
+  foodLogBatch: (body: { day: string; meal: Meal; eaten_at?: string | null; eating_out?: boolean; source?: string; items: LogItem[] }, key: string) =>
+    request<FoodBatchResult>("/api/food/log", {
+      method: "POST",
+      body: JSON.stringify({ ...body, client_key: key }),
+      headers: { "Idempotency-Key": key },
+    }),
+  foodQuick: (day: string, meal: Meal) => request<FoodQuick>(`/api/food/quick?day=${day}&meal=${meal}`),
+  foodSuggest: (day: string, meal: Meal) => request<FoodSuggest>(`/api/food/suggest?day=${day}&meal=${meal}`),
+  foodBarcode: (code: string) => request<FoodBarcodeResult>(`/api/food/barcode/${encodeURIComponent(code)}`),
+  foodRestore: (id: number) => request<unknown>(`/api/food/entries/${id}/restore`, { method: "POST" }),
+  foodBulk: (body: FoodBulkBody) => request<{ entries: unknown[]; affected: number }>("/api/food/entries/bulk", { method: "POST", body: JSON.stringify(body) }),
+  patchFoodEntry: (id: number, body: { servings?: number; grams?: number; meal?: Meal; eaten_at?: string | null }) =>
+    request<unknown>(`/api/food/entries/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
   deleteWeight: (day: string) => request<{ deleted: string }>(`/api/weight/entries/${day}`, { method: "DELETE" }),
   setGoal: (goal: { distance: GoalDistance; date: string; target_s: number | null } | null) =>
     request<{ goal: TrainingGoal | null }>("/api/settings/goal", { method: "PUT", body: JSON.stringify(goal ?? {}) }),

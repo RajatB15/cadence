@@ -139,7 +139,7 @@ function RangeCard({ body, weightKg, goalKg }: { body: BodyEstimate; weightKg: n
           <div className="absolute -top-1.5 h-5 w-0.5 bg-lime" style={{ left: `${pct(goalKg, lo, hi)}%` }} title={`Goal ${goalKg} kg`} />
         )}
         <motion.div
-          className="absolute top-1/2 -ml-2 h-4 w-4 -translate-y-1/2 rounded-full border-2 border-ink bg-gold shadow-[0_0_12px_rgba(217,178,106,0.7)]"
+          className="absolute top-1/2 -ml-2 h-4 w-4 -translate-y-1/2 rounded-full border-2 border-ink bg-gold shadow-[0_0_12px_var(--color-gold)]"
           initial={{ left: `${pct(lo, lo, hi)}%` }}
           animate={{ left: `${pct(weightKg, lo, hi)}%` }}
           transition={{ type: "spring", stiffness: 90, damping: 16 }}

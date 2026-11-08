@@ -1,3 +1,4 @@
+import { edge } from "../lib/color";
 import { clsx } from "clsx";
 import { AlertTriangle, ArrowUpRight, CheckCircle2, Flame, Info } from "lucide-react";
 import { motion } from "motion/react";
@@ -43,8 +44,8 @@ export function NoteCard({ f, index = 0, compact = false }: { f: Finding; index?
       initial={{ opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: index * 0.04 }}
-      className={clsx("flex flex-col border border-line bg-ink/40", compact ? "p-4" : "p-5")}
-      style={{ borderLeft: `3px solid ${s.color}` }}
+      className={clsx("surface edge flex flex-col", compact ? "p-4" : "p-5")}
+      style={edge(s.color)}
     >
       <div className="flex items-start gap-3">
         <Icon size={compact ? 16 : 18} className="mt-0.5 shrink-0" style={{ color: s.color }} />

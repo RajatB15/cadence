@@ -1877,3 +1877,32 @@ def energy_copy(e: dict, now_min: int | None = None) -> dict:
     out["partial_log"] = (f"Only {eaten['entries']} {'entry' if eaten['entries'] == 1 else 'entries'} logged so far, so the total may be partial."
                           if eaten["logged"] and eaten["entries"] <= 2 and now_min is not None and now_min >= 18 * 60 else None)
     return out
+
+
+# ---- food suggestions ("what fits now"): wording for analytics/foodsuggest.py -----------------------------------
+
+
+FOOD_SUGGEST_CAVEAT = "From your own log. Library values are estimates."
+FOOD_SUGGEST_EMPTY = "Log a few meals and your usuals will show up here."
+
+
+def food_suggestion_reasons(c: dict) -> list[str]:
+    """Plain reasons a candidate was picked, one per term that contributed. Describes fit with your log; never calls a
+    food or a number good, bad, light or heavy, and says nothing about weight."""
+    f, out = c["facts"], []
+    lo, hi = c["kcal_low"], c["kcal_high"]
+    if c["parts"]["fit_kcal"] is not None:
+        if f["day_logged"] and f["remaining_kcal"] is not None:
+            out.append(f"About {_k(lo)} to {_k(hi)} kcal, and roughly {_k(f['remaining_kcal'])} is left of your range today.")
+        else:
+            out.append(f"About {_k(lo)} to {_k(hi)} kcal, near a share of your daily range for this meal.")
+    if c["parts"]["fit_prot"] is not None:
+        if f["protein_unknown"]:
+            out.append("Protein isn't known for this one, so it isn't counted towards your protein.")
+        else:
+            out.append(f"About {_k(c['protein_g'])} g protein; your range has roughly {_k(f['protein_gap_g'])} g still to reach today.")
+    for h in f["micro_hits"]:
+        out.append(f"Carries about {h['amount']:g} {h['unit']} {h['label'].lower()} ({h['pct_of_reference']}% of the reference), which is below the reference so far today.")
+    if f["times"] >= 2:
+        out.append(f"Logged {f['times']} times in the last 30 days.")
+    return out

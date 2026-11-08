@@ -1,4 +1,4 @@
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Camera, Check, FileText, Plus } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { api, ApiError, newIdempotencyKey } from "../lib/api";
@@ -13,7 +13,7 @@ const COLUMN_LABEL: Record<LabelColumn, string> = { per_100g: "Per 100 g", per_s
  * Photograph a nutrition table, check what was read next to the photo, and save it as one of your dishes (and add it to the
  * day). Reading saves nothing; numbers can be misread, so every field is editable and unreadable ones stay blank.
  */
-export function ScanLabel({ meal, day, onAdded, onSaved }: { meal: Meal; day: string; onAdded: (name: string) => void; onSaved: () => void }) {
+export function ScanLabel({ meal, day, onAdded, onSaved, barcode }: { meal: Meal; day: string; onAdded: (name: string) => void; onSaved: () => void; barcode?: string }) {
   const [photo, setPhoto] = useState<string | null>(null);
   const [read, setRead] = useState<FoodLabelRead | null>(null);
   const [pasting, setPasting] = useState(false);
@@ -36,7 +36,7 @@ export function ScanLabel({ meal, day, onAdded, onSaved }: { meal: Meal; day: st
   };
 
   if (read) {
-    return <Review read={read} photo={photo} meal={meal} day={day} onBack={reset} onAdded={(n) => { onAdded(n); onSaved(); reset(); }} />;
+    return <Review read={read} photo={photo} meal={meal} day={day} barcode={barcode} onBack={reset} onAdded={(n) => { onAdded(n); onSaved(); reset(); }} />;
   }
   if (scan.isPending || fromText.isPending) return <LoadingBlock height={200} />;
   const error = (scan.error ?? fromText.error) as ApiError | null;
@@ -65,7 +65,7 @@ export function ScanLabel({ meal, day, onAdded, onSaved }: { meal: Meal; day: st
       </button>
       {error && (
         <p role="alert" className="mt-4 text-sm text-coral">
-          {error.status === 501 ? "Text recognition isn't available on this server. Paste the label text below, or use Quick entry." : error.message}
+          {error.status === 501 ? "Reading photos isn't available here. Type the numbers in, or paste the label text below." : error.message}
         </p>
       )}
       <div className="mt-6">
@@ -90,7 +90,8 @@ export function ScanLabel({ meal, day, onAdded, onSaved }: { meal: Meal; day: st
   );
 }
 
-function Review({ read, photo, meal, day, onBack, onAdded }: { read: FoodLabelRead; photo: string | null; meal: Meal; day: string; onBack: () => void; onAdded: (name: string) => void }) {
+function Review({ read, photo, meal, day, barcode, onBack, onAdded }: { read: FoodLabelRead; photo: string | null; meal: Meal; day: string; barcode?: string; onBack: () => void; onAdded: (name: string) => void }) {
+  const client = useQueryClient();
   const columns = read.order.length ? read.order : (["per_100g"] as LabelColumn[]);
   const [basis, setBasis] = useState<LabelColumn>(columns[0]);
   const [f, setF] = useState<LabelFields>(() => fieldsFrom(read, columns[0]));
@@ -106,7 +107,7 @@ function Review({ read, photo, meal, day, onBack, onAdded }: { read: FoodLabelRe
   const attempt = useRef<string | null>(null);
   const save = useMutation({
     mutationFn: async () => {
-      const created = await api.addFoodDish(dish!);
+      const created = await api.addFoodDish(barcode ? { ...dish!, barcode } : dish!);
       attempt.current ??= newIdempotencyKey();
       await api.addFoodEntry({ day, meal, dish_id: created.id, servings: 1 }, attempt.current);
       return created;
@@ -115,6 +116,11 @@ function Review({ read, photo, meal, day, onBack, onAdded }: { read: FoodLabelRe
       attempt.current = null;
       onAdded(d.name);
     },
+  });
+  // Save as "my product" without logging it now (the barcode, when there is one, is stored with it).
+  const saveOnly = useMutation({
+    mutationFn: () => api.addFoodDish(barcode ? { ...dish!, barcode } : dish!),
+    onSuccess: () => client.invalidateQueries({ queryKey: ["food-dishes"] }),
   });
   const found = Object.values(read.columns).some((c) => c && Object.keys(c).length > 0);
   return (
@@ -165,9 +171,17 @@ function Review({ read, photo, meal, day, onBack, onAdded }: { read: FoodLabelRe
         {servingG ? "With the serving weight you can log it by grams, and fibre, sugars and sodium are tracked." : "Add the serving weight to log it by grams and to track fibre, sugars and sodium."} Blank means unknown, not zero.
       </p>
       {save.isError && <p className="mt-3 text-xs text-coral" role="alert">{(save.error as Error).message}</p>}
-      <button type="button" className="pop pop-lime mt-6 disabled:opacity-40" disabled={!dish || save.isPending} onClick={() => save.mutate()}>
-        {save.isPending ? <Check size={16} /> : <Plus size={16} />} Save to my dishes and add
-      </button>
+      {barcode && <p className="num mt-3 text-xs text-dim">Barcode {barcode} is saved with this product, so the next scan finds it.</p>}
+      {saveOnly.isError && <p className="mt-3 text-xs text-coral" role="alert">{(saveOnly.error as Error).message}</p>}
+      {saveOnly.isSuccess && <p className="mt-3 text-xs text-lime" role="status">Saved to your products. Find it by name{barcode ? " or barcode" : ""}.</p>}
+      <div className="mt-6 flex flex-wrap gap-3">
+        <button type="button" className="pop pop-lime disabled:opacity-40" disabled={!dish || save.isPending} onClick={() => save.mutate()}>
+          {save.isPending ? <Check size={16} /> : <Plus size={16} />} Save to my dishes and add
+        </button>
+        <button type="button" className="pop pop-ghost disabled:opacity-40" disabled={!dish || saveOnly.isPending || saveOnly.isSuccess} onClick={() => saveOnly.mutate()}>
+          Save as my product
+        </button>
+      </div>
     </div>
   );
 }

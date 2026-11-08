@@ -3,6 +3,7 @@ import { Pencil, Utensils } from "lucide-react";
 import { useState } from "react";
 import { clsx } from "clsx";
 import { Link } from "react-router-dom";
+import { AccentEdge } from "../Card";
 import { Sheet } from "../Sheet";
 import { CalorieRing } from "./CalorieRing";
 import { READ_ONLY, api } from "../../lib/api";
@@ -20,7 +21,7 @@ const canEditTarget = !READ_ONLY || phoneMayWrite("PUT", "/api/settings/calories
 function Shell({ children }: { children: React.ReactNode }) {
   return (
     <section aria-label="Calories" className="surface relative overflow-hidden p-5 sm:p-7">
-      <span aria-hidden className="absolute inset-x-0 top-0 h-[3px] bg-gold" />
+      <AccentEdge color={C.gold} strength={0.14} />
       {children}
     </section>
   );
@@ -46,7 +47,7 @@ function Cell({ label, value, sub, tone }: { label: string; value: string; sub?:
 
 export function CaloriesCard({ energy, phase, isDemo, loading = false }: { energy: HomeEnergy | null | undefined; phase?: HomePhase | null; isDemo: boolean; loading?: boolean }) {
   const [open, setOpen] = useState(false);
-  if (loading) return <div className="surface h-[330px] animate-pulse" aria-busy aria-label="Calories loading" />;
+  if (loading) return <div className="surface skeleton h-[330px]" aria-busy aria-label="Calories loading" />;
   const state = energyState(energy, phase?.hints?.calories, isDemo);
   const copy = energy?.copy ?? null;
   const footnote = copy?.footnote ?? FALLBACK_FOOTNOTE;

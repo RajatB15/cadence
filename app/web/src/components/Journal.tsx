@@ -1,3 +1,4 @@
+import { edge } from "../lib/color";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { clsx } from "clsx";
 import { Check, ChevronLeft, ChevronRight, Minus, NotebookPen, Plus } from "lucide-react";
@@ -36,8 +37,8 @@ export function CheckInCard({ day, done, count, autoOpen }: { day: string; done:
         <button
           type="button"
           onClick={() => setOpen(true)}
-          className="surface surface-hover flex w-full items-center gap-4 p-5 text-left"
-          style={{ borderLeft: "3px solid var(--color-violet)" }}
+          className="surface edge surface-hover flex w-full items-center gap-4 p-5 text-left"
+          style={edge("var(--color-violet)")}
         >
           <NotebookPen size={20} className="shrink-0 text-violet" />
           <div className="min-w-0 flex-1">
@@ -94,7 +95,7 @@ export function JournalSheet({ open, onOpenChange, initialDay }: { open: boolean
         <div className="space-y-6">
           <div className="flex items-center justify-between gap-3">
             <button type="button" aria-label="Previous day" disabled={current <= oldest} onClick={() => setDay(shiftDay(current, -1))}
-              className="grid h-10 w-10 place-items-center border border-line-strong text-mute hover:text-paper disabled:opacity-30">
+              className="grid h-11 w-11 place-items-center rounded-full border border-line-strong text-mute hover:text-paper disabled:opacity-30">
               <ChevronLeft size={18} />
             </button>
             <p className="text-center text-sm text-mute">
@@ -102,7 +103,7 @@ export function JournalSheet({ open, onOpenChange, initialDay }: { open: boolean
               {logged && <span className="ml-2 text-lime">· logged</span>}
             </p>
             <button type="button" aria-label="Next day" disabled={!yesterday || current >= yesterday} onClick={() => setDay(shiftDay(current, 1))}
-              className="grid h-10 w-10 place-items-center border border-line-strong text-mute hover:text-paper disabled:opacity-30">
+              className="grid h-11 w-11 place-items-center rounded-full border border-line-strong text-mute hover:text-paper disabled:opacity-30">
               <ChevronRight size={18} />
             </button>
           </div>
@@ -139,10 +140,10 @@ export function JournalSheet({ open, onOpenChange, initialDay }: { open: boolean
 
 function YesNo({ value, onChange }: { value: number; onChange: (v: number) => void }) {
   return (
-    <div role="radiogroup" className="flex shrink-0 border border-line-strong p-0.5">
+    <div role="radiogroup" className="flex shrink-0 rounded-full border border-line-strong p-0.5">
       {[0, 1].map((v) => (
         <button key={v} type="button" role="radio" aria-checked={value === v} onClick={() => onChange(v)}
-          className={clsx("min-w-12 px-3 py-2 text-xs font-semibold tracking-widest uppercase",
+          className={clsx("min-h-11 min-w-12 rounded-full px-3 py-2 text-xs font-semibold tracking-widest uppercase",
             value === v ? (v ? "bg-violet text-ink" : "bg-slate text-paper") : "text-dim")}>
           {v ? "Yes" : "No"}
         </button>
@@ -155,7 +156,7 @@ function Stepper({ value, unit, onChange }: { value: number; unit: string; onCha
   return (
     <div className="flex shrink-0 items-center gap-1">
       <button type="button" aria-label="Less" disabled={value <= 0} onClick={() => onChange(value - 1)}
-        className="grid h-10 w-10 place-items-center border border-line-strong text-mute disabled:opacity-30">
+        className="grid h-11 w-11 place-items-center rounded-full border border-line-strong text-mute disabled:opacity-30">
         <Minus size={14} />
       </button>
       <span className={clsx("num w-14 text-center", value ? "text-violet" : "text-dim")}>
@@ -163,7 +164,7 @@ function Stepper({ value, unit, onChange }: { value: number; unit: string; onCha
         <span className="block text-[11px] text-dim">{unit}</span>
       </span>
       <button type="button" aria-label="More" disabled={value >= 30} onClick={() => onChange(value + 1)}
-        className="grid h-10 w-10 place-items-center border border-line-strong text-mute disabled:opacity-30">
+        className="grid h-11 w-11 place-items-center rounded-full border border-line-strong text-mute disabled:opacity-30">
         <Plus size={14} />
       </button>
     </div>
@@ -219,10 +220,10 @@ function ManageHabits({ behaviours, onDone }: { behaviours: Behaviour[]; onDone:
 
 function YesNoKind({ value, onChange }: { value: Behaviour["kind"]; onChange: (k: Behaviour["kind"]) => void }) {
   return (
-    <div role="radiogroup" aria-label="Answer type" className="flex border border-line-strong p-0.5">
+    <div role="radiogroup" aria-label="Answer type" className="flex rounded-full border border-line-strong p-0.5">
       {(["yes_no", "count"] as const).map((k) => (
         <button key={k} type="button" role="radio" aria-checked={value === k} onClick={() => onChange(k)}
-          className={clsx("px-3 py-2 text-xs font-semibold tracking-widest uppercase", value === k ? "bg-cream text-ink" : "text-dim")}>
+          className={clsx("min-h-11 rounded-full px-3 py-2 text-xs font-semibold tracking-widest uppercase", value === k ? "bg-cream text-ink" : "text-dim")}>
           {k === "yes_no" ? "Yes / no" : "Count"}
         </button>
       ))}

@@ -1,3 +1,4 @@
+import { edge } from "../lib/color";
 import { useQuery } from "@tanstack/react-query";
 import { clsx } from "clsx";
 import { Bike, ChevronDown, Footprints, Info } from "lucide-react";
@@ -5,7 +6,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { Chart, chartBase, type ChartOption } from "../components/Chart";
 import { NoteGrid } from "../components/CoachNotes";
-import { ErrorBlock, LoadingBlock, PageHeader, Segmented } from "../components/Shell";
+import { ErrorBlock, LoadingBlock, PageSkeleton, PageHeader, Segmented } from "../components/Shell";
 import { api } from "../lib/api";
 import { formatDate } from "../lib/format";
 import { clockTime as hms, signed } from "../lib/goals";
@@ -69,7 +70,7 @@ function Panel({ title, eyebrow, aside, children }: { title: string; eyebrow?: s
 
 function HeadlineBox({ h }: { h: Headline }) {
   return (
-    <section className="surface flex items-start gap-4 p-5 sm:p-6" style={{ borderLeft: `3px solid ${TONE[h.tone]}` }}>
+    <section className="surface edge flex items-start gap-4 p-5 sm:p-6" style={edge(TONE[h.tone])}>
       <Info size={18} className="mt-0.5 shrink-0" style={{ color: TONE[h.tone] }} />
       <p className="text-paper">{h.text}</p>
     </section>
@@ -108,7 +109,7 @@ function Empty({ children }: { children: ReactNode }) {
 }
 
 function Query<T>({ q, children }: { q: { isPending: boolean; isError: boolean; error: unknown; data: T | undefined; refetch: () => unknown }; children: (d: T) => ReactNode }) {
-  if (q.isPending) return <LoadingBlock height={420} />;
+  if (q.isPending) return <PageSkeleton kind="chart" />;
   if (q.isError) return <ErrorBlock error={q.error} retry={() => q.refetch()} />;
   return <>{children(q.data as T)}</>;
 }

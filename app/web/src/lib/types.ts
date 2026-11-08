@@ -1449,6 +1449,9 @@ export interface FoodDish {
   grams_ok: boolean;
   /** Tracked micronutrients per 100 g; a missing key means the source did not report it. */
   micros_per_100g?: Record<string, number> | null;
+  /** Pinned dishes show as suggestion chips (server support is optional). */
+  pinned?: boolean;
+  barcode?: string | null;
 }
 
 export interface FoodEntry {
@@ -1466,6 +1469,11 @@ export interface FoodEntry {
   spread_pct: number;
   /** Micronutrients in what was eaten; null when unknown (quick entries, dishes without a nutrient table). */
   micros?: Record<string, number> | null;
+  /** Local time of eating (HH:MM) once the server records it; absent or null on older rows. */
+  eaten_at?: string | null;
+  /** True on rows from before times were recorded: `eaten_at` is then only a meal default for ordering, never a real time. */
+  eaten_at_est?: boolean;
+  source?: string;
 }
 
 export interface FoodMicro {
@@ -1587,6 +1595,8 @@ export interface FoodDishInput {
   micros_per_100g?: Record<string, number>;
   basis?: "estimate" | "label";
   note?: string;
+  /** EAN/UPC of a packaged product saved from a label; the server resolves it only against your own products. */
+  barcode?: string;
 }
 
 /** What the label reader found, for review: nothing is saved by reading. */

@@ -1,3 +1,4 @@
+import { edge } from "../lib/color";
 import { useQuery } from "@tanstack/react-query";
 import { clsx } from "clsx";
 import { ArrowDownRight, ArrowUpRight, Info } from "lucide-react";
@@ -80,8 +81,7 @@ function Hero({ r }: { r: Report }) {
     [r],
   );
   return (
-    <section className="relative overflow-hidden border-y border-line py-10">
-      <div className="pointer-events-none absolute -top-24 left-0 h-80 w-80 rounded-full opacity-15 blur-3xl" style={{ background: readyColor(r.score) }} />
+    <section className="surface edge p-5 sm:p-8" style={edge(readyColor(r.score))}>
       <div className="grid items-center gap-10 lg:grid-cols-[auto_minmax(0,1fr)_minmax(0,24rem)]">
         <div className="mx-auto text-center">
           <Ring score={r.score} size={210} label="cadence" />

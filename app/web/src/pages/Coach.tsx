@@ -1,3 +1,4 @@
+import { edge } from "../lib/color";
 import * as Dialog from "@radix-ui/react-dialog";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { clsx } from "clsx";
@@ -9,7 +10,7 @@ import { Chart, chartBase, type ChartOption } from "../components/Chart";
 import { NoteGrid, SEVERITY, readyColor } from "../components/CoachNotes";
 import { HabitsPanel } from "../components/Journal";
 import { StrengthPanel } from "../components/StrengthClass";
-import { DemoChip, ErrorBlock, LoadingBlock, PageHeader, Segmented } from "../components/Shell";
+import { DemoChip, ErrorBlock, LoadingBlock, PageSkeleton, PageHeader, Segmented } from "../components/Shell";
 import { Sparkline } from "../components/Sparkline";
 import { api } from "../lib/api";
 import { formatDate } from "../lib/format";
@@ -55,7 +56,7 @@ export function CoachPage() {
     queryFn: api.insights,
     refetchInterval: (q) => (q.state.data?.has_data && q.state.data.analysis_running ? 5000 : false),
   });
-  if (query.isPending) return <LoadingBlock height={640} />;
+  if (query.isPending) return <PageSkeleton kind="hero" />;
   if (query.isError) return <ErrorBlock error={query.error} retry={() => query.refetch()} />;
   if (!query.data.has_data) {
     return <div className="surface p-12 text-center text-mute">Sync Garmin data from the Vault to unlock coaching.</div>;
@@ -220,8 +221,7 @@ function Readiness({ d }: { d: Data }) {
     load: "Training load", battery: "Body Battery",
   };
   return (
-    <section className="relative overflow-hidden border-y border-line py-10">
-      <div className="pointer-events-none absolute -top-20 left-10 h-72 w-72 rounded-full opacity-20 blur-3xl" style={{ background: color }} />
+    <section className="surface edge p-5 sm:p-8" style={edge(color)}>
       <div className="grid items-center gap-10 lg:grid-cols-[auto_1fr_minmax(0,22rem)]">
         <div className="relative mx-auto h-48 w-48">
           <svg viewBox="0 0 160 160" className="h-full w-full -rotate-90">
@@ -342,7 +342,7 @@ function Plan({ d }: { d: Data }) {
       {plan.sessions.length > 0 && (
         <div className="mb-6 grid gap-3 md:grid-cols-2">
           {plan.sessions.map((s, i) => (
-            <div key={s.kind + i} className="border border-line bg-ink/40 p-5" style={{ borderLeft: `3px solid ${color}` }}>
+            <div key={s.kind + i} className="surface edge p-5" style={edge(color)}>
               <p className="eyebrow mb-2">Quality session {i + 1}</p>
               <p className="font-display text-2xl text-cream">{s.title}</p>
               <p className="mt-2 text-sm leading-relaxed text-mute">{s.detail}</p>
@@ -417,9 +417,9 @@ function GoalDialog({ current }: { current: TrainingGoal | null }) {
         <Flag size={16} /> {current ? "Edit race goal" : "Set race goal"}
       </Dialog.Trigger>
       <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm" />
-        <Dialog.Content className="surface fixed top-1/2 left-1/2 z-50 w-[min(92vw,480px)] -translate-x-1/2 -translate-y-1/2 p-8">
-          <Dialog.Close className="absolute top-4 right-4 p-1 text-mute hover:text-paper" aria-label="Close">
+        <Dialog.Overlay className="dialog-overlay" />
+        <Dialog.Content className="surface dialog-content">
+          <Dialog.Close className="dialog-close" aria-label="Close">
             <X size={18} />
           </Dialog.Close>
           <Dialog.Title className="font-display text-4xl text-cream">Race goal</Dialog.Title>

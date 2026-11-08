@@ -10,7 +10,10 @@ import {
 import * as echarts from "echarts/core";
 import { CanvasRenderer } from "echarts/renderers";
 import { useEffect, useRef, useState } from "react";
+import { withAlpha } from "../lib/color";
 import { C } from "../lib/theme";
+
+export { withAlpha };
 
 echarts.use([
   LineChart,
@@ -29,6 +32,22 @@ echarts.use([
 
 export type ChartOption = echarts.EChartsCoreOption;
 
+/** Vertical fade for area fills: the series colour at `top` opacity down to nothing. Theme-aware by taking the colour. */
+export function areaFill(color: string, top = 0.28) {
+  return {
+    color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+      { offset: 0, color: withAlpha(color, top) },
+      { offset: 1, color: withAlpha(color, 0) },
+    ]),
+  };
+}
+
+/** Rounded, slightly heavier line style shared by line series. */
+export const lineStyle = (color: string, width = 2.5) => ({ color, width, cap: "round" as const, join: "round" as const });
+
+/** Rounded-top bars. */
+export const barStyle = (color: string, r = 5) => ({ color, borderRadius: [r, r, 0, 0] });
+
 export const chartBase = {
   backgroundColor: "transparent",
   textStyle: { fontFamily: "Manrope Variable, sans-serif", color: C.mute },
@@ -41,9 +60,10 @@ export const chartBase = {
     backgroundColor: C.coal,
     borderColor: C.lineStrong,
     borderWidth: 1,
-    padding: [10, 12],
-    textStyle: { color: C.paper, fontSize: 12 },
-    axisPointer: { type: "line", lineStyle: { color: C.faint, type: "dashed" } },
+    padding: [10, 14],
+    textStyle: { color: C.paper, fontSize: 12, fontWeight: 600 },
+    extraCssText: "border-radius:14px;box-shadow:0 14px 34px -10px rgba(0,0,0,.55);",
+    axisPointer: { type: "line", lineStyle: { color: C.faint, type: "dashed", width: 1 } },
   },
   xAxis: {
     type: "time",
@@ -56,7 +76,7 @@ export const chartBase = {
     type: "value",
     scale: true,
     axisLabel: { color: C.mute, fontSize: 11 },
-    splitLine: { lineStyle: { color: C.grid } },
+    splitLine: { lineStyle: { color: C.grid, type: [3, 5] as number[] } },
   },
 };
 

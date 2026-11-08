@@ -9,10 +9,20 @@ describe("phoneMayWrite", () => {
     expect(phoneMayWrite("DELETE", "/api/planner/12")).toBe(true);
     expect(phoneMayWrite("PUT", "/api/reading/card-1")).toBe(true);
     expect(phoneMayWrite("POST", "/api/food/meals/3/log")).toBe(true);
+    expect(phoneMayWrite("POST", "/api/food/log")).toBe(true);
+    expect(phoneMayWrite("POST", "/api/food/entries/bulk")).toBe(true);
+    expect(phoneMayWrite("POST", "/api/food/entries/7/restore")).toBe(true);
     expect(phoneMayWrite("PUT", "/api/settings/plan")).toBe(true);
     expect(phoneMayWrite("PUT", "/api/settings/calories")).toBe(true);
     expect(phoneMayWrite("POST", "/api/garmin/sync")).toBe(true);
     expect(phoneMayWrite("POST", "/api/activities/12/fetch")).toBe(true);
+  });
+  it("keeps the new food writes anchored and method-specific", () => {
+    expect(phoneMayWrite("POST", "/api/food/log/extra")).toBe(false);
+    expect(phoneMayWrite("PUT", "/api/food/log")).toBe(false);
+    expect(phoneMayWrite("POST", "/api/food/entries/7/restore/x")).toBe(false);
+    expect(phoneMayWrite("POST", "/api/food/entries//restore")).toBe(false);
+    expect(phoneMayWrite("POST", "/api/food/barcode/12345678/lookup")).toBe(false);
   });
   it("ignores the query string and method case", () => {
     expect(phoneMayWrite("post", "/api/weight/entries?x=1")).toBe(true);

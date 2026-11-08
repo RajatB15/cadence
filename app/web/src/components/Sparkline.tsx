@@ -63,14 +63,28 @@ export function Sparkline({ values, color, width = 160, height = 44, className, 
         d={line}
         fill="none"
         stroke={color}
-        strokeWidth="1.5"
+        strokeWidth="1.75"
+        strokeLinecap="round"
+        strokeLinejoin="round"
         vectorEffect="non-scaling-stroke"
         clipPath={`url(#${id}-reveal)`}
       />
       <motion.path
         d={`M${lx.toFixed(1)},${ly.toFixed(1)}h0`}
         stroke={color}
-        strokeWidth="5"
+        strokeOpacity="0.25"
+        strokeWidth="11"
+        strokeLinecap="round"
+        vectorEffect="non-scaling-stroke"
+        initial={{ opacity: still ? 1 : 0 }}
+        whileInView={{ opacity: 1 }}
+        viewport={{ once: true }}
+        transition={{ delay: 1.1 }}
+      />
+      <motion.path
+        d={`M${lx.toFixed(1)},${ly.toFixed(1)}h0`}
+        stroke={color}
+        strokeWidth="5.5"
         strokeLinecap="round"
         vectorEffect="non-scaling-stroke"
         initial={{ opacity: still ? 1 : 0 }}

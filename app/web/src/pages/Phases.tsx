@@ -1,3 +1,4 @@
+import { edge } from "../lib/color";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { clsx } from "clsx";
 import { ArrowLeft, Check, Plus } from "lucide-react";
@@ -35,7 +36,7 @@ function Pct({ value, color }: { value: number; color: string }) {
 function PhaseCard({ p, habits }: { p: PhaseSummary; habits: HabitOption[] }) {
   return (
     <li>
-      <Link to={`/phases/${p.id}`} className="surface surface-hover block space-y-4 p-5 sm:p-6" style={{ borderLeft: `3px solid ${p.color}` }}>
+      <Link to={`/phases/${p.id}`} className="surface edge surface-hover block space-y-4 p-5 sm:p-6" style={edge(p.color)}>
         <div className="flex items-start justify-between gap-4">
           <div>
             <p className="eyebrow">{formatShortDate(p.start)} – {formatShortDate(p.end)} · {dayLine(p)}</p>

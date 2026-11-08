@@ -1,3 +1,5 @@
+import { edge } from "../lib/color";
+import { C } from "../lib/theme";
 import { useQuery } from "@tanstack/react-query";
 import { clsx } from "clsx";
 import { BookOpen, ChevronDown, Compass, Eye } from "lucide-react";
@@ -142,7 +144,7 @@ function StartCard({ s, cites, onOpen }: { s: ImproveStart; cites: Cites; onOpen
 
 function WatchCard({ w, cites, onOpen }: { w: ImproveWatch; cites: Cites; onOpen: (id: string) => void }) {
   return (
-    <li className={clsx("surface border-l-2 p-4", w.severity === "act" ? "!border-l-amber" : "!border-l-gold")}>
+    <li className="surface edge p-4" style={edge(w.severity === "act" ? C.amber : C.gold)}>
       <p className="flex items-center gap-2 text-paper">
         <Eye size={14} className="text-gold" aria-hidden /> {watchLabel(w)}
       </p>

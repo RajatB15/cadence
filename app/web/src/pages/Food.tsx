@@ -1,17 +1,29 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { BookmarkPlus, Check, ChevronLeft, ChevronRight, Copy, Minus, Plus, Trash2, Utensils } from "lucide-react";
+import { Check, ChevronLeft, ChevronRight, CloudOff, Minus, Plus, WifiOff } from "lucide-react";
 import { useMemo, useRef, useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
+import { Card } from "../components/Card";
 import { NoteCard } from "../components/CoachNotes";
-import { EnergyCard, PlanNeeds, ProteinCard, WeekCard } from "../components/FoodPlan";
+import { BarcodeSheet } from "../components/FoodBarcode";
 import { ScanLabel } from "../components/FoodLabel";
 import { SavedMeals, SaveMealSheet, useSavedMeals } from "../components/FoodMeals";
 import { NutrientsCard } from "../components/FoodNutrients";
+import { EnergyCard, PlanNeeds, ProteinCard, WeekCard } from "../components/FoodPlan";
+import { SmartEntry, useFoodDraft } from "../components/FoodSmart";
+import { SuggestCard } from "../components/FoodSuggest";
+import { FoodTimeline } from "../components/FoodTimeline";
+import { Toast, useToast } from "../components/FoodToast";
 import { Sheet } from "../components/Sheet";
-import { ErrorBlock, LoadingBlock, PageHeader } from "../components/Shell";
-import { api, keyFor, newIdempotencyKey } from "../lib/api";
-import { BASIS_NOTE, browseList, grams1, matchedAlias, mealSubtotal, MEALS, portionPreview, searchList, servingsLabel, shiftDay, SOURCE_NOTE, stepServings, type PortionMode } from "../lib/food";
+import { ErrorBlock, LoadingBlock, PageHeader, Skeleton } from "../components/Shell";
+import { api, ApiError, keyFor, newIdempotencyKey } from "../lib/api";
+import { BASIS_NOTE, browseList, grams1, kcalRange, matchedAlias, MEALS, portionPreview, searchList, servingsLabel, shiftDay, SOURCE_NOTE, type PortionMode } from "../lib/food";
+import { chipsFromServer, localChips } from "../lib/foodChips";
+import { frecencyScores, logsFromRecent, portionMemory, readHistory } from "../lib/foodFrecency";
+import { buildIndex } from "../lib/foodIndex";
+import { useOutbox } from "../lib/foodOutbox";
+import type { FoodQuick } from "../lib/foodTypes";
 import { formatDate } from "../lib/format";
+import { useOnline } from "../lib/online";
 import type { FoodDish, FoodEntry, FoodView, Meal } from "../lib/types";
 
 const localToday = () => {
@@ -19,158 +31,200 @@ const localToday = () => {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 };
 
+/** The quick-logging endpoint is optional: an older server answers 404/405 and the page builds its chips from local data. */
+const loadQuick = (day: string, meal: Meal): Promise<FoodQuick> =>
+  api.foodQuick(day, meal).catch((e) => {
+    if (e instanceof ApiError && (e.status === 404 || e.status === 405)) return {};
+    throw e;
+  });
+
+type Manual = { meal: Meal; tab?: Tab; name?: string; nonce: number } | null;
+
 export function FoodPage() {
   const [day, setDay] = useState(localToday);
-  const [adding, setAdding] = useState<Meal | null>(null);
-  const [saving, setSaving] = useState<Meal | null>(null);
+  const [manual, setManual] = useState<Manual>(null);
+  const [saving, setSaving] = useState<{ entries: FoodEntry[]; label: string } | null>(null);
+  const [labelFor, setLabelFor] = useState<{ code?: string } | null>(null);
+  const [barcodeOpen, setBarcodeOpen] = useState(false);
+  const [historyVersion, setHistoryVersion] = useState(0);
   const client = useQueryClient();
+  const online = useOnline();
+  const { toast, show, dismiss } = useToast();
+  const { ops } = useOutbox();
   const query = useQuery({ queryKey: ["food", day], queryFn: () => api.food(day) });
+  const yesterdayQuery = useQuery({ queryKey: ["food", shiftDay(day, -1)], queryFn: () => api.food(shiftDay(day, -1)), staleTime: 60_000 });
+  const dishes = useQuery({ queryKey: ["food-dishes"], queryFn: api.foodDishes, staleTime: 10 * 60_000 });
+  const savedMeals = useSavedMeals();
   const refresh = () => client.invalidateQueries({ queryKey: ["food"] });
-  const remove = useMutation({ mutationFn: api.deleteFoodEntry, onSuccess: refresh });
-  const amount = useMutation({ mutationFn: (v: { id: number; servings: number }) => api.setFoodEntryAmount(v.id, v.servings), onSuccess: refresh });
   const copy = useMutation({ mutationFn: () => api.copyFoodDay(shiftDay(day, -1), day), onSuccess: refresh });
   const today = query.data?.today ?? localToday();
+  const isToday = day === today;
+
+  const dishList = dishes.data?.dishes;
+  const index = useMemo(() => (dishList ? buildIndex(dishList) : null), [dishList]);
+  const draft = useFoodDraft(index, day);
+  const meal = draft.meal;
+  const quick = useQuery({ queryKey: ["food-quick", day, meal], queryFn: () => loadQuick(day, meal), retry: false, staleTime: 30_000 });
+
+  const history = useMemo(() => readHistory(), [historyVersion, day]); // eslint-disable-line react-hooks/exhaustive-deps
+  const recentIds = query.data?.recent_dish_ids ?? [];
+  const frecency = useMemo(() => frecencyScores([...logsFromRecent(recentIds, today, meal), ...history], day, meal), [recentIds, history, today, meal, day]);
+  const memory = useMemo(() => ({ ...portionMemory(history), ...Object.fromEntries(Object.entries(quick.data?.memory ?? {}).map(([k, v]) => [Number(k), v])) }), [history, quick.data]);
+  const chips = useMemo(
+    () =>
+      chipsFromServer(quick.data) ??
+      (index
+        ? localChips({
+            meal, today, day, history,
+            dishById: index.dishById,
+            yesterday: yesterdayQuery.data?.entries ?? [],
+            saved: savedMeals.data?.meals ?? [],
+            pinned: (dishList ?? []).filter((d) => d.pinned),
+          })
+        : []),
+    [quick.data, index, meal, today, day, history, yesterdayQuery.data, savedMeals.data, dishList],
+  );
+  const dishById = index?.dishById ?? null;
+  const queuedHere = ops.filter((o) => o.day === day);
 
   return (
     <>
       <PageHeader eyebrow="Food log" title={<>What you <em className="text-gold">ate.</em></>}>
         <div className="flex items-center gap-1">
-          <button type="button" className="chip pointer-coarse:py-2" aria-label="Previous day" onClick={() => setDay(shiftDay(day, -1))}>
-            <ChevronLeft size={14} />
+          <button type="button" className="chip press grid min-h-11 min-w-11 place-items-center" aria-label="Previous day" onClick={() => setDay(shiftDay(day, -1))}>
+            <ChevronLeft size={16} />
           </button>
-          <span className="num min-w-32 text-center text-sm text-paper">{day === today ? "Today" : formatDate(day)}</span>
-          <button type="button" className="chip pointer-coarse:py-2 disabled:opacity-30" aria-label="Next day" disabled={day >= today} onClick={() => setDay(shiftDay(day, 1))}>
-            <ChevronRight size={14} />
+          <span className="num min-w-28 text-center text-sm text-paper">{isToday ? "Today" : formatDate(day)}</span>
+          <button type="button" className="chip press grid min-h-11 min-w-11 place-items-center disabled:opacity-30" aria-label="Next day" disabled={day >= today} onClick={() => setDay(shiftDay(day, 1))}>
+            <ChevronRight size={16} />
           </button>
         </div>
       </PageHeader>
 
+      {!online && (
+        <p role="status" className="surface mb-4 flex items-center gap-2 px-4 py-3 text-sm text-paper"><WifiOff size={16} className="shrink-0 text-amber" /> Offline. Entries are saved on this phone and will sync.</p>
+      )}
+
       {query.isPending ? (
-        <LoadingBlock height={520} />
+        <FoodSkeleton />
       ) : query.isError ? (
         <ErrorBlock error={query.error} retry={() => query.refetch()} />
       ) : (
-        <div className="space-y-6">
-          {query.data.plan.needs.length > 0 && <PlanNeeds plan={query.data.plan} />}
-          <div className="grid gap-6 md:grid-cols-2">
-            <EnergyCard data={query.data} />
-            <ProteinCard data={query.data} />
-          </div>
         <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_340px]">
-          <div className="space-y-6">
-            {query.data.entries.length === 0 && (
-              <div className="surface flex flex-col items-center gap-3 p-10 text-center">
-                <Utensils size={26} className="text-gold" />
-                <p className="font-display text-3xl text-cream">Nothing logged for this day</p>
-                <p className="max-w-md text-sm text-mute">
-                  Add what you ate under a meal below. This is not the same as eating nothing, so the day stays out of your averages until it has an entry.
-                </p>
-                <button type="button" className="pop pop-lime mt-2 disabled:opacity-40" disabled={copy.isPending} onClick={() => copy.mutate()}>
-                  <Copy size={16} /> Copy the day before
-                </button>
-                {copy.data?.copied === 0 && <p className="text-xs text-dim">The day before has nothing logged.</p>}
-                {copy.isError && <p className="text-xs text-coral">{(copy.error as Error).message}</p>}
-              </div>
-            )}
-            {MEALS.map((m) => {
-              const sub = mealSubtotal(query.data.entries, m.value);
-              return (
-                <section key={m.value} className="surface p-5 sm:p-6">
-                  <div className="flex items-center justify-between gap-3">
-                    <div className="min-w-0">
-                      <h2 className="font-display text-2xl text-cream">{m.label}</h2>
-                      {sub.items.length > 0 && (
-                        <p className="num text-xs text-mute">{sub.kcal} kcal{sub.protein_g != null && ` · ${sub.protein_g} g protein`}</p>
-                      )}
-                    </div>
-                    <div className="flex shrink-0 items-center gap-2">
-                      {sub.items.length > 0 && (
-                        <button type="button" className="chip pointer-coarse:py-2" aria-label={`Save ${m.label.toLowerCase()} as a meal`} onClick={() => setSaving(m.value)}>
-                          <BookmarkPlus size={12} className="text-gold" /> Save as meal
-                        </button>
-                      )}
-                      <button type="button" className="chip pointer-coarse:py-2" onClick={() => setAdding(m.value)}>
-                        <Plus size={12} className="text-gold" /> Add
-                      </button>
-                    </div>
-                  </div>
-                  {sub.items.length === 0 && <UsualMeals meal={m.value} day={day} onLogged={refresh} />}
-                  {sub.items.length > 0 && (
-                    <ul className="mt-3 divide-y divide-line">
-                      {sub.items.map((e) => (
-                        <EntryRow key={e.id} e={e} busy={amount.isPending || remove.isPending} onAmount={(servings) => amount.mutate({ id: e.id, servings })} onRemove={() => remove.mutate(e.id)} />
-                      ))}
-                    </ul>
-                  )}
-                </section>
-              );
-            })}
-            {amount.isError && <p className="text-xs text-coral">{(amount.error as Error).message}</p>}
-            {remove.isError && <p className="text-xs text-coral">{(remove.error as Error).message}</p>}
+          <div className="min-w-0 space-y-5">
+            <SummaryCard data={query.data} isToday={isToday} waiting={queuedHere.length} />
+            <SmartEntry
+              draft={draft}
+              index={index}
+              dishState={dishes.isError ? "error" : index ? "ready" : "loading"}
+              onRetryDishes={() => dishes.refetch()}
+              chips={chips}
+              chipsLoading={quick.isPending || savedMeals.isPending}
+              frecency={frecency}
+              memory={memory}
+              day={day}
+              isToday={isToday}
+              summary={query.data.summary}
+              target={query.data.plan.targets?.kcal ?? null}
+              onManual={() => setManual({ meal, nonce: Date.now() })}
+              onScan={() => setLabelFor({})}
+              onBarcode={() => setBarcodeOpen(true)}
+              onNewDish={(name) => setManual({ meal, tab: "new", name, nonce: Date.now() })}
+              onLogged={() => { setHistoryVersion((v) => v + 1); refresh(); client.invalidateQueries({ queryKey: ["food-quick"] }); }}
+              toast={show}
+            />
+            <FoodTimeline
+              entries={query.data.entries}
+              queued={ops}
+              day={day}
+              onAdd={(m) => setManual({ meal: m, nonce: Date.now() })}
+              onSaveMeal={(entries, label) => setSaving({ entries, label })}
+              onCopyDay={() => copy.mutate()}
+              copying={copy.isPending}
+              copyNote={copy.data?.copied === 0 ? "The day before has nothing logged." : copy.isError ? (copy.error as Error).message : null}
+              toast={show}
+            />
+            <SuggestCard day={day} meal={meal} dishById={dishById} onAdd={(rows) => draft.add(rows, "chip")} />
+            {query.data.plan.needs.length > 0 && <PlanNeeds plan={query.data.plan} />}
+            <div className="grid gap-6 md:grid-cols-2">
+              <EnergyCard data={query.data} />
+              <ProteinCard data={query.data} />
+            </div>
           </div>
           <Aside data={query.data} />
         </div>
-        </div>
       )}
-      <AddFoodSheet meal={adding} day={day} recentIds={query.data?.recent_dish_ids ?? []} onClose={() => setAdding(null)} onSaved={refresh} />
+
+      <AddFoodSheet
+        key={manual?.nonce ?? 0}
+        meal={manual?.meal ?? null}
+        day={day}
+        recentIds={recentIds}
+        startTab={manual?.tab}
+        startName={manual?.name}
+        onClose={() => setManual(null)}
+        onSaved={refresh}
+      />
       <SaveMealSheet
         open={saving != null}
-        label={MEALS.find((m) => m.value === saving)?.label ?? ""}
-        entries={saving ? (query.data?.entries ?? []).filter((e) => e.meal === saving) : []}
+        label={saving?.label ?? ""}
+        entries={saving?.entries ?? []}
         onClose={() => setSaving(null)}
       />
+      <Sheet open={labelFor != null} onOpenChange={(o) => !o && setLabelFor(null)} eyebrow={labelFor?.code ? `Barcode ${labelFor.code}` : "Packaged food"} title="Read a label">
+        {!online && <p role="status" className="mb-4 text-sm text-amber">Reading a photo needs a connection to your Cadence server. You can type the numbers in once it's back.</p>}
+        <ScanLabel
+          meal={meal}
+          day={day}
+          barcode={labelFor?.code}
+          onAdded={(name) => { show({ message: `Added ${name}.` }); setLabelFor(null); }}
+          onSaved={() => { refresh(); client.invalidateQueries({ queryKey: ["food-dishes"] }); }}
+        />
+      </Sheet>
+      <BarcodeSheet
+        open={barcodeOpen}
+        onClose={() => setBarcodeOpen(false)}
+        dishById={dishById}
+        onAdd={(rows) => draft.add(rows, "scan")}
+        onReadLabel={(code) => { setBarcodeOpen(false); setLabelFor({ code }); }}
+      />
+      <Toast toast={toast} onDismiss={dismiss} />
     </>
   );
 }
 
-/** One logged food: name, amount and nutrition, with a stepper for the amount (foods from your library) and remove. */
-function EntryRow({ e, busy, onAmount, onRemove }: { e: FoodEntry; busy: boolean; onAmount: (servings: number) => void; onRemove: () => void }) {
-  const adjustable = e.dish_id != null;
+/** Shaped like the finished page: summary card, entry bar, chip row, three timeline rows. */
+function FoodSkeleton() {
   return (
-    <li className="flex items-center justify-between gap-3 py-2.5">
-      <div className="min-w-0">
-        <p className="truncate text-sm text-paper">{e.name}</p>
-        <p className="num text-xs text-dim">
-          {e.grams != null && `${e.grams} g · `}{e.kcal} kcal{e.protein_g != null && ` · ${e.protein_g} g protein`}
-          {e.spread_pct >= 30 && " · eaten out, rough"}
-        </p>
-      </div>
-      <div className="flex shrink-0 items-center gap-1">
-        {adjustable && (
-          <div className="flex items-center" role="group" aria-label={`Amount of ${e.name}`}>
-            <button type="button" className="p-1.5 text-dim hover:text-paper disabled:opacity-30 pointer-coarse:p-2.5" aria-label="Less" disabled={busy || e.servings <= 0.5} onClick={() => onAmount(stepServings(e.servings, -1))}>
-              <Minus size={13} />
-            </button>
-            <span className="num min-w-8 text-center text-sm text-gold">{servingsLabel(e.servings)}×</span>
-            <button type="button" className="p-1.5 text-dim hover:text-paper disabled:opacity-30 pointer-coarse:p-2.5" aria-label="More" disabled={busy || e.servings >= 20} onClick={() => onAmount(stepServings(e.servings, 1))}>
-              <Plus size={13} />
-            </button>
-          </div>
-        )}
-        <button type="button" aria-label={`Remove ${e.name}`} className="p-1 text-dim hover:text-coral pointer-coarse:p-2" disabled={busy} onClick={onRemove}>
-          <Trash2 size={15} />
-        </button>
-      </div>
-    </li>
+    <div className="space-y-5" role="status" aria-busy="true" aria-label="Loading">
+      <Skeleton className="h-32 rounded-[var(--radius-card)]" />
+      <Skeleton className="h-14 rounded-full" />
+      <div className="flex gap-2"><Skeleton className="h-11 w-36 rounded-full" /><Skeleton className="h-11 w-36 rounded-full" /><Skeleton className="h-11 w-28 rounded-full" /></div>
+      {[0, 1, 2].map((i) => <Skeleton key={i} className="h-16 rounded-[var(--radius-tile)]" />)}
+    </div>
   );
 }
 
-/** For an empty meal: the saved meals you used most recently, one tap each. */
-function UsualMeals({ meal, day, onLogged }: { meal: Meal; day: string; onLogged: () => void }) {
-  const meals = useSavedMeals();
-  const log = useMutation({ mutationFn: (id: number) => api.logFoodMeal(id, { day, meal, scale: 1 }), onSuccess: onLogged });
-  const top = meals.data?.meals.slice(0, 3) ?? [];
-  if (top.length === 0) return null;
+/** Kcal as a range against the day's reference, protein with unknown kept distinct from zero. Descriptive only. */
+function SummaryCard({ data, isToday, waiting }: { data: FoodView; isToday: boolean; waiting: number }) {
+  const s = data.summary;
+  const range = kcalRange(s);
+  const left = isToday ? data.plan.today?.remaining_kcal : undefined;
   return (
-    <div className="mt-3 flex flex-wrap items-center gap-2">
-      <span className="eyebrow">Your meals</span>
-      {top.map((m) => (
-        <button key={m.id} type="button" className="chip pointer-coarse:py-2" disabled={log.isPending} onClick={() => log.mutate(m.id)} title={m.items.map((i) => i.name).join(", ")}>
-          <Plus size={12} className="text-gold" /> {m.name} · {m.kcal} kcal
-        </button>
-      ))}
-      {log.isError && <span className="text-xs text-coral">{(log.error as Error).message}</span>}
-    </div>
+    <Card accent="var(--color-sky)" className="!p-5">
+      <p className="eyebrow">{isToday ? "Today so far" : "That day"}</p>
+      {range ? (
+        <p className="numeral mt-1 text-4xl text-cream">{range}<span className="ml-1.5 text-sm font-semibold text-mute">kcal</span></p>
+      ) : (
+        <p className="mt-1 text-lg font-bold text-cream">Nothing logged yet</p>
+      )}
+      <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-mute">
+        {left && <span className="num">About {Math.round(left[0]).toLocaleString("en-US")} to {Math.round(left[1]).toLocaleString("en-US")} kcal left in your range</span>}
+        {s.logged && <span className="num">{s.protein_g == null ? "Protein unknown" : `${Math.round(s.protein_g)} g protein${s.partial_macros ? " (some foods unknown)" : ""}`}</span>}
+        {!s.logged && !range && <span>Not the same as eating nothing: an empty day stays out of your averages.</span>}
+        {waiting > 0 && <span className="inline-flex items-center gap-1 text-amber"><CloudOff size={12} /> {waiting} waiting to sync, not counted yet</span>}
+      </div>
+    </Card>
   );
 }
 
@@ -203,11 +257,11 @@ function Aside({ data }: { data: FoodView }) {
   );
 }
 
-type Tab = "meals" | "library" | "scan" | "quick" | "new";
+export type Tab = "meals" | "library" | "scan" | "quick" | "new";
 
-function AddFoodSheet({ meal, day, recentIds, onClose, onSaved }: { meal: Meal | null; day: string; recentIds: number[]; onClose: () => void; onSaved: () => void }) {
-  const [chosenTab, setTab] = useState<Tab>("library");
-  const [search, setSearch] = useState("");
+function AddFoodSheet({ meal, day, recentIds, onClose, onSaved, startTab, startName }: { meal: Meal | null; day: string; recentIds: number[]; onClose: () => void; onSaved: () => void; startTab?: Tab; startName?: string }) {
+  const [chosenTab, setTab] = useState<Tab>(startTab ?? "library");
+  const [search, setSearch] = useState(startName ?? "");
   const [added, setAdded] = useState<string[]>([]);
   const saved = useSavedMeals();
   const hasMeals = (saved.data?.meals.length ?? 0) > 0;
