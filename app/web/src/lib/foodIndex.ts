@@ -3,7 +3,7 @@
  * Pure, offline, no network. Deviation from the doc's formula: an edit-distance match within the limit adds a base of 30 before
  * the 8-per-edit penalty (otherwise a one-letter typo could never score above zero); transpositions count as one edit.
  */
-import { foldKey, foldWords, parseRaw } from "./foodParse";
+import { foldKey, foldWords, parseRaw, type RawItem } from "./foodParse";
 import { KCAL_ONLY_SPREAD_PCT, newRowId, resolveAmount, settle, type FoodRow, type RowDish } from "./foodRow";
 
 interface Entry {
@@ -203,8 +203,12 @@ export interface ParseContext {
 
 /** Typed line to rows. A number alone is not an item; an unmatched name keeps its row ("No match") so nothing is silently dropped. */
 export function parseLine(line: string, index: FoodIndex, ctx: ParseContext = {}): FoodRow[] {
+  return rowsForItems(parseRaw(line), index, ctx);
+}
+
+function rowsForItems(items: RawItem[], index: FoodIndex, ctx: ParseContext): FoodRow[] {
   const rows: FoodRow[] = [];
-  for (const item of parseRaw(line)) {
+  for (const item of items) {
     if (!foldKey(item.name)) continue;
     const cands = rank(index, item.name, ctx.frecency, 3);
     const candidates = cands.map((c) => ({ id: c.dish.id, name: c.dish.name, score: Math.round(c.score), via: c.via }));
@@ -220,6 +224,35 @@ export function parseLine(line: string, index: FoodIndex, ctx: ParseContext = {}
     }
   }
   return rows;
+}
+
+export interface Lookup {
+  /** The term being typed: its name words, amount and unit. */
+  item: RawItem;
+  /** Everything typed before it, already turned into rows. */
+  earlier: FoodRow[];
+  /** The dishes it could be, best first, each already a row with the typed amount applied. */
+  results: { row: FoodRow; score: number }[];
+}
+
+/**
+ * What to offer while typing: the last term of the line ranked against every dish, so each result can be tapped to add it.
+ * Nothing is offered right after a separator ("idli, "), when the next term has not started.
+ */
+export function lookup(line: string, index: FoodIndex, ctx: ParseContext = {}, limit = 8): Lookup | null {
+  const items = parseRaw(line).filter((i) => foldKey(i.name));
+  const item = items[items.length - 1];
+  if (!item) return null;
+  const earlier = rowsForItems(items.slice(0, -1), index, ctx);
+  if (/[,;+&]\s*$/.test(line)) return { item, earlier, results: [] };
+  const results = rank(index, item.name, ctx.frecency, limit).map((c) => ({
+    score: c.score,
+    row: settle({
+      id: newRowId(), text: item.name, qty: item.qty, unit: item.unit, candidates: [], via: c.via, grams: null, servings: null, out: ctx.eatingOut,
+      kind: "dish", dish: c.dish, dishId: c.dish.id, ...resolveAmount(c.dish, item.qty, item.unit, ctx.memory?.[c.dish.id]),
+    }),
+  }));
+  return { item, earlier, results };
 }
 
 /** Re-resolve one row against another dish (a "Did you mean" tap), keeping the typed amount. */
