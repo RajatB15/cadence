@@ -17,6 +17,8 @@ const RULES: [string, string][] = [
   ["POST", "/api/planner"],
   ["DELETE", "/api/planner/[^/]+"],
   ["PUT", "/api/reading/[^/]+"],
+  ["POST", "/api/reading/book/read"],
+  ["PUT", "/api/reading/book/position"],
   ["POST", "/api/phases"],
   ["PUT", "/api/phases/[^/]+"],
   ["DELETE", "/api/phases/[^/]+"],

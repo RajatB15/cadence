@@ -34,6 +34,7 @@ import { VitalsRail } from "../components/home/VitalsRail";
 import { isDimmed, localHour, nowView, sectionLayout, type SectionId } from "../lib/home";
 import { PhaseBanner } from "../components/PhaseBanner";
 import { CheckInCard } from "../components/Journal";
+import { TodayBookCard } from "../components/BookReader";
 import { TodayReadCard } from "../components/Reading";
 import { Ring, SEVERITY, VerdictChip, readyColor } from "../components/CoachNotes";
 import { RefreshChip } from "../components/RefreshButton";
@@ -148,7 +149,12 @@ function Dashboard({ data }: { data: Extract<Overview, { has_data: true }> }) {
   if (coach?.strain) blocks.strain = <StrainRow s={coach.strain} />;
   if (coach && coach.recent.items.length > 0) blocks.recent = <RecentSessions recent={coach.recent} />;
   if (coach && coach.week.items.length > 0) blocks.week = <WeekStrip coach={coach} onOpen={() => setSheet("week")} />;
-  blocks.read = <TodayReadCard />;
+  blocks.read = (
+    <div className="space-y-4">
+      <TodayBookCard />
+      <TodayReadCard />
+    </div>
+  );
   blocks.improve = <ImproveHomeCard />;
   if (coach) blocks.whatif = <WhatIfCard card={coach.what_if} />;
   if (data.score && data.score.top_gaps.length > 0) blocks.gain = <BiggestGain gap={data.score.top_gaps[0]} />;

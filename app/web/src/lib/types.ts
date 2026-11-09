@@ -1978,6 +1978,27 @@ export interface ReadingView {
   feed: { available: boolean; enabled: boolean; fetched_at: string | null; items: ReadingFeedItem[] };
 }
 
+export interface BookPart {
+  index: number;
+  chapter: number;
+  chapter_title: string;
+  n: number;
+  of: number;
+  blocks: ["h" | "p" | "li", string][];
+  words: number;
+  read_min: number;
+}
+
+export interface BookView {
+  available: boolean;
+  book?: { id: string; title: string; authors: string; url: string; licence: string; licence_url: string; note: string };
+  current?: BookPart | null;
+  progress?: { parts_done: number; parts: number; finished: boolean; minutes_left: number };
+  chapters?: { title: string; first: number; parts: number; url: string; done: number }[];
+  read_today?: boolean;
+  days_read?: number;
+}
+
 // ---- time off, plan settings and trends --------------------------------------------------
 
 export type TimeOffKind = "travel" | "vacation" | "sick" | "injury";

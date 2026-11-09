@@ -15,7 +15,7 @@ import type {
   TrainingTrend,
   Behaviour,
   JournalView,
-  ReadingView,
+  ReadingView, BookView,
   PlanOption,
   Review,
   BodyProfile,
@@ -250,6 +250,9 @@ export const api = {
   reading: () => request<ReadingView>("/api/reading"),
   setReading: (id: string, status: "read" | "saved" | "skipped" | "unread") =>
     request<ReadingView>(`/api/reading/${encodeURIComponent(id)}`, { method: "PUT", body: JSON.stringify({ status }) }),
+  readingBook: () => request<BookView>("/api/reading/book"),
+  readBookPart: () => request<BookView>("/api/reading/book/read", { method: "POST" }),
+  setBookPosition: (part: number) => request<BookView>("/api/reading/book/position", { method: "PUT", body: JSON.stringify({ part }) }),
   refreshReadingFeed: () => request<{ started: boolean; reason: string | null }>("/api/reading/feed/refresh", { method: "POST" }),
   readingFeedSetting: () => request<{ enabled: boolean; available: boolean }>("/api/settings/reading-feed"),
   setReadingFeed: (enabled: boolean) =>
