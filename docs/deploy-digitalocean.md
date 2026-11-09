@@ -1,6 +1,6 @@
 #e  Running Cadence on a DigitalOcean droplet
 
-One small always-on Linux server runs Cadence. Your phone reaches it through Tailscale, only SSH is open to the
+One small always-on Linux server runs Cadence. Your phone reaches it over HTTPS (Caddy, no VPN on the phone), only SSH, 80 and 443 are open to the
 internet, and nightly encrypted backups go to your Google Drive.
 
 The server holds your Garmin key (`/etc/cadence/garmin.env`) and your health data (`/var/lib/cadence/data`). The disk
@@ -86,21 +86,20 @@ Check it: `ssh root@<ip> 'curl -s http://127.0.0.1:8765/api/health'`, then run a
 `curl -X POST -H 'X-Cadence-Request: 1' -H 'Content-Type: application/json' -d '{"mode":"quick"}' http://127.0.0.1:8765/api/garmin/sync`
 on the server).
 
-### 5. Phone access with Tailscale
+### 5. Phone access over HTTPS (no VPN on the phone)
 
-On the droplet (Tailscale's own package repository):
+On the droplet, `deploy/enable-public.sh` installs Caddy, which gets a free Let's Encrypt certificate and proxies
+HTTPS to the phone share server. It opens ports 80 and 443 (SSH stays as it is) and keeps the share server itself on
+loopback. The name can be free: `sslip.io` points `anything.<ip-with-dashes>.sslip.io` at that IP, or use a domain you own.
 
 ```sh
-curl -fsSL https://pkgs.tailscale.com/stable/ubuntu/noble.noarmor.gpg -o /usr/share/keyrings/tailscale-archive-keyring.gpg
-curl -fsSL https://pkgs.tailscale.com/stable/ubuntu/noble.tailscale-keyring.list -o /etc/apt/sources.list.d/tailscale.list
-apt-get update && apt-get install -y tailscale
-tailscale up --hostname=cadence       # open the printed link and sign in
-tailscale serve --bg 8766             # HTTPS address for the phone share server
+ssh root@<ip> /opt/cadence/deploy/enable-public.sh cadence.<ip-with-dashes>.sslip.io   # e.g. cadence.203-0-113-7.sslip.io
 ```
 
-Install Tailscale on your iPhone with the same account, and enable HTTPS certificates in the Tailscale admin console
-if it asks. The address looks like `https://cadence.<tailnet>.ts.net`. The first request can take about 30 seconds
-while the certificate is issued.
+The address is `https://cadence.<ip-with-dashes>.sslip.io`. The first request can take a few seconds while the
+certificate is issued. This puts the app on the public internet: a phone sees nothing until it has paired once with a
+QR code (each code works once and expires in 10 minutes, wrong guesses are throttled, phones can only do the allowlisted
+writes, and each can be revoked in Settings). The data on the droplet is still not encrypted at rest.
 
 To pair the phone, tunnel to the full app, open Settings, and scan the QR code on the phone-sharing card:
 

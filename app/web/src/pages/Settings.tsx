@@ -603,7 +603,7 @@ function ShareCard() {
           </div>
           <div>
             <h2 className="font-semibold text-paper">On your iPhone</h2>
-            <p className="text-xs text-mute">Read-only · Wi-Fi or Tailscale · paired by QR code</p>
+            <p className="text-xs text-mute">Read-only · paired by QR code</p>
           </div>
         </div>
         <span className={clsx("chip", s.running && "!border-lime/40 !text-lime")}>{s.running ? "Sharing" : "Off"}</span>
@@ -616,7 +616,7 @@ function ShareCard() {
             <ol className="space-y-3 text-sm text-mute">
               <li>
                 <span className="num mr-2 text-gold">1</span>
-                {s.secure ? "Open the Tailscale app on your iPhone and make sure it's connected." : "Join the same Wi-Fi as this Mac."}
+                {s.secure ? "Make sure your iPhone has internet." : "Join the same Wi-Fi as this Mac."}
               </li>
               <li><span className="num mr-2 text-gold">2</span>Point the Camera at the code and open the link.</li>
               <li><span className="num mr-2 text-gold">3</span>In Safari tap Share → <span className="text-paper">Add to Home Screen</span>, open Cadence from there, and turn on notifications in Settings.</li>
@@ -624,7 +624,7 @@ function ShareCard() {
             {s.insecure_lan && (
               <p role="note" className="mt-6 border-l-2 border-gold/60 bg-gold/5 p-3 text-xs text-mute">
                 <span className="text-paper">Home Wi-Fi only, over plain HTTP.</span> Anyone on this network could see the traffic, so only
-                pair on a network you trust. Offline mode and notifications on the iPhone need the secure https:// Tailscale address.
+                pair on a network you trust. Offline mode and notifications on the iPhone need a secure https:// address (see the server setup docs).
               </p>
             )}
             <p className="mt-4 text-xs text-dim">
@@ -635,9 +635,9 @@ function ShareCard() {
             </p>
             {!s.secure && (
               <p className="mt-6 border-l-2 border-gold/60 pl-3 text-xs text-mute">
-                For access away from home and for notifications, install Tailscale on this Mac and your iPhone, then run{" "}
-                <span className="num text-paper">tailscale serve --bg {s.port}</span> on the Mac. This page will switch to the
-                https:// address automatically.
+                For access away from home and for notifications you need an https:// address: run Cadence on the server and set{" "}
+                <span className="num text-paper">CADENCE_PUBLIC_URL</span> (docs/deploy-digitalocean.md). This page will switch to it
+                automatically.
               </p>
             )}
             <p className="mt-6 text-xs text-dim">

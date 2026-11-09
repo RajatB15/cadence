@@ -92,7 +92,7 @@ flowchart LR
   G["Garmin<br/>Personal API"] -->|"your key<br/>1 request/s"| V[("Local vault<br/>SQLite + raw archive")]
   V --> A["Analytics<br/>readiness · plan · recovery<br/>every method cited"]
   A --> W["Web app<br/>React, desktop + phone"]
-  W -. "Tailscale (private)" .-> P["Your iPhone<br/>Home Screen app + push"]
+  W -. "HTTPS (paired by QR)" .-> P["Your iPhone<br/>Home Screen app + push"]
   V -. "encrypted nightly" .-> D["Your Google Drive"]
 ```
 
@@ -182,7 +182,7 @@ Garmin every 3 hours (every 45 minutes on mornings until readiness is in) and se
 changes run `scripts/cadence-service.sh restart`. Your Mac must be awake for the phone to connect.
 
 **On a small server** — about $6 a month at the time of writing, one command to update. A 1 GB Linux droplet runs it comfortably, with
-only SSH open to the internet, Tailscale for your phone, and encrypted nightly backups to your Google Drive:
+HTTPS for your phone (Caddy, no VPN on it), and encrypted nightly backups to your Google Drive:
 
 ```sh
 scripts/deploy.sh      # tests, builds, deploys and waits until the server is healthy
@@ -202,9 +202,9 @@ The step-by-step guide, written from a real deployment, is in [docs/deploy-digit
 3. Under **Notifications**, tap **Turn on notifications**.
 
 On home Wi-Fi the phone uses `http://<mac-ip>:8766`. For access from anywhere, and for notifications (iOS only
-allows them over HTTPS), install [Tailscale](https://tailscale.com) on the Mac and iPhone, sign in with the same
-account, enable HTTPS certificates in the Tailscale admin console, then run `tailscale serve --bg 8766` on the
-Mac. The pairing QR switches to the `https://…ts.net` address automatically.
+allows them over HTTPS), serve the share port over HTTPS: on a server run `deploy/enable-public.sh <name>` (Caddy and a free
+Let's Encrypt certificate, see the deploy guide), or set `CADENCE_PUBLIC_URL` to the address of your own HTTPS proxy.
+The pairing QR then uses that address; no VPN is needed on the phone.
 
 </td>
   </tr>
@@ -228,7 +228,7 @@ generated locally in `data/push-vapid.pem` (mode 0600).
 | [app/backend/cadence_app/](app/backend/cadence_app/) | FastAPI app: Garmin sync engine & vault, SQLite + Alembic migrations, journal, strength, planner, weather, push notifications |
 | [app/backend/cadence_app/analytics/](app/backend/cadence_app/analytics/) | Pure analytics: load/readiness, performance (critical speed), recovery, periodised plan, habits, strength parsing, all-day strain, score, weekly/monthly reviews |
 | [app/web/src/](app/web/src/) | React 19 + TypeScript + Vite + Tailwind + ECharts + MapLibre |
-| [deploy/](deploy/) · [docs/deploy-digitalocean.md](docs/deploy-digitalocean.md) | Run Cadence on a small Linux server (systemd, firewall, Tailscale-only access, encrypted Google Drive backups) |
+| [deploy/](deploy/) · [docs/deploy-digitalocean.md](docs/deploy-digitalocean.md) | Run Cadence on a small Linux server (systemd, firewall, Caddy HTTPS, encrypted Google Drive backups) |
 | [plan.md](plan.md) | Product roadmap, architecture notes, acceptance criteria |
 
 **Technology:** Python/FastAPI/SQLAlchemy backend, React/TypeScript frontend, SQLite persistence, NumPy/SciPy
