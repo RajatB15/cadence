@@ -5,8 +5,9 @@ import { clsx } from "clsx";
 import { Link } from "react-router-dom";
 import { AccentEdge } from "../Card";
 import { Sheet } from "../Sheet";
-import { CalorieRing } from "./CalorieRing";
+import { BalanceBars, WeekStrip } from "./BalanceBars";
 import { READ_ONLY, api } from "../../lib/api";
+import { todayBars, weekBalance } from "../../lib/balance";
 import { EAT_BACK_RANGE, MANUAL_RANGE, allowance, energyState, formatClock, formatKcal, parseEatBack, parseManualKcal, projectionMissing, projectionRange } from "../../lib/home";
 import { phoneMayWrite } from "../../lib/phoneWrites";
 import { Sparkline } from "../Sparkline";
@@ -98,6 +99,9 @@ export function CaloriesCard({ energy, phase, isDemo, loading = false }: { energ
   const asOf = e.burned?.as_of ?? e.as_of ?? formatClock(e.as_of_min);
   const dayTotal = phase?.hints?.calories === "day_total";
   const missing = p ? null : projectionMissing(e);
+  const bars = todayBars(e, target, p ? { lo: p.lo, hi: p.hi } : null);
+  const week = weekBalance(e.spark, e.day ?? new Date().toISOString().slice(0, 10));
+  const showProjectionCell = e.projection_state !== "hidden";
   const summary =
     `Burned about ${formatKcal(burned)} kilocalories so far` +
     (eaten != null ? `, logged ${formatKcal(eaten)} eaten` : ", nothing logged yet") +
@@ -107,24 +111,21 @@ export function CaloriesCard({ energy, phase, isDemo, loading = false }: { energ
   return (
     <Shell>
       <div className="flex items-start justify-between gap-3">
-        <p className="eyebrow">Calories · estimates</p>
-        <button type="button" onClick={() => setOpen(true)} className="eyebrow !text-[11px] hover:text-paper pointer-coarse:py-2" aria-label="Calorie details and target">
+        <p className="eyebrow whitespace-nowrap">Burned vs eaten{asOf ? ` · ${asOf}` : ""}</p>
+        <button type="button" onClick={() => setOpen(true)} className="eyebrow shrink-0 !text-[11px] hover:text-paper pointer-coarse:py-2" aria-label="Calorie details and target">
           Details
         </button>
       </div>
-      <div className="mt-4 grid items-center gap-5 sm:grid-cols-[auto_1fr] sm:gap-8">
-        <CalorieRing burned={burned} active={e.burned?.active ?? null} resting={e.burned?.resting ?? null} eaten={eaten} target={target} projected={p ? { lo: p.lo, hi: p.hi } : null} asOf={asOf} summary={summary} size={208} />
+      <div className="mt-4 grid gap-6 sm:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)] sm:gap-10">
         <div>
-          <div className={clsx("@container grid gap-3", e.projection_state === "hidden" ? "grid-cols-[repeat(2,minmax(0,1fr))]" : "grid-cols-[repeat(3,minmax(0,1fr))]")}>
-            <Cell label="Eaten" value={eaten != null ? formatKcal(eaten) : "—"} sub={eaten != null ? `${e.eaten?.entries ?? "some"} logged` : copy?.eaten ?? "nothing logged yet"} tone="sky" />
+          {bars && <BalanceBars bars={bars} summary={summary} />}
+          <div className={clsx("@container mt-5 grid gap-3", showProjectionCell ? "grid-cols-[repeat(2,minmax(0,1fr))]" : "grid-cols-[repeat(1,minmax(0,1fr))]")}>
             {state.showLeft ? (
-              <Cell label={over ? "Above" : "Left"} value={over ? formatKcal(e.above_by!) : formatKcal(e.left!)} sub={over ? "your estimate" : target ? `of ${formatKcal(target)}` : undefined} tone={over ? "amber" : undefined} />
+              <Cell label={over ? "Above" : "Left to eat"} value={over ? formatKcal(e.above_by!) : formatKcal(e.left!)} sub={over ? "your estimate" : target ? `of ${formatKcal(target)}` : undefined} tone={over ? "amber" : undefined} />
             ) : (
               <Cell label="Target" value={target ? formatKcal(target) : "—"} sub={target ? "your estimate" : "not set"} />
             )}
-            {e.projection_state !== "hidden" && (
-              <Cell label="Projected" value={p ? formatKcal(p.value) : "—"} sub={p ? projectionRange(p) : missing ?? undefined} />
-            )}
+            {showProjectionCell && <Cell label="Day ends near" value={p ? formatKcal(p.value) : "—"} sub={p ? projectionRange(p) : missing ?? undefined} />}
           </div>
           {dayTotal && copy?.eaten && <p className="mt-3 text-sm text-mute">{phase?.copy?.calories ? `${phase.copy.calories}: ` : ""}{copy.eaten}.</p>}
           {state.showLeft && copy?.left && <p className={clsx("mt-3 text-sm", over ? "text-amber" : "text-mute")}>{copy.left}</p>}
@@ -139,6 +140,7 @@ export function CaloriesCard({ energy, phase, isDemo, loading = false }: { energ
             )}
           </div>
         </div>
+        {week && <div className="sm:border-l sm:border-line sm:pl-8"><WeekStrip week={week} /></div>}
       </div>
       <p className="mt-4 text-[11px] leading-relaxed text-dim">{footnote}</p>
       <Sheet open={open} onOpenChange={setOpen} title="Calories today" eyebrow="Estimates, not measurements">

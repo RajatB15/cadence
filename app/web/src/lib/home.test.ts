@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { allowance, arcDash, circumference, energyState, formatClock, fraction, isDimmed, localHour, nowView, orderVitals, parseEatBack, parseManualKcal, projectionMissing, projectionRange, ringGeometry, sectionLayout, vitalView, type SectionId } from "./home";
+import { todayBars } from "./balance";
+import { allowance, arcDash, circumference, energyState, formatClock, fraction, isDimmed, localHour, nowView, orderVitals, parseEatBack, parseManualKcal, projectionMissing, projectionRange, sectionLayout, vitalView, type SectionId } from "./home";
 import fixtures from "./__fixtures__/home-payloads.json";
 import type { CalorieSettingsView, HomeEnergy, HomePhase, MetricSummary } from "./types";
 
@@ -21,21 +22,6 @@ describe("ring math", () => {
     expect(parseFloat(d.dasharray)).toBeCloseTo(c / 2, 1);
     expect(d.dashoffset).toBeCloseTo(-c / 4, 5);
     expect(parseFloat(arcDash(10, 0.8, 0.2).dasharray)).toBe(0);
-  });
-  it("stacks active after resting on the projection scale", () => {
-    const g = ringGeometry({ burned: 1000, active: 300, resting: 700, projected: { lo: 2000, hi: 2500 }, eaten: 800, target: 2000 });
-    expect(g.resting[1]).toBeCloseTo(0.28);
-    expect(g.active).toEqual([g.resting[1], g.burnedEnd]);
-    expect(g.range![0]).toBeCloseTo(0.8);
-    expect(g.range![1]).toBe(1);
-    expect(g.eaten).toBeCloseTo(0.4);
-  });
-  it("draws one arc when the split is unknown or inconsistent", () => {
-    const g = ringGeometry({ burned: 1000, active: null, resting: null, projected: null, eaten: null, target: null });
-    expect(g.active[0]).toBe(g.active[1]);
-    expect(g.resting[1]).toBe(1);
-    expect(g.range).toBeNull();
-    expect(g.eaten).toBe(0);
   });
 });
 
@@ -243,22 +229,20 @@ describe("real payloads: empty and missing states", () => {
   });
 });
 
-describe("real payloads: ring math", () => {
+describe("real payloads: balance bars", () => {
   it("uses the real burn, projection and allowance at 13:00", () => {
     const e = scenario("1300_food").energy;
-    const g = ringGeometry({ burned: e.burned!.total, active: e.burned!.active, resting: e.burned!.resting, projected: e.projected!, eaten: e.eaten!.kcal, target: allowance(e) });
-    const scale = e.projected!.hi;
-    expect(g.resting[1]).toBeCloseTo(e.burned!.resting! / scale, 5);
-    expect(g.active[1]).toBeCloseTo(e.burned!.total! / scale, 5);
-    expect(g.range![1]).toBe(1);
-    expect(g.eaten).toBeCloseTo(e.eaten!.kcal! / allowance(e)!, 5);
-    expect(g.burnedEnd).toBeLessThan(0.6);
+    const b = todayBars(e, allowance(e), e.projected!)!;
+    expect(b.scale).toBe(Math.max(e.projected!.hi, allowance(e)!, e.eaten!.kcal!, e.burned!.total!));
+    expect(b.burnedFrac).toBeCloseTo(e.burned!.total! / b.scale, 5);
+    expect(b.eatenFrac).toBeCloseTo(e.eaten!.kcal! / b.scale, 5);
+    expect(b.gap).toBe(Math.round(e.burned!.total! - e.eaten!.kcal!));
   });
-  it("without a projection the burn arc fills to the whole scale", () => {
+  it("without a projection the scale is the largest figure shown", () => {
     const e = scenario("2330_food").energy;
-    const g = ringGeometry({ burned: e.burned!.total, active: e.burned!.active, resting: e.burned!.resting, projected: null, eaten: e.eaten!.kcal, target: allowance(e) });
-    expect(g.burnedEnd).toBe(1);
-    expect(g.range).toBeNull();
+    const b = todayBars(e, allowance(e), null)!;
+    expect(b.projHiFrac).toBeNull();
+    expect(Math.max(b.burnedFrac, b.eatenFrac ?? 0, b.allowanceFrac ?? 0)).toBe(1);
   });
 });
 
