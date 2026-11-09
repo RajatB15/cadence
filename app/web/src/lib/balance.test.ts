@@ -65,3 +65,48 @@ describe("weekBalance", () => {
     expect(weekBalance([], "2026-11-09")).toBeNull();
   });
 });
+
+import { balanceView } from "./balance";
+const at = (h: number, m = 0) => h * 60 + m;
+const withProjection = (e: HomeEnergy, burned: number, eaten: number | null, allow = 2000) => {
+  const en = energy({ burned: { total: burned, active: null, resting: null, as_of: null }, eaten: eaten == null ? { kcal: null, logged: false, entries: 0, protein_g: null } : { kcal: eaten, logged: true, entries: 2, protein_g: null }, yesterday: { day: "2026-11-08", total: 2500, eaten: 2000 }, ...e });
+  return { en, bars: todayBars(en, allow, { lo: 2300, hi: 2500 })! };
+};
+
+describe("balanceView: what the card says at this time", () => {
+  it("shows the budget in the morning, with no deficit, and yesterday's balance", () => {
+    const { en, bars } = withProjection({}, 700, 300);
+    const v = balanceView(en, bars, at(8));
+    expect(v).toMatchObject({ mode: "budget", showBurned: false, yesterday: 500 });
+    expect(v.headline).toMatchObject({ kind: "left", value: 1700 });
+    expect(v.paceFrac).toBeNull();
+  });
+  it("offers the whole budget, not a deficit, with nothing logged", () => {
+    const { en, bars } = withProjection({}, 700, null);
+    expect(balanceView(en, bars, at(9)).headline).toMatchObject({ kind: "budget", value: 2000, sub: "Nothing logged yet" });
+  });
+  it("adds a pace marker at midday and keeps 'left' as the headline", () => {
+    const { en, bars } = withProjection({}, 1200, 800);
+    const v = balanceView(en, bars, at(13));
+    expect(v.mode).toBe("pace");
+    expect(v.showBurned).toBe(true);
+    expect(v.headline.kind).toBe("left");
+    expect(v.paceFrac).toBeCloseTo((2000 * (1200 / 2400)) / bars.scale);
+    expect(v.headline.sub).toContain("deficit so far 400");
+  });
+  it("makes the deficit the headline in the evening, with what the day ends at if nothing more is eaten", () => {
+    const { en, bars } = withProjection({}, 2000, 1500);
+    const v = balanceView(en, bars, at(19));
+    expect(v.mode).toBe("result");
+    expect(v.headline).toMatchObject({ kind: "deficit", value: 500 });
+    expect(v.ifStopped).toEqual([800, 1000]);
+  });
+  it("calls it a surplus when more is eaten than burned late in the day", () => {
+    const { en, bars } = withProjection({}, 2400, 2600);
+    expect(balanceView(en, bars, at(22)).headline).toMatchObject({ kind: "surplus", value: 200 });
+  });
+  it("stays in budget mode late in the day if little has been burned yet (a late start or stale burn)", () => {
+    const { en, bars } = withProjection({}, 700, 300);
+    expect(balanceView(en, bars, at(18)).mode).toBe("budget");
+  });
+});

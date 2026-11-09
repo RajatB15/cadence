@@ -1,8 +1,7 @@
 import { motion, useReducedMotion } from "motion/react";
-import { useId } from "react";
 import { CountUp } from "../CountUp";
 import { formatKcal } from "../../lib/home";
-import type { TodayBars, WeekBalance } from "../../lib/balance";
+import type { BalanceView, TodayBars, WeekBalance } from "../../lib/balance";
 
 const pct = (f: number) => `${Math.max(0, Math.min(1, f)) * 100}%`;
 
@@ -24,55 +23,57 @@ function Seg({ left = 0, width, color, delay = 0, className = "", style }: { lef
 
 const track = "relative h-4 overflow-hidden rounded-full bg-[color-mix(in_srgb,var(--color-paper)_9%,transparent)]";
 
-/** Burned and eaten as two bars on one scale, so the space between their ends is the balance. Target is a tick on the eaten bar. */
-export function BalanceBars({ bars, summary }: { bars: TodayBars; summary: string }) {
-  const id = useId();
-  const over = bars.gap != null && bars.gap < 0;
+const TONE = { left: "var(--color-sky)", over: "var(--color-amber)", budget: "var(--color-sky)", deficit: "var(--color-mint)", surplus: "var(--color-amber)", eaten: "var(--color-sky)", burned: "var(--color-gold)" } as const;
+
+/**
+ * Burned and eaten as two bars on one scale. What it leads with depends on the time of day (see `balanceView`): the budget in the
+ * morning, the budget plus a pace marker at midday, the balance itself in the evening.
+ */
+export function BalanceBars({ bars, view, summary }: { bars: TodayBars; view: BalanceView; summary: string }) {
+  const h = view.headline;
   const tickAt = bars.allowanceFrac;
   const tickAlign = tickAt == null ? "" : tickAt > 0.72 ? "-translate-x-full" : tickAt < 0.28 ? "" : "-translate-x-1/2";
   return (
     <div role="img" aria-label={summary}>
-      {bars.gap != null ? (
-        <div className="mb-5">
-          <p className="eyebrow">{over ? "Eaten more than burned so far" : "Deficit so far"}</p>
-          <p className="numeral mt-1 text-[clamp(40px,13vw,56px)] leading-none" style={{ color: over ? "var(--color-amber)" : "var(--color-mint)" }}>
-            <CountUp value={Math.abs(bars.gap)} format={formatKcal} immediate />
-            <span className="ml-1.5 text-base font-semibold text-mute">kcal</span>
-          </p>
-          <p className="num mt-1.5 text-xs text-mute">{formatKcal(bars.burned)} burned − {formatKcal(bars.eaten!)} eaten</p>
-        </div>
-      ) : (
-        <div className="mb-5">
-          <p className="eyebrow">Burned so far</p>
-          <p className="numeral mt-1 text-[clamp(40px,13vw,56px)] leading-none text-cream"><CountUp value={bars.burned} format={formatKcal} immediate /><span className="ml-1.5 text-base font-semibold text-mute">kcal</span></p>
-          <p className="mt-1.5 text-xs text-mute">Log what you eat to see the balance.</p>
-        </div>
-      )}
+      <div className="mb-5">
+        <p className="eyebrow">{h.label}</p>
+        <p className="numeral mt-1 text-[clamp(40px,13vw,56px)] leading-none" style={{ color: TONE[h.kind] }}>
+          <CountUp value={h.value} format={formatKcal} immediate />
+          <span className="ml-1.5 text-base font-semibold text-mute">kcal</span>
+        </p>
+        {h.sub && <p className="num mt-1.5 text-xs text-mute">{h.sub}</p>}
+        {view.ifStopped && <p className="mt-1 text-xs text-dim">If you eat nothing more, the day ends about {formatKcal(Math.max(0, view.ifStopped[0]))} to {formatKcal(Math.max(0, view.ifStopped[1]))} under what you burn.</p>}
+        {view.mode === "budget" && view.yesterday != null && <p className="mt-1 text-xs text-dim">Yesterday ended {view.yesterday >= 0 ? `${formatKcal(view.yesterday)} under` : `${formatKcal(-view.yesterday)} over`} what you burned.</p>}
+      </div>
 
       <div className="space-y-4">
-        <div>
-          <div className="mb-1.5 flex items-baseline justify-between gap-3">
-            <span className="flex items-center gap-2 text-sm font-bold text-cream"><i aria-hidden className="h-2.5 w-2.5 rounded-full" style={{ background: "var(--color-gold)" }} />Burned</span>
-            <span className="num text-sm text-cream">{formatKcal(bars.burned)}</span>
+        {view.showBurned ? (
+          <div>
+            <div className="mb-1.5 flex items-baseline justify-between gap-3">
+              <span className="flex items-center gap-2 text-sm font-bold text-cream"><i aria-hidden className="h-2.5 w-2.5 rounded-full" style={{ background: "var(--color-gold)" }} />Burned</span>
+              <span className="num text-sm text-cream">{formatKcal(bars.burned)}</span>
+            </div>
+            <div className={track} data-bar="burned">
+              {bars.projLoFrac != null && bars.projHiFrac != null && (
+                <Seg left={bars.burnedFrac} width={Math.max(0, bars.projHiFrac - bars.burnedFrac)} color="repeating-linear-gradient(135deg, color-mix(in srgb, var(--color-gold) 38%, transparent) 0 4px, transparent 4px 8px)" delay={0.5} />
+              )}
+              {bars.restingFrac != null ? (
+                <>
+                  <Seg width={bars.restingFrac} color="color-mix(in srgb, var(--color-gold) 55%, transparent)" />
+                  <Seg left={bars.restingFrac} width={bars.burnedFrac - bars.restingFrac} color="var(--color-gold)" delay={0.15} />
+                </>
+              ) : (
+                <Seg width={bars.burnedFrac} color="var(--color-gold)" />
+              )}
+            </div>
+            <p className="mt-1 text-[11px] text-dim">
+              {bars.restingFrac != null ? `${formatKcal(bars.resting!)} resting + ${formatKcal(bars.active!)} active` : "resting and active not split"}
+              {bars.projected ? ` · hatched: where the day may end, ${formatKcal(bars.projected.lo)} to ${formatKcal(bars.projected.hi)}` : ""}
+            </p>
           </div>
-          <div className={track} data-bar="burned">
-            {bars.projLoFrac != null && bars.projHiFrac != null && (
-              <Seg left={bars.burnedFrac} width={Math.max(0, bars.projHiFrac - bars.burnedFrac)} color="repeating-linear-gradient(135deg, color-mix(in srgb, var(--color-gold) 38%, transparent) 0 4px, transparent 4px 8px)" delay={0.5} />
-            )}
-            {bars.restingFrac != null ? (
-              <>
-                <Seg width={bars.restingFrac} color="color-mix(in srgb, var(--color-gold) 55%, transparent)" />
-                <Seg left={bars.restingFrac} width={bars.burnedFrac - bars.restingFrac} color="var(--color-gold)" delay={0.15} />
-              </>
-            ) : (
-              <Seg width={bars.burnedFrac} color="var(--color-gold)" />
-            )}
-          </div>
-          <p className="mt-1 text-[11px] text-dim">
-            {bars.restingFrac != null ? `${formatKcal(bars.resting!)} resting + ${formatKcal(bars.active!)} active` : "resting and active not split"}
-            {bars.projected ? ` · hatched: where the day may end, ${formatKcal(bars.projected.lo)} to ${formatKcal(bars.projected.hi)}` : ""}
-          </p>
-        </div>
+        ) : (
+          <p className="text-xs text-dim">Burned so far {formatKcal(bars.burned)}. A balance against what you have eaten only means something later in the day.</p>
+        )}
 
         <div>
           <div className="mb-1.5 flex items-baseline justify-between gap-3">
@@ -86,15 +87,19 @@ export function BalanceBars({ bars, summary }: { bars: TodayBars; summary: strin
                 <Seg left={Math.min(bars.eatenFrac, bars.eatenLow / bars.scale)} width={Math.max(0, (bars.eatenHigh - bars.eatenLow) / bars.scale)} color="color-mix(in srgb, var(--color-sky) 45%, transparent)" delay={0.6} />
               )}
             </div>
+            {view.paceFrac != null && (
+              <span aria-hidden className="pointer-events-none absolute -top-1 -bottom-1 w-[3px] -translate-x-1/2 rounded-full bg-[var(--color-gold)]" style={{ left: pct(view.paceFrac) }} />
+            )}
             {tickAt != null && (
               <span aria-hidden className="pointer-events-none absolute -top-1 -bottom-1 w-[3px] -translate-x-1/2 rounded-full bg-[var(--color-cream)]" style={{ left: pct(tickAt) }} />
             )}
           </div>
-          {tickAt != null && bars.allowance != null && (
-            <div className="relative mt-1 h-4" id={id}>
-              <span className={`num absolute whitespace-nowrap text-[11px] text-mute ${tickAlign}`} style={{ left: pct(tickAt) }}>target {formatKcal(bars.allowance)}</span>
+          {(tickAt != null && bars.allowance != null) || view.paceFrac != null ? (
+            <div className="relative mt-1 h-4">
+              {view.paceFrac != null && <span className="absolute left-0 flex items-center gap-1.5 whitespace-nowrap text-[11px] text-gold"><i aria-hidden className="h-2.5 w-[3px] rounded-full bg-[var(--color-gold)]" />pace for now</span>}
+              {tickAt != null && bars.allowance != null && <span className={`num absolute whitespace-nowrap text-[11px] text-mute ${view.paceFrac != null ? "right-0" : tickAlign}`} style={view.paceFrac != null ? undefined : { left: pct(tickAt) }}>target {formatKcal(bars.allowance)}</span>}
             </div>
-          )}
+          ) : null}
         </div>
       </div>
     </div>

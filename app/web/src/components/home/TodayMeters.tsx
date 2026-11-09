@@ -45,25 +45,23 @@ function Meter({ item, index }: { item: DayRingItem; index: number }) {
             transition={{ duration: reduce ? 0 : 1, delay: reduce ? 0 : 0.1 + index * 0.1, ease: [0.16, 1, 0.3, 1] }}
           />
         )}
+        {item.pace != null && !item.missing && (
+          <span aria-hidden className="absolute -top-0.5 -bottom-0.5 w-[2px] -translate-x-1/2 rounded-full bg-[var(--color-cream)] opacity-80" style={{ left: `${item.pace * 100}%` }} />
+        )}
       </div>
       <p className="mt-1.5 text-[12px] leading-snug text-mute">{item.stale ? `${item.sub} · earlier day` : item.sub}</p>
     </Link>
   );
 }
 
-/** Today at a glance: four labelled meters, each against a stated reference, every value readable without a tap. Never blended into one score. */
-export function DayBoard({ rings, asOf, demo }: { rings: DayRingItem[]; asOf?: string | null; demo?: boolean }) {
-  const closed = rings.filter((r) => r.closed).length;
+/** The day's meters, in the order that suits the time of day. Each is against a stated reference and readable without a tap; never blended into one score. */
+export function TodayMeters({ rings }: { rings: DayRingItem[] }) {
   return (
-    <section aria-label="Today" className="surface relative p-5 sm:p-6">
-      <div className="mb-3 flex items-baseline justify-between gap-3">
-        <p className="eyebrow">Today</p>
-        <p className="eyebrow !text-dim">{closed > 0 ? `${closed} of ${rings.length} reached` : demo ? "Demo data" : asOf ?? "vs a stated reference"}</p>
-      </div>
+    <div>
       <p className="sr-only">{dayRingSummary(rings)}</p>
       <div className="grid gap-2.5 sm:grid-cols-2">
         {rings.map((it, i) => <Meter key={it.key} item={it} index={i} />)}
       </div>
-    </section>
+    </div>
   );
 }
