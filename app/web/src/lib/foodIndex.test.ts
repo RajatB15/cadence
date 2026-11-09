@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildIndex, parseLine, rank } from "./foodIndex";
+import { buildIndex, lookup, parseLine, rank } from "./foodIndex";
 import type { RowDish } from "./foodRow";
 
 let n = 0;
@@ -115,5 +115,31 @@ describe("the entry bar", () => {
   });
   it("keeps an unmatched name instead of dropping it", () => {
     expect(parseLine("zzqx", index())[0].kind).toBe("none");
+  });
+});
+
+describe("lookup: what to offer while typing", () => {
+  it("offers several tappable dishes for a half-typed word, each a ready row", () => {
+    const ix = buildIndex([dish("Curd rice"), dish("Curd"), dish("Sweet curd"), dish("Curry leaf chutney")]);
+    const l = lookup("cur", ix)!;
+    expect(l.results.length).toBeGreaterThan(1);
+    expect(l.results.every((r) => r.row.kind === "dish" && r.row.dish)).toBe(true);
+  });
+  it("applies the typed amount to every result", () => {
+    const l = lookup("dosa 3", index())!;
+    expect(l.item.qty).toBe(3);
+    expect(l.results[0].row.dish?.name).toBe("Dosa");
+    expect(l.results[0].row.amount).toBe(3);
+  });
+  it("turns the earlier terms into rows and searches only the last", () => {
+    const l = lookup("dosa 2, samb", index())!;
+    expect(l.earlier.map((r) => r.dish?.name)).toEqual(["Dosa"]);
+    expect(l.results[0].row.dish?.name).toBe("Sambar");
+  });
+  it("offers nothing right after a separator, and finds your own name", () => {
+    expect(lookup("dosa, ", index())!.results).toEqual([]);
+    expect(lookup("", index())).toBeNull();
+    const ix = buildIndex([dish("Steamed rice", { my_names: [{ id: 1, name: "annam", preferred: true }] as RowDish["my_names"] })]);
+    expect(lookup("annam", ix)!.results[0].row.via?.kind).toBe("mine");
   });
 });

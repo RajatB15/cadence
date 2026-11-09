@@ -4,7 +4,7 @@ import { api, ApiError, keyFor } from "../lib/api";
 import { MEALS, servingsLabel } from "../lib/food";
 import { rowsFromChip, type Chip } from "../lib/foodChips";
 import { mealForTime, recordHistory } from "../lib/foodFrecency";
-import { parseLine, rowForDish, type FoodIndex } from "../lib/foodIndex";
+import { lookup, parseLine, rowForDish, type FoodIndex } from "../lib/foodIndex";
 import { outbox } from "../lib/foodOutbox";
 import {
   cycleUnit, loggable, rangeText, rowNutrition, rowUnitLabel, setAmount, settle, stepRow, toLogItem, totals, unitChoices,
@@ -64,11 +64,11 @@ export function useFoodDraft(index: FoodIndex | null, day: string) {
     mealTouched.current = true;
     setMeal(m);
   }, []);
-  const add = useCallback((more: FoodRow[], from?: "chip" | "scan") => {
+  const add = useCallback((more: FoodRow[], from?: "chip" | "scan", openSheet = true) => {
     if (more.length === 0) return;
     if (from) source.current = from;
     setRows((r) => [...r, ...more]);
-    setOpen(true);
+    if (openSheet) setOpen(true);
   }, []);
   return { rows, setRows, open, setOpen, meal, pickMeal, add, source, clear: () => { source.current = null; setRows([]); } };
 }
@@ -113,7 +113,19 @@ export function SmartEntry({
   const [hint, setHint] = useState<string | null>(null);
   const [mealOpen, setMealOpen] = useState(false);
   const [time, setTime] = useState("");
+  const [added, setAdded] = useState<string | null>(null);
   const live = useMemo(() => (index && text.trim() ? parseLine(text, index, { frecency, memory }) : []), [index, text, frecency, memory]);
+  const found = useMemo(() => (index && text.trim() ? lookup(text, index, { frecency, memory }) : null), [index, text, frecency, memory]);
+  const typing = text.trim().length > 0;
+
+  /** A tap on a result adds that dish (with the amount typed) and clears the box, without opening the sheet: keep going, review once. */
+  const pick = (row: FoodRow) => {
+    draft.add([...(found?.earlier ?? []), row], undefined, false);
+    setAdded(row.dish ? displayName(row.dish) : row.text);
+    setText("");
+    setHint(null);
+    inputRef.current?.focus();
+  };
   const draftTotals = useMemo(() => totals(draft.rows), [draft.rows]);
   const mealLabel = MEALS.find((m) => m.value === draft.meal)?.label ?? "";
 
@@ -130,14 +142,16 @@ export function SmartEntry({
   };
 
   const chipsRowRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
   const inputDisabled = dishState !== "ready";
 
   return (
     <div className="space-y-3">
       <form onSubmit={commit} className="surface flex min-h-14 items-center gap-1 rounded-full py-1 pr-1 pl-5">
         <input
+          ref={inputRef}
           value={text}
-          onChange={(e) => { setText(e.target.value); setHint(null); }}
+          onChange={(e) => { setText(e.target.value); setHint(null); setAdded(null); }}
           enterKeyHint="done"
           autoComplete="off"
           autoCapitalize="none"
@@ -165,6 +179,49 @@ export function SmartEntry({
         </p>
       )}
 
+      {draft.rows.length > 0 && !draft.open && (
+        <button type="button" className="surface press flex min-h-14 w-full items-center justify-between gap-3 px-5 text-left" onClick={() => draft.setOpen(true)}>
+          <span className="min-w-0">
+            <span className="block truncate text-sm font-bold text-cream">{added ? `Added ${added}. ` : ""}Your meal · {draft.rows.length} {draft.rows.length === 1 ? "item" : "items"}</span>
+            <span className="num block text-xs text-mute">{rangeText(draftTotals.kcal) || "Not logged yet"}</span>
+          </span>
+          <span className="pop pop-lime !min-h-11 pointer-events-none shrink-0">Review &amp; log</span>
+        </button>
+      )}
+
+      <div aria-live="polite" className="px-1">
+        {hint && <p className="text-sm text-mute">{hint}</p>}
+        {typing && found && found.results.length > 0 && (
+          <ul role="listbox" aria-label="Matching dishes" className="surface divide-y divide-line overflow-hidden !p-0">
+            {found.results.map(({ row }) => (
+              <li key={row.dishId} role="option" aria-selected={false}>
+                <button type="button" className="press flex min-h-14 w-full items-center justify-between gap-3 px-4 py-2 text-left" onClick={() => pick(row)}>
+                  <span className="min-w-0">
+                    <span className="block truncate text-base font-bold text-cream">{displayName(row.dish!)}</span>
+                    <span className="num block truncate text-xs text-mute">
+                      {amountText(row)} · {rangeText(rowNutrition(row).kcal) || "no calories"}
+                      {row.via && <span className={row.via.kind === "mine" ? " text-gold" : " text-dim"}>{row.via.kind === "mine" ? ` · your name “${row.via.text}”` : ` · ${row.via.text}`}</span>}
+                    </span>
+                  </span>
+                  <Plus size={20} className="shrink-0 text-lime" aria-hidden />
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+        {typing && found && found.results.length === 0 && /[,;+&]\s*$/.test(text) === false && (
+          <div className="surface space-y-2 p-4">
+            <p className="text-sm text-mute">No dish called “{found.item.name}”.</p>
+            <div className="flex flex-wrap gap-2">
+              <button type="button" className="chip press min-h-11" onClick={() => commit()}>Add it anyway</button>
+              <button type="button" className="chip press min-h-11" onClick={() => onNewDish(found.item.name)}>Save as a new dish</button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {!typing && (
+      <>
       <div className="flex flex-wrap items-center gap-2 px-1">
         <button type="button" aria-expanded={mealOpen} className="chip press min-h-11 text-sm" onClick={() => setMealOpen(!mealOpen)}>
           <Clock size={13} className="text-gold" /> {mealLabel}{isToday ? ` · ${time || "now"}` : ""} <ChevronDown size={13} className={mealOpen ? "rotate-180" : ""} />
@@ -184,7 +241,6 @@ export function SmartEntry({
           )}
         </div>
       )}
-
       {chips.length > 0 ? (
         <div ref={chipsRowRef} role="list" aria-label="Suggestions" className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 [scrollbar-width:none]">
           {chips.map((c) => (
@@ -196,38 +252,7 @@ export function SmartEntry({
       ) : (
         <p className="px-1 text-sm text-dim">Your usual meals show up here after you've logged a few.</p>
       )}
-
-      <div aria-live="polite" className="px-1">
-        {hint && <p className="text-sm text-mute">{hint}</p>}
-        {live.length > 0 && (
-          <ul className="space-y-1">
-            {live.map((r) => (
-              <li key={r.id} className="flex items-baseline justify-between gap-3 text-sm">
-                {r.kind === "none" ? (
-                  <span className="text-mute">No dish called “{r.text}”. Add calories only, or save it as a new dish.</span>
-                ) : (
-                  <>
-                    <span className="min-w-0 truncate text-paper">
-                      {r.kind === "dish" ? displayName(r.dish!) : r.text}<span className="text-dim"> · {amountText(r)}</span>
-                      {r.via && <span className={`block truncate text-xs ${r.via.kind === "mine" ? "text-gold" : "text-dim"}`}>{r.via.kind === "mine" ? `matched your name “${r.via.text}”` : `matched: ${r.via.text}`}</span>}
-                    </span>
-                    <span className="num shrink-0 text-xs text-mute">{rangeText(rowNutrition(r).kcal)}</span>
-                  </>
-                )}
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
-
-      {draft.rows.length > 0 && !draft.open && (
-        <button type="button" className="surface press flex min-h-14 w-full items-center justify-between gap-3 px-5 text-left" onClick={() => draft.setOpen(true)}>
-          <span>
-            <span className="block text-sm font-bold text-cream">Your meal · {draft.rows.length} {draft.rows.length === 1 ? "item" : "items"}</span>
-            <span className="num block text-xs text-mute">{rangeText(draftTotals.kcal) || "Not logged yet"}</span>
-          </span>
-          <span className="pop pop-ghost !min-h-11 pointer-events-none">Review</span>
-        </button>
+      </>
       )}
 
       <DraftSheet
