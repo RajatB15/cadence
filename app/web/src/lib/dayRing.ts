@@ -43,11 +43,12 @@ export interface DayRingInput {
   minutes?: number | null;
 }
 
-/** Which meters matter most now: recovery and sleep first thing, movement and protein through the day, protein then sleep at night. */
+/** Which meters matter most now: recovery and sleep after waking, movement and protein through the day, sleep from when eating is done. */
 export const ORDER: Record<Moment, DayRingKey[]> = {
   morning: ["recovery", "sleep", "move", "protein"],
   midday: ["move", "protein", "recovery", "sleep"],
-  evening: ["protein", "move", "sleep", "recovery"],
+  afternoon: ["protein", "move", "recovery", "sleep"],
+  evening: ["sleep", "protein", "recovery", "move"],
   night: ["sleep", "recovery", "protein", "move"],
 };
 
