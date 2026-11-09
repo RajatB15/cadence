@@ -91,19 +91,25 @@ describe("balanceView: what the card says at this time", () => {
     expect(v.mode).toBe("pace");
     expect(v.showBurned).toBe(true);
     expect(v.headline.kind).toBe("left");
-    expect(v.paceFrac).toBeCloseTo((2000 * (1200 / 2400)) / bars.scale);
+    expect(v.paceFrac).toBeCloseTo((2000 * ((13 * 60 - 9 * 60) / (11 * 60))) / bars.scale); // 4 of the 11 hours of the 09:00 to 20:00 eating window
     expect(v.headline.sub).toContain("deficit so far 400");
   });
-  it("makes the deficit the headline in the evening, with what the day ends at if nothing more is eaten", () => {
+  it("keeps the budget and pace through dinner time, since eating runs until 20:00", () => {
     const { en, bars } = withProjection({}, 2000, 1500);
-    const v = balanceView(en, bars, at(19));
+    const v = balanceView(en, bars, at(18, 30));
+    expect(v.mode).toBe("pace");
+    expect(v.headline.kind).toBe("left");
+  });
+  it("makes the deficit the headline once eating is done, with what the day ends at if nothing more is eaten", () => {
+    const { en, bars } = withProjection({}, 2000, 1500);
+    const v = balanceView(en, bars, at(20, 15));
     expect(v.mode).toBe("result");
     expect(v.headline).toMatchObject({ kind: "deficit", value: 500 });
     expect(v.ifStopped).toEqual([800, 1000]);
   });
   it("calls it a surplus when more is eaten than burned late in the day", () => {
     const { en, bars } = withProjection({}, 2400, 2600);
-    expect(balanceView(en, bars, at(22)).headline).toMatchObject({ kind: "surplus", value: 200 });
+    expect(balanceView(en, bars, at(21, 45)).headline).toMatchObject({ kind: "surplus", value: 200 });
   });
   it("stays in budget mode late in the day if little has been burned yet (a late start or stale burn)", () => {
     const { en, bars } = withProjection({}, 700, 300);

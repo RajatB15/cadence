@@ -1,7 +1,7 @@
 // Pure model for the Home "burned vs eaten" card, built for a cut. Both sides are estimates (Garmin burn and a food log), so the
 // card shows them side by side on one scale and never calls a day good or bad. A day with nothing logged is unknown, not a zero
 // intake: it is left out of the week instead of counting as a huge deficit.
-import { dayShare, moment } from "./moment";
+import { dayShare, eatShare, moment } from "./moment";
 import type { HomeEnergy } from "./types";
 
 export const KCAL_PER_KG = 7700; // the usual rule of thumb for body fat; rough and only used for the week's "about"
@@ -99,7 +99,7 @@ export interface BalanceView {
   /** The burned bar is hidden in the morning: burn so far is only a few hours of the day and says nothing about balance. */
   showBurned: boolean;
   headline: { kind: "left" | "over" | "budget" | "deficit" | "surplus" | "eaten" | "burned"; label: string; value: number; sub: string | null };
-  /** Where eaten would sit if intake kept pace with the share of the day's burn already spent (midday). */
+  /** Where eaten would sit at an even pace through the eating window, 09:00 to 20:00 (midday and afternoon). */
   paceFrac: number | null;
   /** Deficit if nothing more is eaten, from the projected burn range (evening). */
   ifStopped: [number, number] | null;
@@ -115,12 +115,14 @@ export function burnShare(bars: TodayBars, min: number): number {
 
 /**
  * Burned minus eaten only means something once most of the day has been burned: at 08:00 it is nearly all "not eaten yet".
- * So the morning shows the budget and what is left, midday adds a pace marker, and the evening shows the balance itself.
+ * So the morning shows the budget and what is left, midday and afternoon add a pace marker, and once eating is done (20:00) the
+ * evening shows the balance itself.
  */
 export function balanceView(e: HomeEnergy, bars: TodayBars, min: number): BalanceView {
   const share = burnShare(bars, min);
   const m = moment(min);
-  const mode: BalanceMode = m === "morning" || share < 0.4 ? "budget" : m === "midday" && share < 0.7 ? "pace" : "result";
+  // The eating window closes at 20:00, so the balance is only the answer after that; until then it is a budget with a pace.
+  const mode: BalanceMode = m === "morning" || share < 0.4 ? "budget" : m === "midday" || m === "afternoon" ? "pace" : "result";
   const y = e.yesterday;
   const yesterday = y && y.total != null && y.total > 0 && y.eaten != null && y.eaten > 0 ? Math.round(y.total - y.eaten) : null;
   const allowance = bars.allowance;
@@ -146,7 +148,7 @@ export function balanceView(e: HomeEnergy, bars: TodayBars, min: number): Balanc
     mode,
     showBurned: mode !== "budget",
     headline,
-    paceFrac: mode === "pace" && allowance ? Math.min(1, (allowance * share) / bars.scale) : null,
+    paceFrac: mode === "pace" && allowance ? Math.min(1, (allowance * eatShare(min)) / bars.scale) : null,
     ifStopped: mode === "result" && bars.projected && bars.eaten != null ? [Math.round(bars.projected.lo - bars.eaten), Math.round(bars.projected.hi - bars.eaten)] : null,
     yesterday,
   };

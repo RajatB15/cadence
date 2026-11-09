@@ -39,17 +39,18 @@ describe("dayRings", () => {
     const keys = (min: number) => dayRings({ ...base, metrics: [], minutes: min }).map((r) => r.key);
     expect(keys(8 * 60)[0]).toBe("recovery");
     expect(keys(13 * 60)[0]).toBe("move");
-    expect(keys(19 * 60)[0]).toBe("protein");
+    expect(keys(17 * 60)[0]).toBe("protein");
+    expect(keys(20 * 60 + 30)[0]).toBe("sleep");
     expect(keys(22 * 60)[0]).toBe("sleep");
   });
   it("paces steps against the waking day, only for fresh data", () => {
     const at = (min: number, steps: number, day = "2026-11-08") => dayRings({ ...base, metrics: [m("steps", steps, day)], minutes: min }).find((x) => x.key === "move")!;
-    const noon = at(14 * 60, 2000); // 8 of 16 waking hours: about 5,000 expected
-    expect(noon.pace).toBeCloseTo(0.5);
+    const noon = at(13 * 60 + 40, 2000); // 06:00 to 21:20 is 15h20; half has passed at 13:40, so about 5,000 expected
+    expect(noon.pace).toBeCloseTo(0.5, 1);
     expect(noon.sub).toContain("behind");
-    expect(at(14 * 60, 5100).sub).toContain("on pace");
-    expect(at(14 * 60, 7000).sub).toContain("ahead");
-    expect(at(14 * 60, 2000, "2026-11-07").pace).toBeNull();
+    expect(at(13 * 60 + 40, 5100).sub).toContain("on pace");
+    expect(at(13 * 60 + 40, 7000).sub).toContain("ahead");
+    expect(at(13 * 60 + 40, 2000, "2026-11-07").pace).toBeNull();
     expect(at(5 * 60, 0).pace).toBeNull();
     expect(dayRings({ ...base, metrics: [m("steps", 2000)] }).find((x) => x.key === "move")!.pace).toBeNull();
   });
