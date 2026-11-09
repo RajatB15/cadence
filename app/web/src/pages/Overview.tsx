@@ -24,9 +24,10 @@ import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useState, type ReactNode } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { HomeSkeleton } from "../components/home/HomeSkeleton";
-import { DayBoard } from "../components/home/DayBoard";
+import { TodayMeters } from "../components/home/TodayMeters";
 import { dayRings } from "../lib/dayRing";
 import { CaloriesCard } from "../components/home/CaloriesCard";
+import { localMinutes } from "../lib/moment";
 import { NowCard } from "../components/home/NowCard";
 import { PhaseHeader } from "../components/home/PhaseHeader";
 import { VitalsRail } from "../components/home/VitalsRail";
@@ -118,7 +119,9 @@ function Dashboard({ data }: { data: Extract<Overview, { has_data: true }> }) {
   if (view && coach && !quiet) blocks.planned = (<div className="space-y-6"><TodayCall coach={coach} /><PlannedToday plans={data.planned_today ?? []} /></div>);
   else if (coach || (data.planned_today ?? []).length) blocks.planned = <PlannedToday plans={data.planned_today ?? []} quietTitle={quiet ? phase?.copy?.session?.title : undefined} />;
   blocks.vitals = <VitalsRail metrics={data.metrics} weight={data.weight} today={data.today} phase={phaseId} order={phase?.vitals_order} />;
-  blocks.calories = <CaloriesCard energy={data.energy} phase={phase ?? null} isDemo={isDemo} />;
+  const minutes = localMinutes(phase?.now_local, now.getHours() * 60 + now.getMinutes());
+  const meters = <TodayMeters rings={dayRings({ metrics: data.metrics, today: data.today, readiness: r ? r.score : null, sleepNeedH: coach?.tonight?.need_h ?? null, energy: data.energy, minutes })} />;
+  blocks.calories = <CaloriesCard energy={data.energy} phase={phase ?? null} isDemo={isDemo} meters={meters} minutes={minutes} />;
   if (coach) blocks.status = <StatusCard coach={coach} onStatus={() => setSheet("status")} onTimeOff={() => setSheet("timeoff")} />;
   if (r || data.score) {
     blocks.scores = (
@@ -172,13 +175,6 @@ function Dashboard({ data }: { data: Extract<Overview, { has_data: true }> }) {
       </motion.div>
 
       <motion.div variants={rise}>{caloriesBlock}</motion.div>
-
-      <motion.div variants={rise}>
-        <DayBoard
-          rings={dayRings({ metrics: data.metrics, today: data.today, readiness: r ? r.score : null, sleepNeedH: coach?.tonight?.need_h ?? null, energy: data.energy })}
-          demo={isDemo}
-        />
-      </motion.div>
 
       {primary.map(wrap)}
 

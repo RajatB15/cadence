@@ -7,7 +7,7 @@ import { AccentEdge } from "../Card";
 import { Sheet } from "../Sheet";
 import { BalanceBars, WeekStrip } from "./BalanceBars";
 import { READ_ONLY, api } from "../../lib/api";
-import { todayBars, weekBalance } from "../../lib/balance";
+import { balanceView, todayBars, weekBalance } from "../../lib/balance";
 import { EAT_BACK_RANGE, MANUAL_RANGE, allowance, energyState, formatClock, formatKcal, parseEatBack, parseManualKcal, projectionMissing, projectionRange } from "../../lib/home";
 import { phoneMayWrite } from "../../lib/phoneWrites";
 import { Sparkline } from "../Sparkline";
@@ -19,11 +19,12 @@ const FALLBACK_FOOTNOTE = "Garmin burn and food-log kcal are both estimates; ind
 // Desktop may always edit; a paired phone only when the server's allowlist (mirrored in phoneWrites) says so.
 const canEditTarget = !READ_ONLY || phoneMayWrite("PUT", "/api/settings/calories");
 
-function Shell({ children }: { children: React.ReactNode }) {
+function Shell({ children, meters }: { children: React.ReactNode; meters?: React.ReactNode }) {
   return (
-    <section aria-label="Calories" className="surface relative overflow-hidden p-5 sm:p-7">
+    <section aria-label="Today" className="surface relative overflow-hidden p-5 sm:p-7">
       <AccentEdge color={C.gold} strength={0.14} />
       {children}
+      {meters && <div className="mt-6 border-t border-line pt-5">{meters}</div>}
     </section>
   );
 }
@@ -46,7 +47,8 @@ function Cell({ label, value, sub, tone }: { label: string; value: string; sub?:
   );
 }
 
-export function CaloriesCard({ energy, phase, isDemo, loading = false }: { energy: HomeEnergy | null | undefined; phase?: HomePhase | null; isDemo: boolean; loading?: boolean }) {
+/** The "Today" card: burned vs eaten (worded for the time of day) with the day's meters underneath. `minutes` is minutes after local midnight. */
+export function CaloriesCard({ energy, phase, isDemo, loading = false, meters, minutes }: { energy: HomeEnergy | null | undefined; phase?: HomePhase | null; isDemo: boolean; loading?: boolean; meters?: React.ReactNode; minutes: number }) {
   const [open, setOpen] = useState(false);
   if (loading) return <div className="surface skeleton h-[330px]" aria-busy aria-label="Calories loading" />;
   const state = energyState(energy, phase?.hints?.calories, isDemo);
@@ -55,8 +57,8 @@ export function CaloriesCard({ energy, phase, isDemo, loading = false }: { energ
 
   if (state.kind === "missing") {
     return (
-      <Shell>
-        <p className="eyebrow mb-2">Calories</p>
+      <Shell meters={meters}>
+        <p className="eyebrow mb-2">Today</p>
         <p className="text-mute">Calories will appear here once your Garmin burn and food log are available.</p>
         <div className="mt-4"><LogFood /></div>
       </Shell>
@@ -64,8 +66,8 @@ export function CaloriesCard({ energy, phase, isDemo, loading = false }: { energ
   }
   if (state.kind === "unsupported") {
     return (
-      <Shell>
-        <p className="eyebrow mb-2">Calories{state.demo ? " · demo data" : ""}</p>
+      <Shell meters={meters}>
+        <p className="eyebrow mb-2">Today{state.demo ? " · demo data" : ""}</p>
         <p className="text-paper">{state.demo ? "Demo data has no calorie burn." : copy?.status ?? "Your Garmin did not report calories for today."}</p>
         <p className="mt-1 text-sm text-mute">{copy?.eaten ? `${copy.eaten}. ` : ""}You can still log what you eat; nothing is compared until a burn is available.</p>
         <div className="mt-4"><LogFood /></div>
@@ -75,8 +77,8 @@ export function CaloriesCard({ energy, phase, isDemo, loading = false }: { energ
   if (state.kind === "just_started") {
     const y = energy!.yesterday;
     return (
-      <Shell>
-        <p className="eyebrow mb-2">Calories</p>
+      <Shell meters={meters}>
+        <p className="eyebrow mb-2">Today</p>
         <p className="font-extrabold text-2xl text-cream">Today just started</p>
         <p className="mt-1 text-sm text-mute">Burn so far appears once Garmin has counted a little of the day.</p>
         {y && (y.total != null || y.eaten != null) && (
@@ -100,6 +102,7 @@ export function CaloriesCard({ energy, phase, isDemo, loading = false }: { energ
   const dayTotal = phase?.hints?.calories === "day_total";
   const missing = p ? null : projectionMissing(e);
   const bars = todayBars(e, target, p ? { lo: p.lo, hi: p.hi } : null);
+  const view = bars ? balanceView(e, bars, minutes) : null;
   const week = weekBalance(e.spark, e.day ?? new Date().toISOString().slice(0, 10));
   const showProjectionCell = e.projection_state !== "hidden";
   const summary =
@@ -109,18 +112,18 @@ export function CaloriesCard({ energy, phase, isDemo, loading = false }: { energ
     ". All figures are estimates.";
 
   return (
-    <Shell>
+    <Shell meters={meters}>
       <div className="flex items-start justify-between gap-3">
-        <p className="eyebrow whitespace-nowrap">Burned vs eaten{asOf ? ` · ${asOf}` : ""}</p>
+        <p className="eyebrow whitespace-nowrap">Today{asOf ? ` · ${asOf}` : ""}</p>
         <button type="button" onClick={() => setOpen(true)} className="eyebrow shrink-0 !text-[11px] hover:text-paper pointer-coarse:py-2" aria-label="Calorie details and target">
           Details
         </button>
       </div>
       <div className="mt-4 grid gap-6 sm:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)] sm:gap-10">
         <div>
-          {bars && <BalanceBars bars={bars} summary={summary} />}
+          {bars && view && <BalanceBars bars={bars} view={view} summary={summary} />}
           <div className={clsx("@container mt-5 grid gap-3", showProjectionCell ? "grid-cols-[repeat(2,minmax(0,1fr))]" : "grid-cols-[repeat(1,minmax(0,1fr))]")}>
-            {state.showLeft ? (
+            {state.showLeft && view?.mode === "result" ? (
               <Cell label={over ? "Above" : "Left to eat"} value={over ? formatKcal(e.above_by!) : formatKcal(e.left!)} sub={over ? "your estimate" : target ? `of ${formatKcal(target)}` : undefined} tone={over ? "amber" : undefined} />
             ) : (
               <Cell label="Target" value={target ? formatKcal(target) : "—"} sub={target ? "your estimate" : "not set"} />
