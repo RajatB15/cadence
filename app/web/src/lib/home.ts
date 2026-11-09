@@ -30,37 +30,6 @@ export function arcDash(r: number, from: number, to: number): { dasharray: strin
   return { dasharray: `${((b - a) * c).toFixed(2)} ${c.toFixed(2)}`, dashoffset: -a * c };
 }
 
-export interface RingGeometry {
-  /** Burn ring: resting then active, as shares of the scale. */
-  resting: [number, number];
-  active: [number, number];
-  /** Projected range band on the outer ring. */
-  range: [number, number] | null;
-  /** Intake ring, as a share of the target (or of itself when there is no target). */
-  eaten: number;
-  /** Where "burned so far" ends, for the live dot. */
-  burnedEnd: number;
-}
-
-/**
- * Burn arcs share a scale of the largest of projected high, burned and 1, so "so far" visibly fills towards the
- * projection. Active is stacked after resting; when the split is unknown the whole burn is drawn as one arc.
- */
-export function ringGeometry(e: { burned: number | null; active: number | null; resting: number | null; projected: { lo: number; hi: number } | null; eaten: number | null; target: number | null }): RingGeometry {
-  const burned = e.burned && e.burned > 0 ? e.burned : 0;
-  const scale = Math.max(e.projected?.hi ?? 0, burned, 1);
-  const split = e.resting != null && e.active != null && e.resting >= 0 && e.active >= 0 && Math.abs(e.resting + e.active - burned) <= Math.max(5, burned * 0.02);
-  const restEnd = split ? fraction(e.resting, scale) : fraction(burned, scale);
-  const burnedEnd = fraction(burned, scale);
-  return {
-    resting: [0, restEnd],
-    active: split ? [restEnd, burnedEnd] : [restEnd, restEnd],
-    range: e.projected && e.projected.hi > e.projected.lo ? [fraction(e.projected.lo, scale), fraction(e.projected.hi, scale)] : null,
-    eaten: fraction(e.eaten, e.target ?? e.eaten),
-    burnedEnd,
-  };
-}
-
 // ---- calorie card state -------------------------------------------------------------------
 
 export type EnergyState =

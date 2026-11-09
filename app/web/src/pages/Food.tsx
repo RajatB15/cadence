@@ -3,6 +3,7 @@ import { Check, ChevronLeft, Tag, ChevronRight, CloudOff, Minus, Plus, WifiOff }
 import { useMemo, useRef, useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
 import { Card } from "../components/Card";
+import { GoalRing } from "../components/GoalRing";
 import { NoteCard } from "../components/CoachNotes";
 import { BarcodeSheet } from "../components/FoodBarcode";
 import { ScanLabel } from "../components/FoodLabel";
@@ -221,7 +222,11 @@ function SummaryCard({ data, isToday, waiting }: { data: FoodView; isToday: bool
       ) : (
         <p className="mt-1 text-lg font-bold text-cream">Nothing logged yet</p>
       )}
-      <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-mute">
+      <div className="mt-5 grid grid-cols-2 gap-4">
+        <GoalRing label="Calories" value={s.logged ? s.kcal : null} band={data.plan.targets?.kcal ?? null} unit="kcal" note={s.logged && data.plan.targets?.kcal == null ? "No target yet" : undefined} />
+        <GoalRing label="Protein" value={s.logged ? s.protein_g : null} band={data.plan.targets?.protein_g ?? null} unit="g" note={s.logged && s.protein_g == null ? "No protein figures" : undefined} />
+      </div>
+      <div className="mt-4 flex flex-wrap gap-x-4 gap-y-1 text-xs text-mute">
         {left && <span className="num">About {Math.round(left[0]).toLocaleString("en-US")} to {Math.round(left[1]).toLocaleString("en-US")} kcal left in your range</span>}
         {s.logged && <span className="num">{s.protein_g == null ? "Protein unknown" : `${Math.round(s.protein_g)} g protein${s.partial_macros ? " (some foods unknown)" : ""}`}</span>}
         {!s.logged && !range && <span>Not the same as eating nothing: an empty day stays out of your averages.</span>}

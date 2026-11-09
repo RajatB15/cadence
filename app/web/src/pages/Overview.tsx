@@ -24,13 +24,13 @@ import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useState, type ReactNode } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { HomeSkeleton } from "../components/home/HomeSkeleton";
-import { DayRing } from "../components/home/DayRing";
+import { DayBoard } from "../components/home/DayBoard";
 import { dayRings } from "../lib/dayRing";
 import { CaloriesCard } from "../components/home/CaloriesCard";
 import { NowCard } from "../components/home/NowCard";
 import { PhaseHeader } from "../components/home/PhaseHeader";
 import { VitalsRail } from "../components/home/VitalsRail";
-import { isDimmed, localHour, nowView, phaseAccent, sectionLayout, type SectionId } from "../lib/home";
+import { isDimmed, localHour, nowView, sectionLayout, type SectionId } from "../lib/home";
 import { PhaseBanner } from "../components/PhaseBanner";
 import { CheckInCard } from "../components/Journal";
 import { TodayReadCard } from "../components/Reading";
@@ -152,6 +152,8 @@ function Dashboard({ data }: { data: Extract<Overview, { has_data: true }> }) {
   if (coach && coach.streaks.length > 0) blocks.streaks = <StreakChips streaks={coach.streaks} />;
   if (coach) blocks.wins = <RecoveryWinsCard wins={coach.recovery_wins} />;
 
+  const caloriesBlock = blocks.calories; // burned vs eaten leads the page, whatever the phase
+  delete blocks.calories;
   const available = new Set(Object.keys(blocks) as SectionId[]);
   const { primary, more } = sectionLayout(phase, available);
   const wrap = (id: SectionId) => <motion.div key={id} variants={rise}>{blocks[id]}</motion.div>;
@@ -169,10 +171,11 @@ function Dashboard({ data }: { data: Extract<Overview, { has_data: true }> }) {
         />
       </motion.div>
 
+      <motion.div variants={rise}>{caloriesBlock}</motion.div>
+
       <motion.div variants={rise}>
-        <DayRing
+        <DayBoard
           rings={dayRings({ metrics: data.metrics, today: data.today, readiness: r ? r.score : null, sleepNeedH: coach?.tonight?.need_h ?? null, energy: data.energy })}
-          accent={C[phaseAccent(phaseId, hourNow)]}
           demo={isDemo}
         />
       </motion.div>
