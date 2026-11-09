@@ -590,7 +590,7 @@ function ShareCard() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [expiresIn, query.dataUpdatedAt]);
   if (query.isPending) return <LoadingBlock height={220} />;
-  if (query.isError) return <ErrorBlock error={query.error} retry={() => query.refetch()} />;
+  if (query.isError || !Array.isArray(query.data?.sessions)) return <ErrorBlock error={query.error ?? new Error("Unexpected response from the sharing service")} retry={() => query.refetch()} />;
   const s = query.data;
   const error = start.error ?? stop.error ?? reset.error ?? revoke.error;
 
