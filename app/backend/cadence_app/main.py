@@ -17,7 +17,7 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from cadence_app import food_names, energy_store, focus_store, food_label, garmin_connect, garmin_workout, backup, days, events, food_crawl, foodlog, food_quick, goal_store, journal, ocr, phases, planner_store, profile as profile_store, push, reading, reading_feed, strength, timeoff_store, weather, weightlog, wellbeing_store
+from cadence_app import food_names, energy_store, focus_store, food_label, garmin_connect, garmin_workout, backup, days, events, food_crawl, foodlog, food_quick, goal_store, journal, ocr, phases, planner_store, profile as profile_store, push, reading, reading_book, reading_feed, strength, timeoff_store, weather, weightlog, wellbeing_store
 from cadence_app.analytics import foodrank as foodrank_analytics
 from cadence_app.analytics import accuracy as accuracy_analytics
 from cadence_app.analytics import banister as banister_analytics
@@ -207,6 +207,10 @@ class CalorieSettingsRequest(BaseModel):
 
 class TrainingModeRequest(BaseModel):
     mode: Literal["auto", "build", "maintain"]
+
+
+class BookPosition(BaseModel):
+    part: int
 
 
 class ReadingStatus(BaseModel):
@@ -1527,6 +1531,22 @@ def create_app(
         if settings.reading_feed and reading_feed.due(session, clock.now()):
             feed_worker.kick()  # fetched in the background; the page shows what is stored now
         return reading.view(session, settings.reading_data_dir, clock.today(), signals, clock.now(), settings.reading_feed)
+
+    @app.get("/api/reading/book")
+    def reading_book_view(session: Session = Depends(get_session)) -> dict:
+        return reading_book.view(session, settings.reading_data_dir, clock.today())
+
+    @app.post("/api/reading/book/read")
+    def reading_book_read(session: Session = Depends(get_session)) -> dict:
+        if not reading_book.mark_read(session, settings.reading_data_dir, clock.today()):
+            raise HTTPException(404, "No part left to read")
+        return reading_book_view(session)
+
+    @app.put("/api/reading/book/position")
+    def reading_book_position(body: BookPosition, session: Session = Depends(get_session)) -> dict:
+        if not reading_book.set_position(session, settings.reading_data_dir, body.part):
+            raise HTTPException(404, "No such part")
+        return reading_book_view(session)
 
     @app.post("/api/reading/feed/refresh")
     def reading_feed_refresh(session: Session = Depends(get_session)) -> dict:

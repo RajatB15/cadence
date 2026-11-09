@@ -20,6 +20,11 @@ fi
 if [[ -d "$ROOT/reading-data/cards" ]]; then
   ssh "$HOST" 'mkdir -p /opt/cadence/reading-data'
   rsync -az --delete "$ROOT/reading-data/cards/" "$HOST:/opt/cadence/reading-data/cards/"
+  # The book to read a little of each day (reading-data/books/*), when there is one.
+  if [[ -d "$ROOT/reading-data/books" ]]; then
+    ssh "$HOST" 'mkdir -p /opt/cadence/reading-data/books'
+    rsync -az --delete "$ROOT/reading-data/books/" "$HOST:/opt/cadence/reading-data/books/"
+  fi
 fi
 
 ssh "$HOST" 'bash -s' <<'REMOTE'

@@ -3,6 +3,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Bookmark, Check, ExternalLink, RefreshCw, X } from "lucide-react";
 import { useState } from "react";
 import { Link } from "react-router-dom";
+import { BookPanel, useBook } from "../components/BookReader";
 import { ReadingSheet, useReading, useSetReading } from "../components/Reading";
 import { ErrorBlock, LoadingBlock, PageHeader } from "../components/Shell";
 import { READ_ONLY, api } from "../lib/api";
@@ -22,14 +23,25 @@ export function ReadingPage() {
   const [topic, setTopic] = useState<string | null>(null);
   const [filter, setFilter] = useState<ReadingFilter>("all");
   const [openId, setOpenId] = useState<string | null>(null);
-  const [tab, setTab] = useState<"library" | "research">("library");
+  const [tab, setTab] = useState<"book" | "library" | "research" | null>(null);
+  const book = useBook();
+  const hasBook = book.data?.available === true;
+  const active = tab ?? (hasBook ? "book" : "library");
   const view = query.data;
   const cards = view ? filterCards(view.cards, topic, filter) : [];
   const open = view?.cards.find((c) => c.id === openId) ?? null;
   return (
     <>
       <PageHeader eyebrow={view?.available ? `${view.cards.length} cards · ${view.counts.read} read` : "Reading"} title={<>Worth <em className="text-gold">reading.</em></>} />
-      {query.isPending ? (
+      {active === "book" && hasBook ? (
+        <>
+          <div className="mb-6 flex gap-2" role="tablist" aria-label="Reading">
+            <Chip active onClick={() => setTab("book")}>Book</Chip>
+            <Chip active={false} onClick={() => setTab("library")}>Library</Chip>
+          </div>
+          <BookPanel />
+        </>
+      ) : query.isPending ? (
         <LoadingBlock height={240} />
       ) : query.isError ? (
         <ErrorBlock error={query.error} retry={() => query.refetch()} />
@@ -40,8 +52,9 @@ export function ReadingPage() {
       ) : (
         <>
           <div className="mb-6 flex gap-2" role="tablist" aria-label="Reading">
-            <Chip active={tab === "library"} onClick={() => setTab("library")}>Library</Chip>
-            <Chip active={tab === "research"} onClick={() => setTab("research")}>
+            {hasBook && <Chip active={false} onClick={() => setTab("book")}>Book</Chip>}
+            <Chip active={active === "library"} onClick={() => setTab("library")}>Library</Chip>
+            <Chip active={active === "research"} onClick={() => setTab("research")}>
               New research{view.feed.items.length > 0 ? ` · ${view.feed.items.length}` : ""}
             </Chip>
           </div>
@@ -51,7 +64,7 @@ export function ReadingPage() {
               <Chip key={t.key} active={topic === t.key} onClick={() => setTopic(t.key)}>{t.label} · {t.count}</Chip>
             ))}
           </div>
-          {tab === "library" && (
+          {active === "library" && (
             <div className="mb-8 flex flex-wrap gap-2" role="group" aria-label="Show">
               {FILTERS.map((f) => (
                 <Chip key={f.key} active={filter === f.key} onClick={() => setFilter(f.key)}>{f.label}</Chip>
@@ -61,7 +74,7 @@ export function ReadingPage() {
           {view.skipped_invalid > 0 && (
             <p className="mb-4 text-sm text-mute">{view.skipped_invalid} card{view.skipped_invalid === 1 ? " was" : "s were"} skipped because they were incomplete or duplicated.</p>
           )}
-          {tab === "research" ? (
+          {active === "research" ? (
             <ResearchFeed view={view} topic={topic} />
           ) : cards.length === 0 ? (
             <div className="surface p-12 text-center text-mute">Nothing matches. Try another topic or filter.</div>
