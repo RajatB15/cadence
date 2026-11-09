@@ -519,7 +519,7 @@ def create_app(
         engine.dispose()
 
     app = FastAPI(title="Cadence", lifespan=lifespan, docs_url=None, redoc_url=None)
-    share = ShareServer(app, factory, settings.web_dist, settings.share_port, settings.share_host)
+    share = ShareServer(app, factory, settings.web_dist, settings.share_port, settings.share_host, settings.public_url)
     app.state.share = share
     app.state.notifier, app.state.scheduler = notifier, scheduler
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=ALLOWED_HOSTS)

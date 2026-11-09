@@ -22,7 +22,7 @@ id cadence >/dev/null 2>&1 || adduser --system --group --home /var/lib/cadence -
 install -d -o cadence -g cadence -m 750 /opt/cadence /opt/cadence/app /opt/cadence/app/backend /opt/cadence/app/web /var/lib/cadence /var/lib/cadence/data
 install -d -o root -g cadence -m 750 /etc/cadence
 
-# Only SSH is reachable from the internet. Phones reach Cadence through Tailscale, which connects outwards.
+# Only SSH is reachable until deploy/enable-public.sh opens 80/443 for the phone's HTTPS address.
 ufw default deny incoming
 ufw default allow outgoing
 ufw limit OpenSSH
@@ -39,4 +39,4 @@ else
   echo "WARNING: no SSH key found for root; leaving password login on. Add a key, then re-run." >&2
 fi
 
-echo "Server ready. Next: deploy/push.sh from your Mac, then install Tailscale (see docs/deploy-digitalocean.md)."
+echo "Server ready. Next: deploy/push.sh from your Mac, then deploy/enable-public.sh (see docs/deploy-digitalocean.md)."

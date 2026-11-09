@@ -309,3 +309,18 @@ def test_every_write_route_is_either_allowlisted_or_blocked_from_the_phone(api, 
     # Every allowlist entry must still match a real route, so renames don't leave dead (or accidentally broad) rules.
     for method, rx in PHONE_WRITES:
         assert any(m == method and rx.fullmatch(re.sub(r"\{[^}]+\}", "1", t)) for m, t in write_routes), (method, rx.pattern)
+
+
+def test_public_url_is_the_pairing_address(api, web):
+    with socket.socket() as sock:
+        sock.bind(("127.0.0.1", 0))
+        port = sock.getsockname()[1]
+    server = ShareServer(api, api.state.share.factory, web, port, host="127.0.0.1", public_url="https://cadence.example.test")
+    server.start()
+    try:
+        status = server.status()
+        assert status["secure"] and not status["insecure_lan"]
+        assert status["urls"][0] == "https://cadence.example.test"
+        assert status["pair_url"].startswith("https://cadence.example.test/pair?key=")
+    finally:
+        server.stop(remember=False)

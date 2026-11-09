@@ -38,7 +38,7 @@ PAIRING_TTL_S = 10 * 60
 LEGACY_GRACE_S = 30 * 86400
 MAX_SESSIONS = 20
 FAIL_FREE, FAIL_MAX_BLOCK_S = 5, 15 * 60
-SHARED_BUCKET_MAX_BLOCK_S = 60  # tailscale serve / reverse proxies show every peer as loopback: one peer must not lock out the rest for long
+SHARED_BUCKET_MAX_BLOCK_S = 60  # tailscale serve / reverse proxies that don't forward the client show every peer as loopback: one peer must not lock out the rest for long
 LOOPBACK = ("127.0.0.1", "::1", "localhost")
 GLOBAL_FAIL_WINDOW_S, GLOBAL_FAIL_MAX = 10 * 60, 60  # bad guesses from anywhere; limits a spread-out guesser, never a valid key
 BLOCKED_API = ("/api/share",)
@@ -403,8 +403,9 @@ def lan_addresses() -> list[str]:
 
 
 class ShareServer:
-    def __init__(self, api: ASGIApp, factory: sessionmaker, web_dir: Path, port: int, host: str = "0.0.0.0"):
+    def __init__(self, api: ASGIApp, factory: sessionmaker, web_dir: Path, port: int, host: str = "0.0.0.0", public_url: str | None = None):
         self.factory, self.web_dir, self.port, self.host = factory, web_dir, port, host
+        self.public_url = public_url
         self.auth = ShareAuth(self._setting, self._save)
         self.gate = ShareGate(api, self.auth, web_dir, lambda: self.running)
         self._server: uvicorn.Server | None = None
@@ -492,7 +493,7 @@ class ShareServer:
         }
         if self.running:
             out["urls"] = [f"http://{h}:{self.port}" for h in lan_addresses()]
-            if remote := tailscale_url(self.port):
+            if remote := self.public_url or tailscale_url(self.port):
                 out["urls"].insert(0, remote)
             out["secure"] = bool(remote)
             out["insecure_lan"] = not remote
