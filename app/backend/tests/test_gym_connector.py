@@ -106,3 +106,28 @@ def test_hyrox_at_home_through_the_connector_lists_what_was_swapped(env):
     assert not err and len(s["steps"]) == 8 and s["generator_notes"] and any("→" in n for n in s["generator_notes"])
     err, gym = call("gym_build_session", {"template": "hyrox", "setting": "gym", "name": "Race rehearsal"})
     assert not err and gym["name"] == "Race rehearsal" and [g["steps"][1]["exercise"] for g in gym["steps"]][0] == "skierg"
+
+
+def test_plan_detail_workouts_and_loads_through_the_connector(env):
+    call, auth, mine = env
+    auth.set_writes(True, "plan")
+    auth.set_writes(True, "log")
+    _, built = call("gym_build_session", {"template": "lower", "setting": "gym"})
+    err, planned = call("gym_schedule_session", {"gid": built["id"], "day": "2026-11-12"})
+    assert not err
+    err, detail = call("gym_plan_detail", {"plan_id": planned["id"]})
+    assert not err and detail["steps"] == built["steps"] and detail["workout"] is None
+    entries = [{"exercise": "goblet-squat", "sets": [{"reps": 8, "target_reps": 8, "load": "20 kg"}] * 3}]
+    err, logged = call("gym_log_workout", {"name": "Lower", "entries": entries, "plan_id": planned["id"], "duration_s": 2400})
+    assert not err and logged["sets_done"] == 3 and logged["day"] == "2026-11-10"
+    assert call("gym_log_workout", {"name": "Bad", "entries": [{"exercise": "nope", "sets": [{"reps": 1}]}]})[0]
+    assert call("gym_log_workout", {"name": "Bad", "entries": "x"})[0] and call("gym_log_workout", {"name": "Bad"})[0]
+    err, hist = call("gym_workouts", {"limit": 5})
+    assert not err and hist["workouts"][0]["id"] == logged["id"]
+    err, loads = call("gym_last_loads", {"ids": "goblet-squat,plank"})
+    assert not err and loads["loads"]["goblet-squat"]["hint"]["load"] == "21 kg"
+    assert call("gym_last_loads", {"ids": "../x"})[0]
+    assert call("gym_plan_detail", {"plan_id": 99999})[0]
+    assert call("gym_plan_detail", {"plan_id": planned["id"]})[1]["workout"]["id"] == logged["id"]
+    auth.set_writes(False, "log")
+    assert call("gym_log_workout", {"name": "Nope", "entries": entries})[0]

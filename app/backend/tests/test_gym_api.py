@@ -122,3 +122,46 @@ def test_preview_fills_defaults_and_times_unsaved_steps(client):
     r = client.post("/api/gym/preview", json={"steps": [{"exercise": "plank"}, {"type": "group", "rounds": 3, "steps": [{"exercise": "burpee", "reps": 10}]}]}, headers=MUTATE).json()
     assert r["steps"][0]["seconds"] == 30 and r["minutes"] >= 2 and r["outline"].splitlines()[1] == "Round x3" and r["patterns"] == ["core", "plyometric"]
     assert client.post("/api/gym/preview", json={"steps": [{"exercise": "nope"}]}, headers=MUTATE).status_code == 400
+
+
+def _planned(client, template="full_body"):
+    built = client.post("/api/gym/sessions/build", json={"template": template, "setting": "gym"}, headers=MUTATE).json()
+    plan = client.post(f"/api/gym/sessions/{built['id']}/plan", json={"day": "2026-11-11", "start_hour": 6}, headers=MUTATE).json()
+    return built, plan
+
+
+def test_plan_detail_gives_the_steps_as_planned_and_survives_edits_and_deletes(client):
+    built, plan = _planned(client)
+    d = client.get(f"/api/gym/plans/{plan['id']}").json()
+    assert d["steps"] == built["steps"] and d["source"] == "plan" and d["setting"] == "gym" and d["workout"] is None and d["day"] == "2026-11-11"
+    client.put(f"/api/gym/sessions/{built['id']}", json={"steps": [{"exercise": "plank"}]}, headers=MUTATE)
+    assert client.get(f"/api/gym/plans/{plan['id']}").json()["steps"] == built["steps"]  # a snapshot
+    client.delete(f"/api/gym/sessions/{built['id']}", headers=MUTATE)
+    assert client.get(f"/api/gym/plans/{plan['id']}").json()["steps"] == built["steps"]
+    assert client.get("/api/gym/plans/9999").status_code == 404
+    week = client.get("/api/planner").json()
+    got = next(p for d in week["days"] for p in d["plans"] if p["id"] == plan["id"])
+    assert got["gym"] is True and got["logged"] is False
+
+
+def test_workouts_are_logged_listed_deleted_and_feed_last_loads(client):
+    built, plan = _planned(client)
+    entries = [{"exercise": "goblet-squat", "sets": [{"reps": 10, "target_reps": 10, "load": "24 kg"}] * 3},
+               {"exercise": "plank", "sets": [{"seconds": 45, "done": True}]}, {"name": "Odd machine", "sets": [{"reps": 12, "load": "30 kg", "done": False}]}]
+    r = client.post("/api/gym/workouts", json={"name": "Lower day", "plan_id": plan["id"], "session_id": built["id"], "duration_s": 3100, "entries": entries, "notes": "good"}, headers=MUTATE)
+    assert r.status_code == 201
+    w = r.json()
+    assert w["sets_done"] == 4 and w["sets_total"] == 5 and w["entries"][0]["label"] == "Goblet Squat" and w["day"] == "2026-11-10"
+    assert client.get("/api/gym/workouts").json()["workouts"][0]["id"] == w["id"]
+    assert client.get(f"/api/gym/plans/{plan['id']}").json()["workout"]["id"] == w["id"]
+    week = client.get("/api/planner").json()
+    assert next(p for d in week["days"] for p in d["plans"] if p["id"] == plan["id"])["logged"] is True
+    loads = client.get("/api/gym/last-loads", params={"ids": "goblet-squat,plank,back-squat"}).json()["loads"]
+    assert loads["goblet-squat"]["load"] == "24 kg" and loads["goblet-squat"]["hint"]["kind"] == "increase_load" and "plank" not in loads and "back-squat" not in loads
+    for bad in ([], [{"exercise": "nope", "sets": [{"reps": 1}]}], [{"exercise": "plank", "sets": []}], [{"exercise": "plank", "sets": [{"reps": -1}]}], [{"sets": [{"reps": 1}]}],
+                [{"exercise": "plank", "sets": [{"reps": True}]}], ["x"]):
+        assert client.post("/api/gym/workouts", json={"name": "x", "entries": bad}, headers=MUTATE).status_code in (400, 422), bad
+    assert client.get("/api/gym/last-loads", params={"ids": "../x"}).status_code == 422
+    assert client.delete(f"/api/gym/workouts/{w['id']}", headers=MUTATE).json() == {"deleted": w["id"]}
+    assert client.delete(f"/api/gym/workouts/{w['id']}", headers=MUTATE).status_code == 404
+    assert client.get("/api/gym/workouts").json()["workouts"] == []

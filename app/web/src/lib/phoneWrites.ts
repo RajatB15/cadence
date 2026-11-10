@@ -23,6 +23,8 @@ const RULES: [string, string][] = [
   ["DELETE", "/api/gym/sessions/[^/]+"],
   ["POST", "/api/gym/sessions/[^/]+/(swap|setting|plan)"],
   ["PUT", "/api/settings/gym"],
+  ["POST", "/api/gym/workouts"],
+  ["DELETE", "/api/gym/workouts/[^/]+"],
   ["POST", "/api/reading/book/read"],
   ["PUT", "/api/reading/book/position"],
   ["POST", "/api/phases"],

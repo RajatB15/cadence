@@ -212,3 +212,18 @@ def test_equipment_reads_in_plain_words_and_conversion_keeps_the_main_muscle():
     steps = G.normalize([{"exercise": "chin-up", "sets": 3, "reps": 6}])
     home, changes = G.convert_setting(steps, HOME)
     assert changes and G.exercise(home[0]["exercise"])["muscles"]["primary"][0] == "lats"  # a row, not a curl
+
+
+def test_progression_hints_are_suggestions_from_logged_sets_only():
+    hit = [{"done": True, "reps": 8, "target_reps": 8, "load": "40 kg"} for _ in range(3)]
+    h = G.progression_hint("dumbbell-bench-press", hit)
+    assert h["kind"] == "increase_load" and h["load"] == "41 kg" and "suggestion" not in h["text"].lower() and "try 41 kg" in h["text"]
+    low = G.progression_hint("back-squat", [{"done": True, "reps": 5, "target_reps": 5, "load": "100 kg"}] * 3)
+    assert low["load"] == "105 kg"  # lower body steps a bit bigger
+    miss = G.progression_hint("back-squat", hit[:2] + [{"done": True, "reps": 6, "target_reps": 8, "load": "40 kg"}])
+    assert miss["kind"] == "repeat" and "6 of 8" in miss["text"]
+    bw = G.progression_hint("push-up", [{"done": True, "reps": 12, "target_reps": 12}] * 3)
+    assert bw["kind"] == "increase_reps" and "Feet-Elevated Push-Up" in bw["text"]
+    assert G.progression_hint("push-up", [{"done": True, "reps": 10}]) is None  # no target recorded: nothing to go on
+    assert G.progression_hint("push-up", [{"done": False, "reps": 10, "target_reps": 10}]) is None
+    assert G.parse_kg("42,5 kg") == 42.5 and G.parse_kg("bodyweight") is None and G.parse_kg("") is None and G.parse_kg("20 lb") is None

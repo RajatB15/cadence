@@ -91,14 +91,22 @@ function DayPlans({ day, plans, today }: { day: string; plans: PlannedSessionVie
           <div key={p.id} className="surface edge flex items-start gap-4 p-5" style={edge(p.status === "done" ? C.lime : C.gold)}>
             <Icon size={20} className="mt-0.5 shrink-0 text-gold" />
             <div className="min-w-0 flex-1">
-              <p className="font-semibold text-paper">{p.title}</p>
-              <p className="mt-1 text-sm text-mute">{p.detail}</p>
+              {p.gym ? <Link to={`/workout/${p.id}`} className="font-semibold text-paper underline-offset-4 hover:underline">{p.title}</Link> : <p className="font-semibold text-paper">{p.title}</p>}
+              <p className="mt-1 whitespace-pre-line text-sm text-mute">{p.gym && p.detail.split("\n").length > 6 ? `${p.detail.split("\n").slice(0, 6).join("\n")}\n…` : p.detail}</p>
               <p className="mt-2 text-xs text-dim">
                 {p.start_hour != null && <>{hourLabel(p.start_hour)} · </>}Predicted load {p.predicted.load}
                 {p.status === "done" && p.activity && (
                   <> · done: <Link className="text-lime underline-offset-2 hover:underline" to={`/activities/${p.activity.id}`}>{p.activity.name}</Link>, load {Math.round(p.activity.load ?? 0)}</>
                 )}
               </p>
+              {p.gym && (
+                <div className="mt-3 flex flex-wrap items-center gap-3">
+                  <Link to={`/workout/${p.id}`} className={clsx("pop !px-4 !py-2 text-sm", !p.logged && p.status !== "done" && "pop-lime")}>
+                    <Dumbbell size={14} /> {p.logged ? "View workout" : "View plan and start"}
+                  </Link>
+                  {p.logged && <span className="text-xs text-lime">Logged</span>}
+                </div>
+              )}
               {(p.sport === "run" || p.sport === "ride") && p.status !== "done" && garmin.data?.available && (
                 <div className="mt-3 flex flex-wrap items-center gap-3">
                   {READ_ONLY ? (

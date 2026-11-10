@@ -265,6 +265,17 @@ class GymSessionSwap(BaseModel):
     direction: Literal["easier", "harder", "different"] | None = None
 
 
+class GymWorkoutRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=80)
+    setting: Literal["gym", "home"] = "gym"
+    day: RaceDate | None = None
+    plan_id: int | None = Field(default=None, ge=1)
+    session_id: int | None = Field(default=None, ge=1)
+    duration_s: int | None = Field(default=None, ge=0, le=86400)
+    entries: list[dict] = Field(min_length=1, max_length=60)
+    notes: str | None = Field(default=None, max_length=2000)
+
+
 class GymSessionSetting(BaseModel):
     setting: Literal["gym", "home"]
 
@@ -1218,6 +1229,8 @@ def create_app(
         today = clock.today()
         start, end = planner_store.window(today)
         plans = planner_store.reconcile(session, source_id, planner_store.listing(session, start, end), today, clock.now())
+        logged = gym_store.logged_plan_ids(session, [p["id"] for p in plans])
+        plans = [{**p, "logged": p["id"] in logged} for p in plans]
         ctx = insights_service.context(session, source_id, today)
         model = session_planner.load_model(ctx["acts"], ctx["as_of"]) if ctx else None
         return {
@@ -1299,6 +1312,34 @@ def create_app(
             return {"steps": steps, "changes": changes}
 
         return _gym(run)
+
+    @app.get("/api/gym/plans/{plan_id}")
+    def gym_plan_detail(plan_id: int, session: Session = Depends(get_session)) -> dict:
+        """A planned strength session to follow: its steps (as planned), the setting, and the workout logged for it if any."""
+        out = gym_store.plan_detail(session, plan_id)
+        if out is None:
+            raise HTTPException(404, "No such planned strength session")
+        return out
+
+    @app.post("/api/gym/workouts", status_code=201)
+    def gym_workout_log(body: GymWorkoutRequest, session: Session = Depends(get_session)) -> dict:
+        return _gym(lambda: gym_store.log_workout(session, body.day or clock.today(), body.name, body.setting, body.entries, body.plan_id, body.session_id,
+                                                  body.duration_s, body.notes, clock.now()))
+
+    @app.get("/api/gym/workouts")
+    def gym_workouts(limit: int = Query(30, ge=1, le=100), session: Session = Depends(get_session)) -> dict:
+        return {"workouts": gym_store.workouts(session, limit)}
+
+    @app.delete("/api/gym/workouts/{wid}")
+    def gym_workout_delete(wid: int, session: Session = Depends(get_session)) -> dict:
+        if not gym_store.delete_workout(session, wid):
+            raise HTTPException(404, "No such workout")
+        return {"deleted": wid}
+
+    @app.get("/api/gym/last-loads")
+    def gym_last_loads(ids: str = Query(max_length=1500, pattern=r"^[a-z0-9-]+(,[a-z0-9-]+){0,59}$"), session: Session = Depends(get_session)) -> dict:
+        """Your most recent logged load per exercise and a suggestion for next time; only what you logged, nothing invented."""
+        return {"loads": gym_store.last_loads(session, ids.split(","))}
 
     @app.get("/api/gym/sessions")
     def gym_sessions(session: Session = Depends(get_session)) -> dict:

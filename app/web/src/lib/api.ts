@@ -15,7 +15,7 @@ import type {
   TrainingTrend,
   Behaviour,
   JournalView,
-  ReadingView, BookView, ConnectorStatus, GymAlternative, GymExercise, GymSession, GymSetting, GymSettings, GymStep, GymTemplate,
+  ReadingView, BookView, ConnectorStatus, GymAlternative, GymExercise, GymLastLoad, GymPlanDetail, GymWorkout, GymWorkoutEntry, GymSession, GymSetting, GymSettings, GymStep, GymTemplate,
   PlanOption,
   Review,
   BodyProfile,
@@ -262,6 +262,12 @@ export const api = {
     return request<{ exercises: GymExercise[]; count: number; patterns: string[]; equipment: string[]; total: number }>(`/api/gym/library?${qs}`);
   },
   gymExercise: (id: string, setting?: GymSetting) => request<GymExercise>(`/api/gym/exercises/${encodeURIComponent(id)}${setting ? `?setting=${setting}` : ""}`),
+  gymPlan: (id: number) => request<GymPlanDetail>(`/api/gym/plans/${id}`),
+  gymLastLoads: (ids: string[]) => request<{ loads: Record<string, GymLastLoad> }>(`/api/gym/last-loads?ids=${ids.join(",")}`),
+  gymLogWorkout: (body: { name: string; setting: GymSetting; plan_id?: number | null; session_id?: number | null; duration_s?: number | null; entries: GymWorkoutEntry[]; notes?: string | null }) =>
+    request<GymWorkout>("/api/gym/workouts", { method: "POST", body: JSON.stringify(body) }),
+  gymWorkouts: (limit = 20) => request<{ workouts: GymWorkout[] }>(`/api/gym/workouts?limit=${limit}`),
+  gymWorkoutDelete: (id: number) => request<{ deleted: number }>(`/api/gym/workouts/${id}`, { method: "DELETE" }),
   gymTemplates: () => request<{ templates: GymTemplate[]; levels: string[]; goals: string[] }>("/api/gym/templates"),
   gymSettings: () => request<GymSettings>("/api/settings/gym"),
   setGymSettings: (body: { home_equipment?: string[]; default_setting?: GymSetting }) =>
@@ -282,7 +288,7 @@ export const api = {
   gymUpdate: (id: number, body: Partial<{ name: string; setting: GymSetting; format: GymSession["format"]; steps: GymStep[]; notes: string | null }>) =>
     request<GymSession>(`/api/gym/sessions/${id}`, { method: "PUT", body: JSON.stringify(body) }),
   gymDelete: (id: number) => request<{ deleted: number }>(`/api/gym/sessions/${id}`, { method: "DELETE" }),
-  gymPlan: (id: number, body: { day: string; start_hour?: number | null }) =>
+  gymSchedule: (id: number, body: { day: string; start_hour?: number | null }) =>
     request<{ id: number; day: string }>(`/api/gym/sessions/${id}/plan`, { method: "POST", body: JSON.stringify(body) }),
   readingBook: () => request<BookView>("/api/reading/book"),
   readBookPart: () => request<BookView>("/api/reading/book/read", { method: "POST" }),
