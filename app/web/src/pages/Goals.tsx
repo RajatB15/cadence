@@ -11,6 +11,7 @@ import { READ_ONLY, api } from "../lib/api";
 import { CheckHalo } from "../components/Halo";
 import { formatDate } from "../lib/format";
 import { isFreshDay } from "../lib/motion";
+import { TimeField } from "../components/TimeField";
 import { clockTime as hms, countdown, distanceLabel as km, pacePer, parseTime, signed } from "../lib/goals";
 import type { GoalBand, GoalInput, GoalKind, GoalSport, GoalsResponse, GoalView } from "../lib/types";
 import { C } from "../lib/theme";
@@ -388,8 +389,9 @@ function GoalForm({ edit, onDone }: { edit: GoalView | null; onDone: () => void 
             <div className="grid grid-cols-2 gap-5">
               <div>
                 <label className="eyebrow" htmlFor="goal-time">Target time{kind === "race" ? " (optional)" : ""}</label>
-                <input id="goal-time" inputMode="numeric" placeholder="1:45:00" value={time} onChange={(e) => setTime(e.target.value)} aria-invalid={!timeOk} className={field} />
+                <TimeField id="goal-time" value={time} onChange={setTime} invalid={!timeOk} className={field} />
                 {!timeOk && <p className="mt-1 text-xs text-coral">Use h:mm:ss or mm:ss.</p>}
+                <p id="goal-time-help" className="sr-only">Type the digits only; they fill in as hours, minutes and seconds.</p>
                 {timeOk && t != null && <p className="mt-1 text-xs text-dim">Read as {hms(t)}{t >= 3600 ? " (hours:minutes:seconds)" : " (minutes:seconds)"}</p>}
               </div>
               <div>

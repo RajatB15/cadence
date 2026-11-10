@@ -12,16 +12,17 @@ const DIRS = [
 ] as const;
 
 /** Replace one exercise with an easier or harder version, a completely different one, or anything you pick yourself. Nothing changes until you choose. */
-export function SwapSheet({ exercise, name, setting, exclude, onPick, onBrowse, onClose }: {
+export function SwapSheet({ exercise, name, setting, exclude, note, onPick, onBrowse, onClose }: {
   exercise: string | null;
   name: string;
   setting: GymSetting;
   exclude: string[];
+  note?: string;
   onPick: (id: string) => void;
   onBrowse: () => void;
   onClose: () => void;
 }) {
-  const [dir, setDir] = useState<(typeof DIRS)[number]["key"]>("different");
+  const [dir, setDir] = useState<(typeof DIRS)[number]["key"]>("easier");
   const q = useQuery({ queryKey: ["gym", "alt", exercise, dir, setting, exclude.join(",")], queryFn: () => api.gymAlternatives({ exercise: exercise!, direction: dir, setting, exclude }), enabled: exercise != null });
   return (
     <Sheet open={exercise != null} onOpenChange={(o) => !o && onClose()} eyebrow={`Replace · ${setting === "home" ? "home kit only" : "full gym"}`} title={name}>
@@ -42,18 +43,19 @@ export function SwapSheet({ exercise, name, setting, exclude, onPick, onBrowse, 
           <ul className="divide-y divide-line">
             {q.data.alternatives.map((a) => (
               <li key={a.id}>
-                <button type="button" className="flex w-full items-center justify-between gap-3 py-3 text-left" onClick={() => onPick(a.id)}>
+                <button type="button" className="flex min-h-16 w-full items-center justify-between gap-3 px-1 py-3 text-left active:bg-white/5" onClick={() => onPick(a.id)}>
                   <span className="min-w-0">
-                    <span className="block text-paper">{a.name}</span>
+                    <span className="block text-lg text-paper">{a.name}</span>
                     <span className="block text-xs text-dim">{a.reason} · {LEVEL_LABEL[a.level]} · {a.needs}</span>
                   </span>
-                  <span className="text-xs text-gold">Use this</span>
+                  <span className="shrink-0 rounded-full border border-gold/50 px-3 py-1.5 text-sm text-gold">Use</span>
                 </button>
               </li>
             ))}
           </ul>
         )}
-        <button type="button" className="pop pop-ghost" onClick={onBrowse}>Choose any exercise…</button>
+        {note && <p className="text-xs text-dim">{note}</p>}
+        <button type="button" className="pop pop-ghost !py-3" onClick={onBrowse}>Choose any exercise…</button>
       </div>
     </Sheet>
   );

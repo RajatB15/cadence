@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { clockTime, countdown, distanceLabel, pacePer, parseTime, signed } from "./goals";
+import { clockTime, countdown, distanceLabel, formatTimeDigits, pacePer, parseTime, signed } from "./goals";
 
 describe("race times typed the way people say them", () => {
   it("reads 3:45 for a marathon as hours and minutes, but 25:00 for a 5 km as minutes", () => {
@@ -54,5 +54,39 @@ describe("goal formatting", () => {
     expect(countdown({ days_left: 5 })).toBe("in 5 days");
     expect(countdown({ days_left: 70 })).toBe("in 10 weeks");
     expect(countdown({ days_left: -3 })).toBe("3 days ago");
+  });
+});
+
+
+describe("typing a time on a number pad", () => {
+  it("fills from the right like a timer", () => {
+    expect(formatTimeDigits("4")).toBe("0:04");
+    expect(formatTimeDigits("45")).toBe("0:45");
+    expect(formatTimeDigits("345")).toBe("3:45");
+    expect(formatTimeDigits("3450")).toBe("34:50");
+    expect(formatTimeDigits("34500")).toBe("3:45:00");
+    expect(formatTimeDigits("134500")).toBe("13:45:00");
+    expect(formatTimeDigits("1345000")).toBe("34:50:00"); // longer than hh:mm:ss: the oldest digit drops off
+    expect(formatTimeDigits("")).toBe("");
+  });
+  it("keeps filling as you add digits to what is already shown, and a pasted time comes out the same", () => {
+    let shown = "";
+    const seen: string[] = [];
+    for (const digit of "34500") {
+      shown = formatTimeDigits(shown + digit); // the box holds the formatted text; each keystroke appends one digit
+      seen.push(shown);
+    }
+    expect(seen).toEqual(["0:03", "0:34", "3:45", "34:50", "3:45:00"]);
+    expect(formatTimeDigits("3:45:00")).toBe("3:45:00");
+    expect(formatTimeDigits("3h45")).toBe("3:45");
+    expect(formatTimeDigits("0:034")).toBe("0:34");
+    expect(formatTimeDigits(formatTimeDigits("3:45:0"))).toBe("34:50"); // backspace shifts back, like a timer
+  });
+  it("what you type on the pad reads back as the time you meant, for the distance", () => {
+    const typed = (digits: string, metres: number) => parseTime(formatTimeDigits(digits), metres);
+    expect(typed("34500", 42195)).toBe(13500); // 3:45:00 marathon
+    expect(typed("345", 42195)).toBe(13500); // 3:45 marathon
+    expect(typed("2530", 5000)).toBe(1530); // 25:30 for 5 km
+    expect(typed("14500", 21097.5)).toBe(6300); // 1:45:00 half
   });
 });

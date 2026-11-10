@@ -21,5 +21,5 @@ export const PATTERN_LABEL: Record<string, string> = {
 export const LEVEL_LABEL = ["", "Very easy", "Easy", "Moderate", "Hard", "Very hard"];
 export const EQUIPMENT_LABEL: Record<string, string> = {
   dumbbell: "Dumbbells", kettlebell: "Kettlebell", barbell: "Barbell", bench: "Bench", rack: "Rack", pullup_bar: "Pull-up bar", cable: "Cable machine", machine: "Machines",
-  band: "Resistance band", box: "Box or step", sled: "Sled", skierg: "SkiErg", rower: "Rower", treadmill: "Treadmill", medicine_ball: "Medicine ball", sandbag: "Sandbag", rings: "Rings", bike: "Bike",
+  band: "Resistance band", box: "Box or step", sled: "Sled", skierg: "SkiErg", rower: "Rower", treadmill: "Treadmill", medicine_ball: "Medicine ball", sandbag: "Sandbag", rings: "Rings", bike: "Bike", backpack: "Loaded backpack",
 };

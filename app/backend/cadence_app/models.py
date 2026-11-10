@@ -224,7 +224,8 @@ class GymWorkout(Base):
     name: Mapped[str] = mapped_column(String(80))
     setting: Mapped[str] = mapped_column(String(8), default="gym")
     duration_s: Mapped[int | None] = mapped_column(Integer)
-    entries: Mapped[str] = mapped_column(Text)  # JSON: [{exercise, name, sets: [{reps|seconds|distance_m, load, done}]}]
+    rpe: Mapped[int | None] = mapped_column(Integer)  # how hard it felt, 1-10, optional
+    entries: Mapped[str] = mapped_column(Text)  # JSON: [{exercise, name, block, sets: [{reps|seconds|distance_m, load, took_s, done}]}]
     notes: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime)
 

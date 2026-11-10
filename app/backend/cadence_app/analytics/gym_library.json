@@ -1,6 +1,7 @@
 {
  "_comment": "Gym exercise library: written for Cadence in our own words (general technique cues of the kind found in NSCA Essentials of Strength Training and Conditioning and ACSM guidance; not copied from any source or dataset). Technique notes, not medical advice. Patterns are the same categories as exercises.json. family+level form the easier/harder ladder.",
  "equipment": [
+  "backpack",
   "band",
   "barbell",
   "bench",
@@ -2339,7 +2340,7 @@
    "level": 2,
    "equipment": [
     [
-     "bodyweight"
+     "backpack"
     ]
    ],
    "unit": "reps",
@@ -2375,7 +2376,7 @@
    "level": 1,
    "equipment": [
     [
-     "bodyweight"
+     "backpack"
     ]
    ],
    "unit": "reps",

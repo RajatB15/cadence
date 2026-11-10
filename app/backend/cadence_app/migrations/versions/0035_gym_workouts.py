@@ -27,6 +27,7 @@ def upgrade() -> None:
         sa.Column("name", sa.String(80), nullable=False),
         sa.Column("setting", sa.String(8), nullable=False, server_default="gym"),
         sa.Column("duration_s", sa.Integer, nullable=True),
+        sa.Column("rpe", sa.Integer, nullable=True),
         sa.Column("entries", sa.Text, nullable=False),
         sa.Column("notes", sa.Text, nullable=True),
         sa.Column("created_at", sa.DateTime, nullable=False),

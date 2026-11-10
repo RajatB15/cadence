@@ -12,7 +12,7 @@ import { PATTERN_LABEL, useGymLibrary } from "./useGym";
 
 type Picker = { mode: "add"; group: number[] | null } | { mode: "group" } | { mode: "replace"; path: number[] };
 const SETTINGS = [{ value: "gym" as GymSetting, label: "Full gym" }, { value: "home" as GymSetting, label: "Home" }];
-const input = "num w-full border-b-2 border-line-strong bg-transparent py-1.5 text-lg text-paper outline-none focus:border-gold";
+const input = "num w-full border-b-2 border-line-strong bg-transparent py-2 pointer-coarse:py-3 text-lg text-paper outline-none focus:border-gold";
 
 function rest(s: number | undefined) {
   return s ? `rest ${s >= 60 ? `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}` : `${s} s`}` : "";
@@ -28,12 +28,13 @@ function Num({ label, value, onChange, max }: { label: string; value: number | u
   );
 }
 
-export function SessionEditor({ draft, onChange, onSave, saving, saveLabel, onDelete, onPlan, planning, planned, error }: {
+export function SessionEditor({ draft, onChange, onSave, saving, saveLabel, dirty, onDelete, onPlan, planning, planned, error }: {
   draft: GymDraft;
   onChange: (d: GymDraft) => void;
   onSave: () => void;
   saving: boolean;
   saveLabel: string;
+  dirty: boolean;
   onDelete?: () => void;
   onPlan: (day: string, hour: number | null) => void;
   planning: boolean;
@@ -83,7 +84,7 @@ export function SessionEditor({ draft, onChange, onSave, saving, saveLabel, onDe
         const path = [...base, i];
         const key = pathKey(path);
         const controls = (
-          <span className="flex shrink-0 items-center">
+          <span className="flex shrink-0 items-center gap-0.5">
             <IconBtn label="Move up" onClick={() => set(moveAt(steps, path, -1))} disabled={i === 0}><ChevronUp size={16} /></IconBtn>
             <IconBtn label="Move down" onClick={() => set(moveAt(steps, path, 1))} disabled={i === list.length - 1}><ChevronDown size={16} /></IconBtn>
             <IconBtn label="Remove" onClick={() => set(removeAt(steps, path))}><Trash2 size={16} /></IconBtn>
@@ -105,10 +106,10 @@ export function SessionEditor({ draft, onChange, onSave, saving, saveLabel, onDe
             <li key={key} className="rounded-2xl border border-line bg-white/[0.02] p-3 sm:p-4">
               <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
                 <div className="flex min-w-0 flex-1 flex-wrap items-center gap-3">
-                  <input aria-label="Block name" className="min-w-[8rem] flex-1 border-b border-line-strong bg-transparent py-1 font-display text-xl text-cream outline-none focus:border-gold" value={g.title} maxLength={60} placeholder="Block name"
+                  <input aria-label="Block name" className="min-w-[8rem] flex-1 border-b border-line-strong bg-transparent py-2 pointer-coarse:py-3 font-display text-xl text-cream outline-none focus:border-gold" value={g.title} maxLength={60} placeholder="Block name"
                     onChange={(e) => set(updateAt(steps, path, (x) => ({ ...(x as GymGroupStep), title: e.target.value })))} />
                   <label className="flex items-center gap-2 text-sm text-mute">Rounds
-                    <input aria-label="Rounds" className="num w-14 border-b border-line-strong bg-transparent text-center text-paper outline-none" inputMode="numeric" value={g.rounds}
+                    <input aria-label="Rounds" className="num w-16 border-b border-line-strong bg-transparent py-2 pointer-coarse:py-3 text-center text-paper outline-none" inputMode="numeric" value={g.rounds}
                       onChange={(e) => set(updateAt(steps, path, (x) => ({ ...(x as GymGroupStep), rounds: Math.min(50, Math.max(1, Number(e.target.value.replace(/\D/g, "")) || 1)) })))} />
                   </label>
                 </div>
@@ -192,9 +193,10 @@ export function SessionEditor({ draft, onChange, onSave, saving, saveLabel, onDe
           <textarea className="mt-2 w-full rounded-xl border border-line-strong bg-transparent p-3 text-paper outline-none focus:border-gold" rows={2} maxLength={2000} value={draft.notes ?? ""} placeholder="Tempo, target loads, what to watch…"
             onChange={(e) => onChange({ ...draft, notes: e.target.value || null })} />
         </label>
-        <div className="flex flex-wrap items-center gap-3">
-          <button type="button" className="pop pop-lime" disabled={saving || steps.length === 0 || !draft.name.trim()} onClick={onSave}>{saving ? "Saving…" : saveLabel}</button>
-          {onDelete && <button type="button" className="pop pop-ghost" onClick={onDelete}><Trash2 size={14} /> Delete</button>}
+        <div className="sticky bottom-[5.75rem] z-10 -mx-2 flex flex-wrap items-center gap-3 rounded-2xl border border-line bg-ink/95 p-3 backdrop-blur md:static md:mx-0 md:border-0 md:bg-transparent md:p-0">
+          <button type="button" className="pop pop-lime !py-3" disabled={saving || steps.length === 0 || !draft.name.trim()} onClick={onSave}>{saving ? "Saving…" : saveLabel}</button>
+          {dirty && !saving && <span role="status" className="flex items-center gap-2 text-sm text-gold"><span className="h-2 w-2 rounded-full bg-gold" aria-hidden /> Unsaved changes</span>}
+          {onDelete && <button type="button" className="pop pop-ghost !py-3 md:ml-auto" onClick={onDelete}><Trash2 size={14} /> Delete</button>}
         </div>
         <div className="border-t border-line pt-5">
           <p className="eyebrow mb-3">Put it on the plan</p>
@@ -226,7 +228,7 @@ export function SessionEditor({ draft, onChange, onSave, saving, saveLabel, onDe
 
 function IconBtn({ label, onClick, disabled, children }: { label: string; onClick: () => void; disabled?: boolean; children: React.ReactNode }) {
   return (
-    <button type="button" aria-label={label} title={label} onClick={onClick} disabled={disabled} className="grid h-9 w-9 place-items-center rounded-full text-mute transition hover:bg-white/5 hover:text-paper disabled:opacity-25 pointer-coarse:h-10 pointer-coarse:w-10">
+    <button type="button" aria-label={label} title={label} onClick={onClick} disabled={disabled} className="grid h-10 w-10 place-items-center rounded-full text-mute transition hover:bg-white/5 hover:text-paper disabled:opacity-25 pointer-coarse:h-12 pointer-coarse:w-12">
       {children}
     </button>
   );

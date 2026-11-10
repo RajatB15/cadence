@@ -7,6 +7,22 @@ export function clockTime(seconds: number): string {
   return `${h ? `${h}:` : ""}${String(Math.floor((r % 3600) / 60)).padStart(h ? 2 : 1, "0")}:${String(r % 60).padStart(2, "0")}`;
 }
 
+/**
+ * Digits typed on a phone's number pad (no colon key) as a time, filled from the right like a timer:
+ * "45" is 0:45, "345" is 3:45, "3450" is 34:50, "34500" is 3:45:00. Already-formatted text with colons (a pasted "3:45:00",
+ * a hardware keyboard) is kept as typed. At most six digits (hh:mm:ss, up to 99 h).
+ */
+export function formatTimeDigits(raw: string): string {
+  const d = raw.replace(/\D/g, "").replace(/^0+(?=\d)/, "").slice(-6);
+  if (!d) return "";
+  const p = d.padStart(d.length <= 2 ? 3 : d.length <= 4 ? 4 : 6, "0");
+  const ss = p.slice(-2);
+  const mm = p.slice(-4, -2);
+  const hh = p.slice(0, -4);
+  const text = hh ? `${Number(hh)}:${mm}:${ss}` : `${Number(mm)}:${ss}`;
+  return text;
+}
+
 const FASTEST_M_PER_S: Record<string, number> = { run: 9, ride: 20, swim: 3 };
 
 /**

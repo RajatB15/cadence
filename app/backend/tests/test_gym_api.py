@@ -61,7 +61,7 @@ def test_generate_save_edit_and_delete_a_session(client):
     assert client.put(f"/api/gym/sessions/{sid}", json={"steps": [{"exercise": "nope"}]}, headers=MUTATE).status_code == 400
     assert client.put("/api/gym/sessions/999", json={"name": "x"}, headers=MUTATE).status_code == 404
     built = client.post("/api/gym/sessions/build", json={"template": "hyrox", "setting": "gym"}, headers=MUTATE)
-    assert built.status_code == 201 and len(built.json()["steps"]) == 8 and built.json()["format"] == "hyrox"
+    assert built.status_code == 201 and len(built.json()["steps"]) == 9 and built.json()["format"] == "hyrox"
     assert client.post("/api/gym/generate", json={"template": "nope"}, headers=MUTATE).status_code == 400
     assert client.delete(f"/api/gym/sessions/{sid}", headers=MUTATE).json() == {"deleted": sid}
     assert client.get(f"/api/gym/sessions/{sid}").status_code == 404 and client.delete(f"/api/gym/sessions/{sid}", headers=MUTATE).status_code == 404

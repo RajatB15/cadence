@@ -15,6 +15,7 @@ import { Sparkline } from "../components/Sparkline";
 import { api } from "../lib/api";
 import { formatDate } from "../lib/format";
 import { parseTime } from "../lib/goals";
+import { TimeField } from "../components/TimeField";
 import type { OutcomeMarker as Outcomes_Marker, Effect, Finding, GoalDistance, Insights, TrainingGoal, TrainingMode } from "../lib/types";
 import { C } from "../lib/theme";
 
@@ -437,14 +438,11 @@ function GoalDialog({ current }: { current: TrainingGoal | null }) {
             </div>
             <div>
               <label className="eyebrow" htmlFor="goal-time">Target time (optional)</label>
-              <input
-                id="goal-time" inputMode="numeric" placeholder="1:45:00" value={time} onChange={(e) => setTime(e.target.value)}
-                aria-invalid={!timeOk}
-                className="num mt-2 w-full border-b-2 border-line-strong bg-transparent py-2 text-2xl text-paper outline-none focus:border-gold"
-              />
+              <TimeField id="goal-time" value={time} onChange={(t) => { setTime(t); save.reset(); }} invalid={!timeOk}
+                className="num mt-2 w-full border-b-2 border-line-strong bg-transparent py-2 text-2xl text-paper outline-none focus:border-gold" />
               {!timeOk && <p className="mt-2 text-xs text-coral">{target != null ? "That time is too short for this distance." : "Use h:mm:ss or mm:ss."}</p>}
               {timeOk && target != null && <p className="mt-2 text-xs text-dim">Read as {raceTime(target)}{target >= 3600 ? " (hours:minutes:seconds)" : " (minutes:seconds)"}</p>}
-              <p className="mt-2 text-xs text-dim">Without one, race-pace sessions use your predicted time.</p>
+              <p id="goal-time-help" className="mt-2 text-xs text-dim">Type the digits only, like a timer: 3 4 5 0 0 is 3:45:00. Without a time, race-pace sessions use your predicted time.</p>
             </div>
             {save.isError && <p className="text-xs text-coral">Couldn't save. Try again.</p>}
             <div className="flex flex-wrap gap-5">

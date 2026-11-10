@@ -178,11 +178,11 @@ TOOLS: dict[str, dict] = {
                         "d": "Remove a time-off period by id (from time_off).", "params": {"entry_id": P("int", True, (1, 10**9), "path")}},
     "gym_log_workout": {"write": "log", "method": "POST", "path": "/api/gym/workouts",
                         "d": ("Log a gym workout that was done. entries is a list, one per exercise: {exercise:<library id> (or name for an unlisted one), sets:[{reps | seconds | distance_m | calories, load:'40 kg' or 'bodyweight', "
-                              "target_reps (what was aimed for, used for next-time suggestions), done:true}]}. Day defaults to today; plan_id links it to the planned session (from plan). "
+                              "target_reps (what was aimed for, used for next-time suggestions), took_s (seconds it took, e.g. a Hyrox split), done:true}], block (the block name)}. rpe 1-10 is how hard it felt. Day defaults to today; plan_id links it to the planned session (from plan). "
                               "Only log what the person says they did."),
                         "params": {"name": P("str", True, r".{1,80}", "body"), "entries": P("steps", True, None, "body"), "setting": P("enum", rule=("gym", "home"), where="body"),
                                    "day": _day(where="body", today=True), "plan_id": P("int", rule=(1, 10**9), where="body"), "duration_s": P("int", rule=(0, 86400), where="body"),
-                                   "notes": P("str", rule=r".{1,2000}", where="body")}},
+                                   "rpe": P("int", rule=(1, 10), where="body"), "notes": P("str", rule=r".{1,2000}", where="body")}},
     "gym_build_session": {"write": "plan", "method": "POST", "path": "/api/gym/sessions/build",
                           "d": ("Build a gym session from a template (see gym_templates) and save it. setting gym uses everything; home uses only the person's home equipment (bodyweight if none). "
                                 "level beginner, intermediate or advanced; goal general, strength, muscle or endurance. Same inputs give the same session; change seed for a different mix. "
@@ -217,7 +217,7 @@ TOOLS: dict[str, dict] = {
                            "d": "Delete a saved gym session (sessions already put on the plan stay).", "params": {"gid": P("int", True, (1, 10**9), "path")}},
     "gym_set_home_equipment": {"write": "plan", "method": "PUT", "path": "/api/settings/gym",
                                "d": "Say which equipment the person has at home, and optionally the default setting. Replaces the list; bodyweight is always available.",
-                               "params": {"home_equipment": P("enumlist", rule=("dumbbell", "kettlebell", "barbell", "bench", "rack", "pullup_bar", "cable", "machine", "band", "box", "sled", "skierg", "rower", "treadmill", "medicine_ball", "sandbag", "rings", "bike"), where="body"),
+                               "params": {"home_equipment": P("enumlist", rule=("dumbbell", "kettlebell", "barbell", "bench", "rack", "pullup_bar", "cable", "machine", "band", "box", "sled", "skierg", "rower", "treadmill", "medicine_ball", "sandbag", "rings", "bike", "backpack"), where="body"),
                                           "default_setting": P("enum", rule=("gym", "home"), where="body")}},
 }
 

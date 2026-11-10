@@ -103,9 +103,9 @@ def test_hyrox_at_home_through_the_connector_lists_what_was_swapped(env):
     call, auth, _ = env
     auth.set_writes(True, "plan")
     err, s = call("gym_build_session", {"template": "hyrox", "setting": "home"})
-    assert not err and len(s["steps"]) == 8 and s["generator_notes"] and any("→" in n for n in s["generator_notes"])
+    assert not err and len(s["steps"]) == 9 and s["generator_notes"] and any("→" in n for n in s["generator_notes"])
     err, gym = call("gym_build_session", {"template": "hyrox", "setting": "gym", "name": "Race rehearsal"})
-    assert not err and gym["name"] == "Race rehearsal" and [g["steps"][1]["exercise"] for g in gym["steps"]][0] == "skierg"
+    assert not err and gym["name"] == "Race rehearsal" and [g["steps"][1]["exercise"] for g in gym["steps"][1:]][0] == "skierg"
 
 
 def test_plan_detail_workouts_and_loads_through_the_connector(env):
