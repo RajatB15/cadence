@@ -209,6 +209,11 @@ class TrainingModeRequest(BaseModel):
     mode: Literal["auto", "build", "maintain"]
 
 
+class ConnectorWrites(BaseModel):
+    group: Literal["log", "plan"] = "log"
+    enabled: bool
+
+
 class BookPosition(BaseModel):
     part: int
 
@@ -615,10 +620,10 @@ def create_app(
         return share.connector_status()
 
     @app.put("/api/connector/writes")
-    def connector_writes(body: WeatherSetting) -> dict:
+    def connector_writes(body: ConnectorWrites) -> dict:
         if body.enabled and not share.connector_auth.enabled():
             raise HTTPException(400, "Turn the Claude connector on first")
-        share.connector_auth.set_writes(body.enabled)
+        share.connector_auth.set_writes(body.enabled, body.group)
         return share.connector_status()
 
     @app.post("/api/connector/code")

@@ -647,18 +647,24 @@ function ClaudeConnectorCard() {
       )}
       {c.enabled && (
         <div className="mt-8 border-t border-line pt-4">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="max-w-xl">
-              <h3 className="eyebrow mb-1">Let Claude log things</h3>
-              <p className="text-sm text-mute">
-                Off: Claude only reads. On: it can also log food and saved meals, remove a food entry (restorable for a week), record your weight and save a
-                check-in, when you ask it to. It can’t touch your plan, goals, Garmin or settings.
-              </p>
-            </div>
-            <button type="button" role="switch" aria-checked={c.writes} aria-label="Let Claude log things" className={c.writes ? "pop pop-lime" : "pop pop-ghost"}
-              disabled={writes.isPending} onClick={() => writes.mutate(!c.writes)}>
-              {c.writes ? "On" : "Off"}
-            </button>
+          <div className="space-y-5">
+            {([
+              { group: "log", on: c.writes, title: "Let Claude log things",
+                text: "Off: Claude only reads. On: it can also log food and saved meals, remove a food entry (restorable for a week), record your weight and save a check-in, when you ask it to." },
+              { group: "plan", on: c.plan_writes, title: "Let Claude change plan and goals",
+                text: "Off by default, separate from the above. On: it can set or clear your race goal, add, change or drop goals, add or remove planned sessions (removing one also takes it off your watch if it was sent) and add or remove time off. It can't change plan settings, Garmin, credentials or sharing." },
+            ] as const).map((w) => (
+              <div key={w.group} className="flex flex-wrap items-center justify-between gap-3">
+                <div className="max-w-xl">
+                  <h3 className="eyebrow mb-1">{w.title}</h3>
+                  <p className="text-sm text-mute">{w.text}</p>
+                </div>
+                <button type="button" role="switch" aria-checked={w.on} aria-label={w.title} className={w.on ? "pop pop-lime" : "pop pop-ghost"}
+                  disabled={writes.isPending} onClick={() => writes.mutate({ group: w.group, enabled: !w.on })}>
+                  {w.on ? "On" : "Off"}
+                </button>
+              </div>
+            ))}
           </div>
           {c.recent.length > 0 && (
             <ul className="mt-4 space-y-1 text-xs text-dim">

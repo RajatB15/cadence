@@ -395,3 +395,51 @@ def test_connector_writes_land_in_the_real_log_only_when_allowed(api, web):
     assert "Test snack" in __import__("json").dumps(day)
     bad = call("log_food", {"meal": "snack", "items": [{"name": "Huge", "kcal": 999999}]})
     assert bad["isError"] and "didn't accept" in bad["content"][0]["text"]  # the app's own limits still apply
+
+
+def test_connector_plan_and_goal_changes_land_in_the_real_app(api, web):
+    import base64
+    import hashlib
+    import json as _json
+    from cadence_app.connector import Connector, ConnectorAuth
+
+    store: dict[str, str] = {}
+    cauth = ConnectorAuth(store.get, lambda k, v: store.pop(k, None) if v is None else store.__setitem__(k, v))
+    cauth.set_enabled(True)
+    c = TestClient(ShareGate(api, make_auth(), web, connector=Connector(api, cauth, lambda: "https://cadence.example.test", lambda: date(2026, 10, 22))),
+                   base_url="https://cadence.example.test")
+    mine = TestClient(api, base_url="http://127.0.0.1")
+    redirect = "https://claude.ai/api/mcp/auth_callback"
+    cid = c.post("/oauth/register", json={"redirect_uris": [redirect]}).json()["client_id"]
+    verifier = "p" * 64
+    challenge = base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).rstrip(b"=").decode()
+    r = c.post("/oauth/authorize", data={"client_id": cid, "redirect_uri": redirect, "response_type": "code", "code_challenge": challenge,
+                                         "code_challenge_method": "S256", "approval": cauth.approval_code()[0]}, follow_redirects=False)
+    token = c.post("/oauth/token", data={"grant_type": "authorization_code", "code": re.search(r"code=([^&]+)", r.headers["location"]).group(1), "client_id": cid,
+                                         "redirect_uri": redirect, "code_verifier": verifier}).json()["access_token"]
+    call = lambda name, args=None: c.post("/mcp", json={"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {"name": name, "arguments": args or {}}},  # noqa: E731
+                                          headers={"Authorization": f"Bearer {token}"}).json()["result"]
+    cauth.set_writes(True)  # logging alone must not open the plan
+    assert call("set_race_goal", {"distance": "marathon", "date": "2027-03-14"})["isError"]
+    cauth.set_writes(True, "plan")
+    assert not call("set_race_goal", {"distance": "marathon", "date": "2027-03-14", "target_s": 13500})["isError"]
+    goals = mine.get("/api/goals").json()["goals"] if "goals" in mine.get("/api/goals").json() else mine.get("/api/goals").json()
+    assert "marathon" in _json.dumps(goals).lower() and "2027-03-14" in _json.dumps(goals)
+    assert call("set_race_goal", {"distance": "marathon", "date": "2020-01-01"})["isError"]  # the app's own rule: not in the past
+    made = call("create_goal", {"kind": "weight", "target_kg": 70})
+    assert not made["isError"], made
+    gid = _json.loads(made["content"][0]["text"])["id"]
+    assert not call("update_goal", {"goal_id": gid, "status": "dropped"})["isError"]
+    assert call("update_goal", {"goal_id": 9999, "status": "dropped"})["isError"]
+    opts = _json.loads(call("plan_options", {"day": "2026-10-24", "sport": "run"})["content"][0]["text"])
+    key = opts["options"][0]["key"]
+    added = call("add_planned_session", {"day": "2026-10-24", "sport": "run", "option_key": key})
+    assert not added["isError"]
+    pid = _json.loads(added["content"][0]["text"])["id"]
+    assert "2026-10-24" in _json.dumps(mine.get("/api/planner").json())
+    assert not call("remove_planned_session", {"plan_id": pid})["isError"]
+    assert call("remove_planned_session", {"plan_id": pid})["isError"]
+    off = call("add_time_off", {"kind": "travel", "start": "2026-10-28", "end": "2026-10-30", "activity": "light"})
+    assert not off["isError"] and "2026-10-28" in _json.dumps(mine.get("/api/time-off").json())
+    assert not call("clear_race_goal")["isError"]
+    assert [a["tool"] for a in cauth.recent()][0] == "clear_race_goal"

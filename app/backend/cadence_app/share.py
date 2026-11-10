@@ -475,7 +475,7 @@ class ShareServer:
         on = self.connector_auth.enabled()
         out = {"enabled": on, "running": self.running, "address": f"{self.public_url}/mcp" if self.public_url else None,
                "code": None, "code_expires_in_s": None, "connections": self.connector_auth.list(),
-               "writes": self.connector_auth.writes_enabled(), "recent": self.connector_auth.recent()}
+               "writes": self.connector_auth.writes_enabled(), "plan_writes": self.connector_auth.writes_enabled("plan"), "recent": self.connector_auth.recent()}
         if on and self.running and self.public_url:
             code, expires = self.connector_auth.approval_code()
             out["code"], out["code_expires_in_s"] = code, max(0, int(expires - time.time()))

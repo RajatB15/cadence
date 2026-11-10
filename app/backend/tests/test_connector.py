@@ -32,7 +32,7 @@ def stub_api():
             return JSONResponse({"blob": "x" * (C.MAX_RESULT_CHARS + 500)})
         return JSONResponse({"ok": True, "path": request.url.path})
 
-    return Starlette(routes=[Route("/{p:path}", anything, methods=["GET", "POST", "PUT", "DELETE"])])
+    return Starlette(routes=[Route("/{p:path}", anything, methods=["GET", "POST", "PUT", "PATCH", "DELETE"])])
 
 
 @pytest.fixture
@@ -189,7 +189,7 @@ def test_writes_are_off_until_switched_on_and_then_limited_to_logging(env):
     names = lambda: {t["name"] for t in rpc(client, token, "tools/list").json()["result"]["tools"]}  # noqa: E731
     assert "log_food" not in names() and "find_food" in names()
     r = call("log_weight", {"weight_kg": 70})["result"]
-    assert r["isError"] and "switched off" in r["content"][0]["text"] and not SEEN_BODIES
+    assert r["isError"] and "isn't switched on" in r["content"][0]["text"] and not SEEN_BODIES
     auth.set_writes(True)
     listed = {t["name"]: t for t in rpc(client, token, "tools/list").json()["result"]["tools"]}
     assert {"log_food", "log_saved_meal", "remove_food_entry", "log_weight", "log_check_in"} <= set(listed)
@@ -223,7 +223,52 @@ def test_writes_are_off_until_switched_on_and_then_limited_to_logging(env):
 def test_turning_the_connector_off_turns_writes_off(env):
     _, auth, _ = env
     auth.set_writes(True)
-    assert auth.writes_enabled()
+    auth.set_writes(True, "plan")
+    assert auth.writes_enabled() and auth.writes_enabled("plan")
     auth.set_enabled(False)
     auth.set_enabled(True)
-    assert not auth.writes_enabled()
+    assert not auth.writes_enabled() and not auth.writes_enabled("plan")
+
+
+PLAN_TOOLS = {"add_planned_session", "remove_planned_session", "set_race_goal", "clear_race_goal", "create_goal", "update_goal", "add_time_off", "remove_time_off"}
+
+
+def test_plan_and_goal_tools_have_their_own_switch(env):
+    client, auth, _ = env
+    token = sign_in(client, auth)[1]["access_token"]
+    call = lambda name, args=None: rpc(client, token, "tools/call", {"name": name, "arguments": args or {}}).json()["result"]  # noqa: E731
+    names = lambda: {t["name"] for t in rpc(client, token, "tools/list").json()["result"]["tools"]}  # noqa: E731
+    auth.set_writes(True)  # logging on does not open the plan
+    assert not (PLAN_TOOLS & names()) and "log_food" in names() and "plan_options" in names()
+    r = call("set_race_goal", {"distance": "marathon", "date": "2027-03-14"})
+    assert r["isError"] and "change plan and goals" in r["content"][0]["text"] and not SEEN_BODIES
+    auth.set_writes(True, "plan")
+    assert PLAN_TOOLS <= names()
+    listed = {t["name"]: t for t in rpc(client, token, "tools/list").json()["result"]["tools"]}
+    assert listed["remove_planned_session"]["annotations"]["destructiveHint"] and listed["clear_race_goal"]["annotations"]["destructiveHint"]
+    assert not listed["set_race_goal"]["annotations"]["destructiveHint"] and not listed["set_race_goal"]["annotations"]["readOnlyHint"]
+    assert not call("set_race_goal", {"distance": "marathon", "date": "2027-03-14", "target_s": 13500})["isError"]
+    assert SEEN_BODIES[-1] == ("PUT", "/api/settings/goal", json.dumps({"distance": "marathon", "date": "2027-03-14", "target_s": 13500}, separators=(",", ":")))
+    for bad in ({"distance": "ultra", "date": "2027-03-14"}, {"distance": "marathon"}, {"distance": "marathon", "date": "soon"}, {"distance": "marathon", "date": "2027-03-14", "target_s": 5}):
+        assert call("set_race_goal", bad)["isError"], bad
+    assert not call("clear_race_goal")["isError"] and SEEN_BODIES[-1] == ("PUT", "/api/settings/goal", "{}")
+    assert not call("create_goal", {"kind": "race", "sport": "run", "date": "2027-03-14", "distance_m": 42195, "label": "Marathon"})["isError"]
+    assert call("create_goal", {"kind": "triathlon"})["isError"] and call("create_goal", {"kind": "race", "distance_m": -4})["isError"]
+    assert not call("update_goal", {"goal_id": 3, "status": "achieved"})["isError"] and SEEN_BODIES[-1][:2] == ("PATCH", "/api/goals/3")
+    assert call("update_goal", {"goal_id": 3})["isError"] and call("update_goal", {"goal_id": 3, "status": "deleted"})["isError"]
+    assert not call("add_planned_session", {"day": "2026-11-12", "sport": "run", "option_key": "easy_45", "start_hour": 6})["isError"]
+    assert call("add_planned_session", {"day": "2026-11-12", "sport": "run", "option_key": "../x"})["isError"]
+    assert not call("remove_planned_session", {"plan_id": 9})["isError"] and SEEN_BODIES[-1][:2] == ("DELETE", "/api/planner/9")
+    assert not call("add_time_off", {"kind": "travel", "start": "2026-12-01", "end": "2026-12-05", "activity": "light"})["isError"]
+    assert call("add_time_off", {"kind": "vacation", "start": "2026-12-01", "severity": 7})["isError"]
+    assert not call("remove_time_off", {"entry_id": 2})["isError"]
+    opts = call("plan_options", {"day": "2026-11-12", "sport": "run", "custom": True, "distance_m": 8000, "effort": "easy"})
+    assert not opts["isError"] and ("GET", "/api/planner/options?day=2026-11-12&sport=run&distance_m=8000&effort=easy&custom=true") in SEEN
+    assert call("plan_options", {"day": "2026-11-12", "sport": "run", "custom": "yes"})["isError"]
+    # Nothing outside this list is reachable: no plan settings, credentials, sharing or Garmin.
+    for hidden in ("set_plan_settings", "garmin_push", "set_credentials", "share_reset"):
+        assert hidden not in TOOLS_ALL()
+
+
+def TOOLS_ALL():
+    return set(C.TOOLS)

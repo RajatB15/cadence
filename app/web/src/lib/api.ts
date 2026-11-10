@@ -214,7 +214,8 @@ export const api = {
   share: () => request<ShareStatus>("/api/share"),
   connector: () => request<ConnectorStatus>("/api/connector"),
   connectorSet: (enabled: boolean) => request<ConnectorStatus>("/api/connector", { method: "PUT", body: JSON.stringify({ enabled }) }),
-  connectorWrites: (enabled: boolean) => request<ConnectorStatus>("/api/connector/writes", { method: "PUT", body: JSON.stringify({ enabled }) }),
+  connectorWrites: ({ group, enabled }: { group: "log" | "plan"; enabled: boolean }) =>
+    request<ConnectorStatus>("/api/connector/writes", { method: "PUT", body: JSON.stringify({ group, enabled }) }),
   connectorCode: () => request<ConnectorStatus>("/api/connector/code", { method: "POST" }),
   connectorRevoke: (id: string) => request<ConnectorStatus>(`/api/connector/connections/${encodeURIComponent(id)}`, { method: "DELETE" }),
   shareStart: () => request<ShareStatus>("/api/share/start", { method: "POST" }),

@@ -970,6 +970,7 @@ export interface ConnectorStatus {
   code_expires_in_s: number | null;
   connections: { id: string; label: string; created_at: string; last_used_at: string | null }[];
   writes: boolean;
+  plan_writes: boolean;
   recent: { at: string; tool: string; summary: string; ok: boolean }[];
 }
 

@@ -14,6 +14,7 @@ import { DemoChip, ErrorBlock, LoadingBlock, PageSkeleton, PageHeader, Segmented
 import { Sparkline } from "../components/Sparkline";
 import { api } from "../lib/api";
 import { formatDate } from "../lib/format";
+import { parseTime } from "../lib/goals";
 import type { OutcomeMarker as Outcomes_Marker, Effect, Finding, GoalDistance, Insights, TrainingGoal, TrainingMode } from "../lib/types";
 import { C } from "../lib/theme";
 
@@ -373,11 +374,7 @@ const DISTANCES: { value: GoalDistance; label: string }[] = [
   { value: "5k", label: "5 km" }, { value: "10k", label: "10 km" }, { value: "half", label: "Half" }, { value: "marathon", label: "Marathon" },
 ];
 
-function parseTime(text: string): number | null {
-  const parts = text.trim().split(":").map(Number);
-  if (!text.trim() || parts.some((n) => !Number.isFinite(n) || n < 0) || parts.length < 2 || parts.length > 3) return null;
-  return parts.reduce((acc, n) => acc * 60 + n, 0);
-}
+const DISTANCE_M: Record<GoalDistance, number> = { "5k": 5000, "10k": 10000, half: 21097.5, marathon: 42195 };
 
 function GoalDialog({ current }: { current: TrainingGoal | null }) {
   const [open, setOpen] = useState(false);
@@ -394,7 +391,7 @@ function GoalDialog({ current }: { current: TrainingGoal | null }) {
     },
   });
   const today = new Date().toISOString().slice(0, 10);
-  const target = time.trim() ? parseTime(time) : null;
+  const target = time.trim() ? parseTime(time, DISTANCE_M[distance]) : null;
   const timeOk = !time.trim() || (target != null && target >= 600);
   const valid = date >= today && timeOk;
   const submit = (e: FormEvent) => {
@@ -445,7 +442,8 @@ function GoalDialog({ current }: { current: TrainingGoal | null }) {
                 aria-invalid={!timeOk}
                 className="num mt-2 w-full border-b-2 border-line-strong bg-transparent py-2 text-2xl text-paper outline-none focus:border-gold"
               />
-              {!timeOk && <p className="mt-2 text-xs text-coral">Use h:mm:ss or mm:ss.</p>}
+              {!timeOk && <p className="mt-2 text-xs text-coral">{target != null ? "That time is too short for this distance." : "Use h:mm:ss or mm:ss."}</p>}
+              {timeOk && target != null && <p className="mt-2 text-xs text-dim">Read as {raceTime(target)}{target >= 3600 ? " (hours:minutes:seconds)" : " (minutes:seconds)"}</p>}
               <p className="mt-2 text-xs text-dim">Without one, race-pace sessions use your predicted time.</p>
             </div>
             {save.isError && <p className="text-xs text-coral">Couldn't save. Try again.</p>}

@@ -327,7 +327,7 @@ function GoalForm({ edit, onDone }: { edit: GoalView | null; onDone: () => void 
   const today = new Date().toISOString().slice(0, 10);
 
   const distance = metres === "custom" ? Number(custom) * 1000 : metres;
-  const t = time.trim() ? parseTime(time) : null;
+  const t = time.trim() ? parseTime(time, distance, sport) : null;
   const timeOk = !time.trim() || (t != null && t >= 60);
   const speedNum = speed.trim() ? Number(speed) : null;
   const speedOk = speedNum == null || (Number.isFinite(speedNum) && speedNum > 0 && speedNum <= 100);
@@ -390,6 +390,7 @@ function GoalForm({ edit, onDone }: { edit: GoalView | null; onDone: () => void 
                 <label className="eyebrow" htmlFor="goal-time">Target time{kind === "race" ? " (optional)" : ""}</label>
                 <input id="goal-time" inputMode="numeric" placeholder="1:45:00" value={time} onChange={(e) => setTime(e.target.value)} aria-invalid={!timeOk} className={field} />
                 {!timeOk && <p className="mt-1 text-xs text-coral">Use h:mm:ss or mm:ss.</p>}
+                {timeOk && t != null && <p className="mt-1 text-xs text-dim">Read as {hms(t)}{t >= 3600 ? " (hours:minutes:seconds)" : " (minutes:seconds)"}</p>}
               </div>
               <div>
                 <label className="eyebrow" htmlFor="goal-speed">or average km/h</label>

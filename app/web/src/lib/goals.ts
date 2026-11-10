@@ -7,11 +7,20 @@ export function clockTime(seconds: number): string {
   return `${h ? `${h}:` : ""}${String(Math.floor((r % 3600) / 60)).padStart(h ? 2 : 1, "0")}:${String(r % 60).padStart(2, "0")}`;
 }
 
-/** "mm:ss" or "h:mm:ss" → seconds; null when it isn't a time. */
-export function parseTime(text: string): number | null {
+const FASTEST_M_PER_S: Record<string, number> = { run: 9, ride: 20, swim: 3 };
+
+/**
+ * "mm:ss", "h:mm:ss" or "h:mm" → seconds; null when it isn't a time. Two parts are ambiguous, so when the distance is known
+ * "3:45" for a marathon is read as 3 h 45 min (as 3 min 45 s it would be faster than anyone can run), while "25:00" for a 5 km
+ * stays 25 minutes. Without a distance two parts are mm:ss.
+ */
+export function parseTime(text: string, metres?: number, sport: string = "run"): number | null {
   const parts = text.trim().split(":").map(Number);
   if (!text.trim() || parts.some((n) => !Number.isFinite(n) || n < 0) || parts.length < 2 || parts.length > 3) return null;
-  return parts.reduce((acc, n) => acc * 60 + n, 0);
+  const minSec = parts.reduce((acc, n) => acc * 60 + n, 0);
+  if (parts.length === 3 || !metres || !(minSec > 0)) return minSec;
+  const fastest = FASTEST_M_PER_S[sport] ?? 9;
+  return metres / minSec > fastest ? parts[0] * 3600 + parts[1] * 60 : minSec;
 }
 
 export function distanceLabel(metres: number): string {

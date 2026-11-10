@@ -39,7 +39,7 @@ log = logging.getLogger(__name__)
 
 PATHS = ("/.well-known/oauth-protected-resource", "/.well-known/oauth-authorization-server", "/oauth/", "/mcp")
 ALLOWED_REDIRECTS = ("https://claude.ai/api/mcp/auth_callback", "https://claude.com/api/mcp/auth_callback")
-SESSIONS_KEY, ENABLED_KEY, WRITES_KEY, AUDIT_KEY = "connector_sessions", "connector_enabled", "connector_writes", "connector_audit"
+SESSIONS_KEY, ENABLED_KEY, WRITES_KEY, PLAN_WRITES_KEY, AUDIT_KEY = "connector_sessions", "connector_enabled", "connector_writes", "connector_plan_writes", "connector_audit"
 APPROVAL_TTL_S, CODE_TTL_S, ACCESS_TTL_S, REFRESH_TTL_S = 10 * 60, 5 * 60, 60 * 60, 90 * 86400
 MAX_SESSIONS = 10
 FAIL_FREE, FAIL_MAX_BLOCK_S = 3, 30 * 60
@@ -53,7 +53,8 @@ INSTRUCTIONS = (
     "Cadence is one person's private training and health coach, built on their Garmin data. Everything is read-only. "
     "Body-composition values are formula estimates, never measurements. Food calories are estimates with a range, and "
     "a day with nothing logged is missing data, not zero. Analytics state their sample size and uncertainty; repeat "
-    "that caution, make no medical or causal claims, and say so when a tool returns little or no data."
+    "that caution, make no medical or causal claims, and say so when a tool returns little or no data. Make changes only when the person "
+    "asked, say plainly what you are about to change first (day, distance, time, amounts), and report back what was saved."
 )
 
 _DAY = r"\d{4}-\d{2}-\d{2}"
@@ -85,35 +86,77 @@ TOOLS: dict[str, dict] = {
     "find_food": {"d": "Search the food library and the person's own dish names. Use it to get a dish_id before log_food.", "path": "/api/food/search",
                   "params": {"q": P("str", True, r".{1,100}"), "limit": P("int", rule=(1, 20))}},
     "saved_meals": {"d": "The person's saved meals (combinations they log together), with ids for log_saved_meal.", "path": "/api/food/meals"},
-    "plan": {"d": "The planned sessions coming up.", "path": "/api/planner"},
+    "plan": {"d": "The planned sessions coming up (with their ids).", "path": "/api/planner"},
+    "plan_options": {"d": ("The options for a session on a day (run, ride, swim or strength), each with an option_key for add_planned_session. "
+                           "Optionally shape a custom run/ride/swim with distance_m or minutes, and effort."), "path": "/api/planner/options",
+                     "params": {"day": _day(True), "sport": P("enum", True, ("run", "ride", "swim", "strength")), "start_hour": P("int", rule=(0, 23)),
+                                "strength_text": P("str", rule=r".{1,4000}"), "distance_m": P("num", rule=(1, 400_000)), "minutes": P("num", rule=(1, 600)),
+                                "effort": P("enum", rule=("easy", "moderate", "hard")), "custom": P("bool")}},
     "goals": {"d": "Goals (races, distances, weight) and whether each looks feasible.", "path": "/api/goals"},
     "time_off": {"d": "Travel, illness, injury and holiday periods and how the plan eases around them.", "path": "/api/time-off"},
     "score": {"d": "The overall fitness score and the biggest gaps.", "path": "/api/score"},
     "outcomes": {"d": "The last 12 weeks compared with the 12 before.", "path": "/api/outcomes"},
     "metric": {"d": "History of one metric (for example resting_hr, hrv, vo2max, sleep_hours).", "path": "/api/metrics/{metric}", "params": {"metric": P("str", True, r"[a-z0-9_]{1,40}", "path")}},
     # --- writes
-    "log_saved_meal": {"write": True, "method": "POST", "path": "/api/food/meals/{meal_id}/log",
+    "log_saved_meal": {"write": "log", "method": "POST", "path": "/api/food/meals/{meal_id}/log",
                        "d": "Log one of the person's saved meals (ids from saved_meals). Call once per meal; it adds entries. Day defaults to today.",
                        "params": {"meal_id": P("int", True, (1, 10**9), "path"), "meal": P("enum", True, MEALS, "body"), "day": _day(where="body", today=True),
                                   "scale": P("num", rule=(0.1, 10), where="body")}},
-    "log_food": {"write": True, "method": "POST", "path": "/api/food/log",
+    "log_food": {"write": "log", "method": "POST", "path": "/api/food/log",
                  "d": ("Log food eaten, as one meal. Each item is either a library dish ({dish_id, servings or grams}) found with find_food, or a one-off "
                        "({name, kcal, protein_g?, carbs_g?, fat_g?}) when it isn't in the library; say that kcal is an estimate. Call once per meal; it adds entries. "
                        "Day defaults to today."),
                  "params": {"meal": P("enum", True, MEALS, "body"), "items": P("items", True, None, "body"), "day": _day(where="body", today=True)}},
-    "remove_food_entry": {"write": True, "destructive": True, "method": "DELETE", "path": "/api/food/entries/{entry_id}",
+    "remove_food_entry": {"write": "log", "destructive": True, "method": "DELETE", "path": "/api/food/entries/{entry_id}",
                           "d": "Remove one food entry by id (from food or log_food results). It can be restored in the app for a week.",
                           "params": {"entry_id": P("int", True, (1, 10**9), "path")}},
-    "log_weight": {"write": True, "method": "POST", "path": "/api/weight/entries",
+    "log_weight": {"write": "log", "method": "POST", "path": "/api/weight/entries",
                    "d": "Record a weigh-in in kg (one per day; a new one replaces that day's). Day defaults to today.",
                    "params": {"weight_kg": P("num", True, (25, 400), "body"), "day": _day(where="body", today=True)}},
-    "log_check_in": {"write": True, "method": "PUT", "path": "/api/wellbeing/{day}",
+    "log_check_in": {"write": "log", "method": "PUT", "path": "/api/wellbeing/{day}",
                      "d": ("Save today's self-report; give at least one field. feel 1 (rough) to 5 (great); soreness and pain_level 0 (none) to 3 (a lot); "
                            "illness 0 (none) to 2 (ill); life_stress 1 (low) to 3 (high). A check-in only ever pulls the plan towards less."),
                      "params": {"day": _day(where="path", today=True), "feel": P("int", rule=(1, 5), where="body"), "soreness": P("int", rule=(0, 3), where="body"),
                                 "pain_level": P("int", rule=(0, 3), where="body"), "pain_area": P("str", rule=r".{1,40}", where="body"),
                                 "illness": P("int", rule=(0, 2), where="body"), "life_stress": P("int", rule=(1, 3), where="body"),
                                 "note": P("str", rule=r".{1,200}", where="body")}},
+    # --- plan and goals (their own switch)
+    "add_planned_session": {"write": "plan", "method": "POST", "path": "/api/planner",
+                            "d": ("Put a session on the plan, using an option_key from plan_options for the same day, sport and start_hour. Only when the person asked; "
+                                  "say what day and session it is first."),
+                            "params": {"day": _day(True, "body"), "sport": P("enum", True, ("run", "ride", "swim", "strength"), "body"), "option_key": P("str", True, r"[A-Za-z0-9_.:-]{1,48}", "body"),
+                                       "start_hour": P("int", rule=(0, 23), where="body"), "strength_text": P("str", rule=r".{1,4000}", where="body")}},
+    "remove_planned_session": {"write": "plan", "destructive": True, "method": "DELETE", "path": "/api/planner/{plan_id}",
+                               "d": "Take a planned session off the plan by id (from plan); if it was sent to the watch it is removed there too.",
+                               "params": {"plan_id": P("int", True, (1, 10**9), "path")}},
+    "set_race_goal": {"write": "plan", "method": "PUT", "path": "/api/settings/goal",
+                      "d": ("Set the race the weekly plan counts back from: 5k, 10k, half or marathon on a future date, with an optional target time in seconds. "
+                            "Replaces the current race goal. Only when the person asked; confirm distance and date first."),
+                      "params": {"distance": P("enum", True, ("5k", "10k", "half", "marathon"), "body"), "date": _day(True, "body"), "target_s": P("int", rule=(600, 8 * 3600), where="body")}},
+    "clear_race_goal": {"write": "plan", "destructive": True, "method": "PUT", "path": "/api/settings/goal",
+                        "d": "Clear the race goal the plan counts back from; the plan falls back to general fitness.", "params": {}},
+    "create_goal": {"write": "plan", "method": "POST", "path": "/api/goals",
+                    "d": ("Add a goal: a race (needs a date), a target performance (needs a target time or speed), a single-session distance, or a weight target. "
+                          "Run, ride and swim distances are in metres (marathon 42195). The nearest standard-distance run race also drives the weekly plan."),
+                    "params": {"kind": P("enum", True, ("race", "performance", "distance", "weight"), "body"), "sport": P("enum", rule=("run", "ride", "swim"), where="body"),
+                               "title": P("str", rule=r".{1,120}", where="body"), "date": _day(where="body"), "distance_m": P("num", rule=(1, 2_000_000), where="body"),
+                               "label": P("str", rule=r".{1,40}", where="body"), "target_s": P("int", rule=(60, 72 * 3600), where="body"),
+                               "speed_kmh": P("num", rule=(0.1, 100), where="body"), "target_kg": P("num", rule=(30, 300), where="body")}},
+    "update_goal": {"write": "plan", "method": "PATCH", "path": "/api/goals/{goal_id}",
+                    "d": "Change a goal (ids from goals), or mark it achieved or dropped with status. Give at least one field.",
+                    "params": {"goal_id": P("int", True, (1, 10**9), "path"), "title": P("str", rule=r".{1,120}", where="body"), "date": _day(where="body"),
+                               "distance_m": P("num", rule=(1, 2_000_000), where="body"), "label": P("str", rule=r".{1,40}", where="body"),
+                               "target_s": P("int", rule=(60, 72 * 3600), where="body"), "speed_kmh": P("num", rule=(0.1, 100), where="body"),
+                               "target_kg": P("num", rule=(30, 300), where="body"), "status": P("enum", rule=("active", "achieved", "dropped"), where="body")}},
+    "add_time_off": {"write": "plan", "method": "POST", "path": "/api/time-off",
+                     "d": ("Record travel, a holiday, illness or injury so the plan eases around it and never counts it as a miss. end may be left out while it is ongoing. "
+                           "severity 1 (mild) to 3 (serious) for illness and injury."),
+                     "params": {"kind": P("enum", True, ("travel", "vacation", "sick", "injury"), "body"), "start": _day(True, "body"), "end": _day(where="body"),
+                                "activity": P("enum", rule=("none", "light", "full"), where="body"), "severity": P("int", rule=(1, 3), where="body"),
+                                "return_weeks": P("int", rule=(0, 8), where="body"), "return_start_pct": P("int", rule=(20, 100), where="body"),
+                                "note": P("str", rule=r".{1,200}", where="body")}},
+    "remove_time_off": {"write": "plan", "destructive": True, "method": "DELETE", "path": "/api/time-off/{entry_id}",
+                        "d": "Remove a time-off period by id (from time_off).", "params": {"entry_id": P("int", True, (1, 10**9), "path")}},
 }
 
 
@@ -122,7 +165,7 @@ def _tool_schema(name: str) -> dict:
     props, required = {}, []
     for pname, spec in (tool.get("params") or {}).items():
         kind, rule = spec["kind"], spec["rule"]
-        out: dict = {"type": {"int": "integer", "num": "number", "items": "array"}.get(kind, "string")}
+        out: dict = {"type": {"int": "integer", "num": "number", "items": "array", "bool": "boolean"}.get(kind, "string")}
         if kind in ("int", "num"):
             out.update(minimum=rule[0], maximum=rule[1])
         elif kind == "enum":
@@ -178,11 +221,12 @@ class ConnectorAuth:
         if not on:
             self.revoke_all()
 
-    def writes_enabled(self) -> bool:
-        return self.enabled() and self._load(WRITES_KEY) == "1"
+    def writes_enabled(self, group: str = "log") -> bool:
+        """Two separate switches, both off by default: "log" (food, weight, check-ins) and "plan" (plan, goals, time off)."""
+        return self.enabled() and self._load(PLAN_WRITES_KEY if group == "plan" else WRITES_KEY) == "1"
 
-    def set_writes(self, on: bool) -> None:
-        self._save(WRITES_KEY, "1" if on else None)
+    def set_writes(self, on: bool, group: str = "log") -> None:
+        self._save(PLAN_WRITES_KEY if group == "plan" else WRITES_KEY, "1" if on else None)
 
     def audit(self, tool: str, summary: str, ok: bool) -> None:
         """The last 30 things Claude changed (tool, a plain summary, when). Never the content of what it read."""
@@ -338,6 +382,7 @@ class ConnectorAuth:
             self._access.clear()
             self._approval = None
             self._save(WRITES_KEY, None)
+            self._save(PLAN_WRITES_KEY, None)
 
 
 async def _form(request: Request) -> dict[str, str]:
@@ -502,8 +547,7 @@ class Connector:
         if method == "ping":
             return ok({})
         if method == "tools/list":
-            writes = self.auth.writes_enabled()
-            return ok({"tools": [_tool_schema(n) for n, t in TOOLS.items() if writes or not t.get("write")]})
+            return ok({"tools": [_tool_schema(n) for n, t in TOOLS.items() if not t.get("write") or self.auth.writes_enabled(t["write"])]})
         if method == "tools/call":
             name = params.get("name")
             if name not in TOOLS:
@@ -533,6 +577,9 @@ class Connector:
                 ok = isinstance(value, (int, float)) and not isinstance(value, bool) and (kind == "num" or isinstance(value, int))
                 if not ok or not rule[0] <= value <= rule[1]:
                     return f"{pname} must be a {'whole ' if kind == 'int' else ''}number from {rule[0]} to {rule[1]}"
+            elif kind == "bool":
+                if not isinstance(value, bool):
+                    return f"{pname} must be true or false"
             elif kind == "enum":
                 if value not in rule:
                     return f"{pname} must be one of: {', '.join(rule)}"
@@ -543,9 +590,9 @@ class Connector:
                 value = clean
             elif not isinstance(value, str) or not re.fullmatch(rule, value, re.S):
                 return f"{pname} is not in the expected format"
-            {"path": path_vals, "query": query, "body": body}[spec["where"]][pname] = value
-        if TOOLS[name].get("write") and name == "log_check_in" and not body:
-            return "Give at least one of feel, soreness, pain_level, pain_area, illness, life_stress or note"
+            {"path": path_vals, "query": query, "body": body}[spec["where"]][pname] = str(value).lower() if isinstance(value, bool) else value
+        if name in ("log_check_in", "update_goal") and not body:
+            return "Give at least one field to change" if name == "update_goal" else "Give at least one of feel, soreness, pain_level, pain_area, illness, life_stress or note"
         return path_vals, query, body
 
     @staticmethod
@@ -572,6 +619,11 @@ class Connector:
             return f"Logged a saved meal for {args.get('meal', 'a meal')}"
         if name == "remove_food_entry":
             return "Removed a food entry"
+        plan_text = {"add_planned_session": "Added a session to the plan", "remove_planned_session": "Removed a planned session", "set_race_goal": "Set the race goal",
+                     "clear_race_goal": "Cleared the race goal", "create_goal": "Added a goal", "update_goal": "Changed a goal", "add_time_off": "Added time off",
+                     "remove_time_off": "Removed time off"}
+        if name in plan_text:
+            return plan_text[name]
         if name == "log_weight":
             return "Recorded a weight"
         return "Saved a check-in"
@@ -579,14 +631,15 @@ class Connector:
     async def _call(self, name: str, args: dict) -> dict:
         tool = TOOLS[name]
         write = bool(tool.get("write"))
-        if write and not self.auth.writes_enabled():
-            return _result("Writing is switched off in Cadence. The person can turn on \"Let Claude log things\" in Cadence → Settings → Claude.", True)
+        if write and not self.auth.writes_enabled(tool["write"]):
+            switch = "Let Claude change plan and goals" if tool["write"] == "plan" else "Let Claude log things"
+            return _result(f"That isn't switched on in Cadence. The person can turn on \"{switch}\" in Cadence → Settings → Claude.", True)
         checked = self._validate(name, args)
         if isinstance(checked, str):
             return _result(checked, True)
         path_vals, query, body = checked
         method = tool.get("method", "GET")
-        kwargs: dict = {"params": query} if method == "GET" else {"json": body} if method != "DELETE" else {}
+        kwargs: dict = {"params": query} if method == "GET" else {} if method == "DELETE" else {"json": body}
         try:
             async with httpx.AsyncClient(transport=httpx.ASGITransport(app=self.api), base_url="http://127.0.0.1", timeout=30) as client:
                 response = await client.request(method, tool["path"].format(**path_vals), headers={"X-Cadence-Request": "1"}, **kwargs)
@@ -595,7 +648,7 @@ class Connector:
                 self.auth.audit(name, self._summary(name, args), False)
             return _result("Cadence couldn't be reached just now.", True)
         if write:
-            self.auth.audit(name, self._summary(name, args), response.status_code == 200)
+            self.auth.audit(name, self._summary(name, args), 200 <= response.status_code < 300)
         if response.status_code == 404:
             return _result("Nothing found for that request.", True)
         if response.status_code in (400, 422):
@@ -604,7 +657,7 @@ class Connector:
             except ValueError:
                 detail = None
             return _result(f"Cadence didn't accept that: {detail if isinstance(detail, str) else 'check the values'}", True)
-        if response.status_code != 200:
+        if not 200 <= response.status_code < 300:
             return _result(f"Cadence answered with an error ({response.status_code}).", True)
         try:
             text = json.dumps(response.json(), separators=(",", ":"), ensure_ascii=False)
