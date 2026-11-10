@@ -17,7 +17,8 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from cadence_app import food_names, energy_store, focus_store, food_label, garmin_connect, garmin_workout, backup, days, events, food_crawl, foodlog, food_quick, goal_store, journal, ocr, phases, planner_store, profile as profile_store, push, reading, reading_book, reading_feed, strength, timeoff_store, weather, weightlog, wellbeing_store
+from cadence_app import gym_store, food_names, energy_store, focus_store, food_label, garmin_connect, garmin_workout, backup, days, events, food_crawl, foodlog, food_quick, goal_store, journal, ocr, phases, planner_store, profile as profile_store, push, reading, reading_book, reading_feed, strength, timeoff_store, weather, weightlog, wellbeing_store
+from cadence_app.analytics import gym as G
 from cadence_app.analytics import foodrank as foodrank_analytics
 from cadence_app.analytics import accuracy as accuracy_analytics
 from cadence_app.analytics import banister as banister_analytics
@@ -207,6 +208,75 @@ class CalorieSettingsRequest(BaseModel):
 
 class TrainingModeRequest(BaseModel):
     mode: Literal["auto", "build", "maintain"]
+
+
+class GymSessionRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=80)
+    setting: Literal["gym", "home"] = "gym"
+    format: Literal["straight", "circuit", "hybrid", "hyrox", "custom"] = "custom"
+    steps: list[dict] = Field(min_length=1, max_length=200)
+    notes: str | None = Field(default=None, max_length=2000)
+
+
+class GymSessionPatch(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=80)
+    setting: Literal["gym", "home"] | None = None
+    format: Literal["straight", "circuit", "hybrid", "hyrox", "custom"] | None = None
+    steps: list[dict] | None = Field(default=None, min_length=1, max_length=200)
+    notes: str | None = Field(default=None, max_length=2000)
+
+
+class GymGenerateRequest(BaseModel):
+    template: str = Field(max_length=24)
+    setting: Literal["gym", "home"] = "gym"
+    minutes: int = Field(default=45, ge=10, le=120)
+    level: Literal["beginner", "intermediate", "advanced"] = "intermediate"
+    goal: Literal["general", "strength", "muscle", "endurance"] = "general"
+    seed: int = Field(default=1, ge=1, le=100000)
+    name: str | None = Field(default=None, max_length=80)
+
+
+class GymAlternativesRequest(BaseModel):
+    exercise: str = Field(max_length=60)
+    direction: Literal["easier", "harder", "different"]
+    setting: Literal["gym", "home"] = "gym"
+    exclude: list[str] = Field(default_factory=list, max_length=60)
+
+
+class GymSwapRequest(BaseModel):
+    steps: list[dict] = Field(min_length=1, max_length=200)
+    path: list[int] = Field(min_length=1, max_length=4)
+    exercise: str = Field(max_length=60)
+    setting: Literal["gym", "home"] = "gym"
+
+
+class GymPreviewRequest(BaseModel):
+    steps: list[dict] = Field(min_length=1, max_length=200)
+
+
+class GymConvertRequest(BaseModel):
+    steps: list[dict] = Field(min_length=1, max_length=200)
+    setting: Literal["gym", "home"]
+
+
+class GymSessionSwap(BaseModel):
+    path: list[int] = Field(min_length=1, max_length=4)
+    exercise: str | None = Field(default=None, max_length=60)
+    direction: Literal["easier", "harder", "different"] | None = None
+
+
+class GymSessionSetting(BaseModel):
+    setting: Literal["gym", "home"]
+
+
+class GymPlanRequest(BaseModel):
+    day: RaceDate
+    start_hour: int | None = Field(default=None, ge=0, le=23)
+
+
+class GymSettingsRequest(BaseModel):
+    home_equipment: list[str] | None = Field(default=None, max_length=30)
+    default_setting: Literal["gym", "home"] | None = None
 
 
 class ConnectorWrites(BaseModel):
@@ -1156,6 +1226,178 @@ def create_app(
             "projection": session_planner.projection(ctx) if ctx else None,
             "model": {k: model[k] for k in ("n", "r2", "counts")} if model else None,
         }
+
+    # ---- gym planner: exercise library, sessions of exercises and runs, swaps, gym vs home ----
+
+    def _gym(call: Callable):
+        try:
+            return call()
+        except G.GymError as exc:
+            raise HTTPException(400, str(exc)) from None
+
+    @app.get("/api/gym/library")
+    def gym_library(q: str = Query("", max_length=80), pattern: str | None = Query(None, max_length=16), setting: Literal["gym", "home"] | None = None,
+                    level: int | None = Query(None, ge=1, le=5), tag: str | None = Query(None, max_length=16), limit: int = Query(40, ge=1, le=200),
+                    session: Session = Depends(get_session)) -> dict:
+        own = gym_store.owned(session, setting) if setting else None
+        found = G.search(q, pattern, own, level, tag, limit)
+        return {"exercises": found, "count": len(found), "patterns": list(exercises.PATTERNS), "equipment": G.equipment_names(), "total": len(G.library()["exercises"])}
+
+    @app.get("/api/gym/exercises/{ex_id}")
+    def gym_exercise(ex_id: str, setting: Literal["gym", "home"] | None = None, session: Session = Depends(get_session)) -> dict:
+        ex = G.exercise(ex_id)
+        if ex is None:
+            raise HTTPException(404, "No such exercise")
+        return G.public(ex, gym_store.owned(session, setting) if setting else None)
+
+    @app.get("/api/gym/templates")
+    def gym_templates() -> dict:
+        return {"templates": G.templates(), "levels": list(G.LEVELS), "goals": list(G.GOALS)}
+
+    @app.get("/api/settings/gym")
+    def gym_settings_view(session: Session = Depends(get_session)) -> dict:
+        return gym_store.settings(session)
+
+    @app.put("/api/settings/gym")
+    def gym_settings_set(body: GymSettingsRequest, session: Session = Depends(get_session)) -> dict:
+        return _gym(lambda: gym_store.set_settings(session, body.home_equipment, body.default_setting))
+
+    def _generated(body: GymGenerateRequest, session: Session) -> dict:
+        built = G.build(body.template, body.setting, gym_store.owned(session, body.setting), body.minutes, body.level, body.goal, body.seed)
+        if body.name:
+            built["name"] = body.name.strip()[:80] or built["name"]
+        return {**built, "minutes": G.estimate_minutes(built["steps"]), "outline": G.outline(built["steps"])}
+
+    @app.post("/api/gym/generate")
+    def gym_generate(body: GymGenerateRequest, session: Session = Depends(get_session)) -> dict:
+        """A suggested session; nothing is saved."""
+        return _gym(lambda: _generated(body, session))
+
+    @app.post("/api/gym/alternatives")
+    def gym_alternatives(body: GymAlternativesRequest, session: Session = Depends(get_session)) -> dict:
+        """Easier, harder or different exercises for the setting; nothing changes until you pick one."""
+        return _gym(lambda: {"exercise": body.exercise, "direction": body.direction,
+                             "alternatives": G.alternatives(body.exercise, body.direction, gym_store.owned(session, body.setting), set(body.exclude))})
+
+    @app.post("/api/gym/swap")
+    def gym_swap(body: GymSwapRequest, session: Session = Depends(get_session)) -> dict:
+        return _gym(lambda: {"steps": G.swap_step(G.normalize(body.steps), body.path, body.exercise, gym_store.owned(session, body.setting))})
+
+    @app.post("/api/gym/preview")
+    def gym_preview(body: GymPreviewRequest) -> dict:
+        """The steps cleaned up (defaults filled, numbers checked) with the time estimate and outline, for the editor while you work; nothing is saved."""
+        def run() -> dict:
+            steps = G.normalize(body.steps)
+            return {"steps": steps, "minutes": G.estimate_minutes(steps), "outline": G.outline(steps), "patterns": sorted({G.exercise(i)["pattern"] for i in G.exercise_ids(steps)})}
+
+        return _gym(run)
+
+    @app.post("/api/gym/convert")
+    def gym_convert(body: GymConvertRequest, session: Session = Depends(get_session)) -> dict:
+        def run() -> dict:
+            steps, changes = G.convert_setting(G.normalize(body.steps), gym_store.owned(session, body.setting))
+            return {"steps": steps, "changes": changes}
+
+        return _gym(run)
+
+    @app.get("/api/gym/sessions")
+    def gym_sessions(session: Session = Depends(get_session)) -> dict:
+        return {"sessions": gym_store.listing(session)}
+
+    @app.get("/api/gym/sessions/{gid}")
+    def gym_session_get(gid: int, session: Session = Depends(get_session)) -> dict:
+        out = gym_store.get(session, gid)
+        if out is None:
+            raise HTTPException(404, "No such session")
+        return out
+
+    @app.post("/api/gym/sessions", status_code=201)
+    def gym_session_create(body: GymSessionRequest, session: Session = Depends(get_session)) -> dict:
+        return _gym(lambda: gym_store.create(session, body.name, body.setting, body.format, body.steps, body.notes, clock.now()))
+
+    @app.post("/api/gym/sessions/build", status_code=201)
+    def gym_session_build(body: GymGenerateRequest, session: Session = Depends(get_session)) -> dict:
+        """Generate a session from a template and save it in one step."""
+        def run() -> dict:
+            built = _generated(body, session)
+            out = gym_store.create(session, built["name"], built["setting"], built["format"], built["steps"], "\n".join(built["notes"]) or None, clock.now())
+            return {**out, "generator_notes": built["notes"]}
+
+        return _gym(run)
+
+    @app.put("/api/gym/sessions/{gid}")
+    def gym_session_update(gid: int, body: GymSessionPatch, session: Session = Depends(get_session)) -> dict:
+        out = _gym(lambda: gym_store.update(session, gid, body.model_dump(exclude_unset=True), clock.now()))
+        if out is None:
+            raise HTTPException(404, "No such session")
+        return out
+
+    @app.delete("/api/gym/sessions/{gid}")
+    def gym_session_delete(gid: int, session: Session = Depends(get_session)) -> dict:
+        if not gym_store.delete(session, gid):
+            raise HTTPException(404, "No such session")
+        return {"deleted": gid}
+
+    def _session_exercise(gid: int, path: list[int], session: Session) -> tuple[dict, dict]:
+        current = gym_store.get(session, gid)
+        if current is None:
+            raise HTTPException(404, "No such session")
+        step = _gym(lambda: G.step_at(current["steps"], path))
+        if step.get("type") != "exercise" or "exercise" not in step:
+            raise HTTPException(400, "That step has no library exercise to swap")
+        return current, step
+
+    @app.get("/api/gym/sessions/{gid}/alternatives")
+    def gym_session_alternatives(gid: int, path: str = Query(max_length=20), direction: Literal["easier", "harder", "different"] = "different",
+                                 session: Session = Depends(get_session)) -> dict:
+        """Replacement options for the exercise at `path` (indexes joined by dots, like 1.0), within the session's setting."""
+        idx = _gym(lambda: [int(p) for p in path.split(".")])
+        current, step = _session_exercise(gid, idx, session)
+        inside = set(G.exercise_ids(current["steps"]))
+        return _gym(lambda: {"exercise": step["exercise"], "direction": direction,
+                             "alternatives": G.alternatives(step["exercise"], direction, gym_store.owned(session, current["setting"]), inside)})
+
+    @app.post("/api/gym/sessions/{gid}/swap")
+    def gym_session_swap(gid: int, body: GymSessionSwap, session: Session = Depends(get_session)) -> dict:
+        """Replace one exercise: by an exercise id, or by the best easier/harder/different option."""
+        current, step = _session_exercise(gid, body.path, session)
+        if (body.exercise is None) == (body.direction is None):
+            raise HTTPException(400, "Give either an exercise or a direction")
+        own = gym_store.owned(session, current["setting"])
+        chosen = body.exercise
+        if chosen is None:
+            options = _gym(lambda: G.alternatives(step["exercise"], body.direction, own, set(G.exercise_ids(current["steps"])), 1))
+            if not options:
+                raise HTTPException(400, f"Nothing {body.direction} is available for this setting")
+            chosen = options[0]["id"]
+        new_steps = _gym(lambda: G.swap_step(current["steps"], body.path, chosen, own))
+        out = gym_store.update(session, gid, {"steps": new_steps}, clock.now())
+        return {**out, "swapped": {"from": G.exercise(step["exercise"])["name"], "to": G.exercise(chosen)["name"]}}
+
+    @app.post("/api/gym/sessions/{gid}/setting")
+    def gym_session_setting(gid: int, body: GymSessionSetting, session: Session = Depends(get_session)) -> dict:
+        """Switch a session between gym and home; exercises that need missing equipment are swapped for the closest ones and listed."""
+        current = gym_store.get(session, gid)
+        if current is None:
+            raise HTTPException(404, "No such session")
+        steps, changes = _gym(lambda: G.convert_setting(current["steps"], gym_store.owned(session, body.setting)))
+        out = gym_store.update(session, gid, {"steps": steps, "setting": body.setting}, clock.now())
+        return {**out, "changes": changes}
+
+    @app.post("/api/gym/sessions/{gid}/plan", status_code=201)
+    def gym_session_plan(gid: int, body: GymPlanRequest, session: Session = Depends(get_session)) -> dict:
+        """Put a snapshot of the session on a day in the plan (an ordinary planned strength session)."""
+        _planning_day(body.day)
+        current = gym_store.get(session, gid)
+        if current is None:
+            raise HTTPException(404, "No such session")
+        ctx = insights_service.context(session, _active_source(session), clock.today())
+        predicted: dict = {}
+        if ctx is not None:
+            text = G.to_text(current["name"], current["steps"])
+            options = _plan_options(session, ctx, body.day, "strength", text, body.start_hour, None)
+            predicted = (options[0].get("predicted") if options else None) or {}
+        return gym_store.plan(session, gid, body.day, body.start_hour, predicted, clock.now())
 
     @app.get("/api/planner/options")
     def planner_options(

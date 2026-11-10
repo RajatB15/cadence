@@ -34,6 +34,7 @@ export function PlanPage() {
   return (
     <>
       <PageHeader eyebrow="Next 7 days" title={<>Plan your <em className="text-gold">week.</em></>}>
+        <Link to="/gym" className="pop pop-ghost">Gym sessions</Link>
         <Link to="/goals" className="pop pop-ghost">Goals</Link>
         <Link to="/lab?tab=accuracy" className="pop pop-ghost">How accurate?</Link>
       </PageHeader>

@@ -197,6 +197,21 @@ class PlannedSession(Base):
     garmin_schedule_id: Mapped[int | None] = mapped_column(BigInteger)
 
 
+class GymSession(Base):
+    """A saved gym session: an ordered, nestable list of steps (JSON) built from the exercise library or by hand."""
+
+    __tablename__ = "gym_sessions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(80))
+    setting: Mapped[str] = mapped_column(String(8), default="gym")  # gym | home
+    format: Mapped[str] = mapped_column(String(16), default="straight")  # straight | circuit | hybrid | hyrox | custom
+    steps: Mapped[str] = mapped_column(Text)  # JSON, validated by analytics.gym.normalize
+    notes: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime)
+    updated_at: Mapped[datetime] = mapped_column(DateTime)
+
+
 class WeatherHour(Base):
     """Hourly conditions from Open-Meteo for a rounded location (0.1°, ~10 km); UTC hour."""
 

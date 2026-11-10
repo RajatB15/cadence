@@ -24,6 +24,7 @@ const EventsPage = page(() => import("./pages/Events"), "EventsPage");
 const EventPage = page(() => import("./pages/Events"), "EventPage");
 const FoodPage = page(() => import("./pages/Food"), "FoodPage");
 const ReadingPage = page(() => import("./pages/Reading"), "ReadingPage");
+const GymPage = page(() => import("./pages/Gym"), "GymPage");
 const FoodCrawlPage = page(() => import("./pages/FoodCrawl"), "FoodCrawlPage");
 const GoalsPage = page(() => import("./pages/Goals"), "GoalsPage");
 const PlanPage = page(() => import("./pages/Plan"), "PlanPage");
@@ -73,6 +74,7 @@ export function App() {
             <Route path="plan" element={wrap(<PlanPage />, 640)} />
             <Route path="food" element={wrap(<FoodPage />, 640)} />
             <Route path="reading" element={wrap(<ReadingPage />)} />
+            <Route path="gym" element={wrap(<GymPage />)} />
             <Route path="food/library" element={wrap(<FoodCrawlPage />)} />
             <Route path="goals" element={wrap(<GoalsPage />)} />
             <Route path="lab" element={wrap(<LabPage />, 640)} />
