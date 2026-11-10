@@ -20,7 +20,7 @@ def as_dict(p: PlannedSession) -> dict:
     predicted = json.loads(p.predicted)
     out = {"id": p.id, "day": p.day, "sport": p.sport, "kind": p.kind, "option_key": p.option_key, "title": p.title, "detail": p.detail,
            "minutes": p.minutes, "start_hour": p.start_hour, "predicted": predicted, "predicted_load": predicted.get("load"), "heavy_lower": False, "blocks": [],
-           "steps": predicted.get("steps"), "garmin": {"workout_id": p.garmin_workout_id, "schedule_id": p.garmin_schedule_id} if p.garmin_workout_id else None}
+           "steps": predicted.get("steps"), "gym": bool(predicted.get("gym") or predicted.get("gym_session_id")), "garmin": {"workout_id": p.garmin_workout_id, "schedule_id": p.garmin_schedule_id} if p.garmin_workout_id else None}
     if p.strength_text:
         blocks = X.parse(p.strength_text)
         out.update(blocks=blocks, heavy_lower=X.summary(blocks)["heavy_lower"])

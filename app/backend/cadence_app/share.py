@@ -70,6 +70,8 @@ PHONE_WRITES: tuple[tuple[str, re.Pattern[str]], ...] = tuple(
         ("DELETE", rf"/api/gym/sessions/{_SEG}"),
         ("POST", rf"/api/gym/sessions/{_SEG}/(swap|setting|plan)"),
         ("PUT", r"/api/settings/gym"),
+        ("POST", r"/api/gym/workouts"),
+        ("DELETE", rf"/api/gym/workouts/{_SEG}"),
         ("POST", r"/api/reading/book/read"),
         ("PUT", r"/api/reading/book/position"),
         ("POST", r"/api/phases"),

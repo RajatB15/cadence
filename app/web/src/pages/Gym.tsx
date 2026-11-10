@@ -1,8 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { clsx } from "clsx";
 import { Dumbbell, Home, Plus, Search, Shuffle } from "lucide-react";
-import { useDeferredValue, useState } from "react";
-import { Link } from "react-router-dom";
+import { useDeferredValue, useEffect, useState } from "react";
+import { Link, useSearchParams } from "react-router-dom";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { ExerciseGuide } from "../components/gym/ExerciseGuide";
 import { SessionEditor } from "../components/gym/SessionEditor";
@@ -26,6 +26,15 @@ export function GymPage() {
   const [asking, setAsking] = useState(false);
   const [failed, setFailed] = useState<string | null>(null);
   const refresh = () => client.invalidateQueries({ queryKey: ["gym", "sessions"] });
+  // /gym?session=ID opens that session in the editor (the plan view links here).
+  const [params, setParams] = useSearchParams();
+  const wanted = Number(params.get("session"));
+  useEffect(() => {
+    if (!wanted || !sessions.data) return;
+    const s = sessions.data.sessions.find((x) => x.id === wanted);
+    if (s) setDraft(fromSession(s));
+    setParams({}, { replace: true });
+  }, [wanted, sessions.data]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const save = useMutation({
     mutationFn: (d: GymDraft) => (d.id ? api.gymUpdate(d.id, { name: d.name.trim(), setting: d.setting, format: d.format, steps: d.steps, notes: d.notes }) : api.gymCreate({ name: d.name.trim(), setting: d.setting, format: d.format, steps: d.steps, notes: d.notes })),
@@ -35,7 +44,7 @@ export function GymPage() {
   const plan = useMutation({
     mutationFn: async ({ d, day, hour }: { d: GymDraft; day: string; hour: number | null }) => {
       const saved = await save.mutateAsync(d);
-      return api.gymPlan(saved.id, { day, start_hour: hour });
+      return api.gymSchedule(saved.id, { day, start_hour: hour });
     },
     onSuccess: (p) => { setPlanned(p.day); client.invalidateQueries({ queryKey: ["planner"] }); client.invalidateQueries({ queryKey: ["insights"] }); },
     onError: (e: Error) => setFailed(e.message || "Couldn’t add it to the plan."),

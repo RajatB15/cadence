@@ -644,3 +644,35 @@ def _run_lift(rng: random.Random, owned: set[str], lo: int, hi: int, minutes: in
         lift["rest_s"] = 0
         steps.append({"type": "group", "title": f"Round {i + 1}", "rounds": 1, "steps": [{"type": "exercise", "exercise": "run", "sets": 1, "distance_m": 800}, lift]})
     return steps
+
+
+# --------------------------------------------------------------------- what next time?
+def parse_kg(load: object) -> float | None:
+    """A number of kilograms from text like '40', '40 kg', '42.5kg'; None for bodyweight, bands or anything else."""
+    m = re.fullmatch(r"\s*(\d+(?:[.,]\d+)?)\s*(kg|kgs)?\s*", str(load or "").lower())
+    return float(m.group(1).replace(",", ".")) if m else None
+
+
+def progression_hint(ex_id: str | None, sets: list[dict]) -> dict | None:
+    """A small, transparent suggestion for next time from how the last session went (double progression, as in ACSM's progression models:
+    first earn the reps at a load, then raise the load a little). It is a suggestion, never a prescription; it uses only logged sets that
+    carry the reps you were aiming for. Returns {kind, text, load?} or None when there is nothing to go on."""
+    done = [s for s in sets if s.get("done")]
+    aimed = [s for s in done if s.get("target_reps") and s.get("reps") is not None]
+    if not aimed:
+        return None
+    hit = all(s["reps"] >= s["target_reps"] for s in aimed) and len(aimed) == len(done)
+    ex = exercise(ex_id) if ex_id else None
+    kg = parse_kg(aimed[-1].get("load"))
+    if not hit:
+        short = next(s for s in aimed if s["reps"] < s["target_reps"])
+        return {"kind": "repeat", "text": f"Last time one set stopped at {short['reps']} of {short['target_reps']} reps. Repeat the same load and aim to hit every rep before going up."}
+    if kg is not None and kg > 0:
+        lower = bool(ex and ex["pattern"] in ("squat", "hinge", "lunge"))
+        step = max(1.0, round(kg * (0.05 if lower else 0.025) * 2) / 2)
+        nxt = kg + step
+        label = f"{nxt:g} kg"
+        return {"kind": "increase_load", "load": label, "text": f"You hit every rep at {kg:g} kg last time. If it felt solid, try {label} (a small step of {step:g} kg); otherwise repeat."}
+    harder = _neighbours(ex, 1) if ex else []
+    extra = f", or try {harder[0]['name']}" if harder else ""
+    return {"kind": "increase_reps", "text": f"You hit every rep last time. Add a rep or two per set{extra}."}

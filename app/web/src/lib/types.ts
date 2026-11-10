@@ -477,6 +477,8 @@ export interface PlannedSessionView {
   blocks: StrengthBlock[];
   start_hour: number | null;
   garmin: { workout_id: number; schedule_id: number | null } | null;
+  gym?: boolean;
+  logged?: boolean;
   status: "planned" | "done" | "missed";
   activity: { id: number; name: string; load: number | null; minutes: number } | null;
 }
@@ -2051,6 +2053,46 @@ export interface GymDraft {
   format: GymSession["format"];
   steps: GymStep[];
   notes: string | null;
+}
+
+export interface GymLoggedSet { reps?: number; seconds?: number; distance_m?: number; calories?: number; load?: string; target_reps?: number; done: boolean }
+export interface GymWorkoutEntry { exercise?: string; name?: string; label?: string; sets: GymLoggedSet[] }
+export interface GymWorkout {
+  id: number;
+  day: string;
+  plan_id: number | null;
+  session_id: number | null;
+  name: string;
+  setting: GymSetting;
+  duration_s: number | null;
+  entries: GymWorkoutEntry[];
+  notes: string | null;
+  sets_done: number;
+  sets_total: number;
+}
+export interface GymPlanDetail {
+  id: number;
+  day: string;
+  title: string;
+  minutes: number;
+  start_hour: number | null;
+  predicted_load: number | null;
+  detail: string;
+  steps: GymStep[] | null;
+  setting: GymSetting;
+  format: GymSession["format"];
+  notes: string | null;
+  source: "plan" | "saved" | "text";
+  session_id: number | null;
+  workout: GymWorkout | null;
+}
+export interface GymLastLoad {
+  load: string;
+  reps: number | null;
+  seconds: number | null;
+  day: string;
+  sets: number;
+  hint: { kind: "increase_load" | "increase_reps" | "repeat"; text: string; load?: string } | null;
 }
 
 export interface GymTemplate { id: string; name: string; format: string; blurb: string }

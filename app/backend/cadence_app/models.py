@@ -212,6 +212,23 @@ class GymSession(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime)
 
 
+class GymWorkout(Base):
+    """A gym workout you did: what you actually lifted and ran, set by set (JSON), optionally linked to the planned session."""
+
+    __tablename__ = "gym_workouts"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    day: Mapped[date] = mapped_column(Date, index=True)
+    plan_id: Mapped[int | None] = mapped_column(Integer, index=True)  # the planned session it was done for (no FK: plans can be deleted)
+    session_id: Mapped[int | None] = mapped_column(Integer)
+    name: Mapped[str] = mapped_column(String(80))
+    setting: Mapped[str] = mapped_column(String(8), default="gym")
+    duration_s: Mapped[int | None] = mapped_column(Integer)
+    entries: Mapped[str] = mapped_column(Text)  # JSON: [{exercise, name, sets: [{reps|seconds|distance_m, load, done}]}]
+    notes: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime)
+
+
 class WeatherHour(Base):
     """Hourly conditions from Open-Meteo for a rounded location (0.1°, ~10 km); UTC hour."""
 

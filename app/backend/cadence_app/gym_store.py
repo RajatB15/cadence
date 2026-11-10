@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 
 from cadence_app import planner_store
 from cadence_app.analytics import gym as G
-from cadence_app.models import AppSetting, GymSession
+from cadence_app.models import AppSetting, GymSession, GymWorkout, PlannedSession
 
 HOME_KEY, DEFAULT_KEY = "gym_home_equipment", "gym_default_setting"
 FORMATS = ("straight", "circuit", "hybrid", "hyrox", "custom")
@@ -128,5 +128,132 @@ def plan(session: Session, gid: int, day: date, start_hour: int | None, predicte
     minutes = G.estimate_minutes(steps)
     option = {"key": f"gym:{row.id}", "sport": "strength", "kind": "gym", "title": row.name, "detail": G.outline(steps), "minutes": minutes,
               "start_hour": start_hour, "steps": None}
-    out = planner_store.create(session, day, option, {**predicted, "gym_session_id": row.id, "setting": row.setting}, now, G.to_text(row.name, steps))
+    snapshot = {"name": row.name, "setting": row.setting, "format": row.format, "steps": steps, "notes": row.notes}
+    return planner_store.create(session, day, option, {**predicted, "gym_session_id": row.id, "setting": row.setting, "gym": snapshot}, now, G.to_text(row.name, steps))
+
+
+def plan_detail(session: Session, plan_id: int) -> dict | None:
+    """The plan to follow: the steps as they were when planned; for plans made before copies were kept, the saved session; else just the outline."""
+    p = session.get(PlannedSession, plan_id)
+    if p is None or p.sport != "strength":
+        return None
+    predicted = json.loads(p.predicted)
+    snap = predicted.get("gym")
+    source = "plan"
+    if snap is None and predicted.get("gym_session_id"):
+        live = session.get(GymSession, predicted["gym_session_id"])
+        if live is not None:
+            snap, source = {"name": live.name, "setting": live.setting, "format": live.format, "steps": json.loads(live.steps), "notes": live.notes}, "saved"
+    base = {"id": p.id, "session_id": predicted.get("gym_session_id"), "day": p.day, "title": p.title, "minutes": p.minutes, "start_hour": p.start_hour, "predicted_load": predicted.get("load"), "detail": p.detail}
+    if snap is None:
+        return {**base, "steps": None, "setting": predicted.get("setting", "gym"), "format": "custom", "notes": None, "source": "text", "workout": workout_for_plan(session, plan_id)}
+    steps = G.normalize(snap["steps"])
+    return {**base, "steps": steps, "setting": snap.get("setting", "gym"), "format": snap.get("format", "custom"), "notes": snap.get("notes"), "source": source,
+            "minutes": G.estimate_minutes(steps), "workout": workout_for_plan(session, plan_id)}
+
+
+# --------------------------------------------------------------------- workouts you did
+MAX_ENTRIES, MAX_SETS = 60, 40
+SET_NUM = {"reps": (0, 500), "seconds": (0, 7200), "distance_m": (0, 100_000), "calories": (0, 500), "target_reps": (1, 500)}
+
+
+def _clean_entries(entries: object) -> list[dict]:
+    if not isinstance(entries, list) or not 1 <= len(entries) <= MAX_ENTRIES:
+        raise G.GymError(f"A workout needs 1 to {MAX_ENTRIES} exercises")
+    out = []
+    for e in entries:
+        if not isinstance(e, dict):
+            raise G.GymError("Each exercise entry must be an object")
+        ex_id, name = e.get("exercise"), str(e.get("name") or "").strip()[:80]
+        if ex_id is not None and G.exercise(str(ex_id)) is None:
+            raise G.GymError(f"Unknown exercise: {ex_id}")
+        if ex_id is None and not name:
+            raise G.GymError("Each entry needs an exercise id or a name")
+        sets = e.get("sets")
+        if not isinstance(sets, list) or not 1 <= len(sets) <= MAX_SETS:
+            raise G.GymError(f"Each exercise needs 1 to {MAX_SETS} sets")
+        clean_sets = []
+        for st in sets:
+            if not isinstance(st, dict):
+                raise G.GymError("Each set must be an object")
+            one: dict = {"done": bool(st.get("done", True))}
+            for key, (lo, hi) in SET_NUM.items():
+                v = st.get(key)
+                if v is None:
+                    continue
+                if isinstance(v, bool) or not isinstance(v, (int, float)) or not lo <= v <= hi:
+                    raise G.GymError(f"{key} must be a number from {lo} to {hi}")
+                one[key] = int(v) if float(v).is_integer() else round(float(v), 1)
+            load = st.get("load")
+            if load is not None and str(load).strip():
+                one["load"] = str(load).strip()[:40]
+            clean_sets.append(one)
+        entry = {"sets": clean_sets}
+        entry["exercise" if ex_id is not None else "name"] = str(ex_id) if ex_id is not None else name
+        out.append(entry)
     return out
+
+
+def workout_dict(w: GymWorkout) -> dict:
+    entries = json.loads(w.entries)
+    sets = [st for e in entries for st in e["sets"]]
+    return {"id": w.id, "day": w.day, "plan_id": w.plan_id, "session_id": w.session_id, "name": w.name, "setting": w.setting, "duration_s": w.duration_s,
+            "entries": [{**e, "label": G.exercise(e["exercise"])["name"] if "exercise" in e else e.get("name")} for e in entries], "notes": w.notes,
+            "sets_done": sum(1 for st in sets if st.get("done")), "sets_total": len(sets)}
+
+
+def log_workout(session: Session, day: date, name: str, setting: str, entries: object, plan_id: int | None, session_id: int | None, duration_s: int | None,
+                notes: str | None, now: datetime) -> dict:
+    name = (name or "").strip()[:80]
+    if not name:
+        raise G.GymError("Give the workout a name")
+    if setting not in G.SETTINGS:
+        raise G.GymError("setting must be gym or home")
+    row = GymWorkout(day=day, plan_id=plan_id, session_id=session_id, name=name, setting=setting, duration_s=duration_s,
+                     entries=json.dumps(_clean_entries(entries)), notes=(notes.strip()[:2000] if notes and notes.strip() else None), created_at=now)
+    session.add(row)
+    session.commit()
+    return workout_dict(row)
+
+
+def workouts(session: Session, limit: int = 30) -> list[dict]:
+    return [workout_dict(w) for w in session.scalars(select(GymWorkout).order_by(GymWorkout.day.desc(), GymWorkout.id.desc()).limit(limit))]
+
+
+def workout_for_plan(session: Session, plan_id: int) -> dict | None:
+    w = session.scalars(select(GymWorkout).where(GymWorkout.plan_id == plan_id).order_by(GymWorkout.id.desc())).first()
+    return workout_dict(w) if w else None
+
+
+def logged_plan_ids(session: Session, plan_ids: list[int]) -> set[int]:
+    if not plan_ids:
+        return set()
+    return set(session.scalars(select(GymWorkout.plan_id).where(GymWorkout.plan_id.in_(plan_ids))))
+
+
+def delete_workout(session: Session, wid: int) -> bool:
+    w = session.get(GymWorkout, wid)
+    if w is None:
+        return False
+    session.delete(w)
+    session.commit()
+    return True
+
+
+def last_loads(session: Session, exercise_ids: list[str]) -> dict[str, dict]:
+    """The most recent logged load (and reps) per exercise, from the last 80 workouts: used to prefill the next session. Nothing is invented."""
+    want = {i for i in exercise_ids if G.exercise(i)}
+    found: dict[str, dict] = {}
+    for w in session.scalars(select(GymWorkout).order_by(GymWorkout.day.desc(), GymWorkout.id.desc()).limit(80)):
+        for e in json.loads(w.entries):
+            ex = e.get("exercise")
+            if ex in want and ex not in found:
+                done = [st for st in e["sets"] if st.get("done") and st.get("load")]
+                if done:
+                    best = done[-1]
+                    found[ex] = {"load": best["load"], "reps": best.get("reps"), "seconds": best.get("seconds"), "day": w.day, "sets": len([st for st in e["sets"] if st.get("done")]),
+                                 "hint": G.progression_hint(ex, e["sets"])}
+        if len(found) == len(want):
+            break
+    return found
+

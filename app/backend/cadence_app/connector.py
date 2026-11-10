@@ -98,6 +98,12 @@ TOOLS: dict[str, dict] = {
                     "params": {"gid": P("int", True, (1, 10**9), "path")}},
     "gym_alternatives": {"d": "Replacement options for one exercise in a saved session, easier, harder or different, within the session's gym or home setting. Nothing changes.", "path": "/api/gym/sessions/{gid}/alternatives",
                          "params": {"gid": P("int", True, (1, 10**9), "path"), "path": P("str", True, r"\d{1,3}(\.\d{1,3}){0,3}"), "direction": P("enum", rule=("easier", "harder", "different"))}},
+    "gym_plan_detail": {"d": "A planned strength session in full: its steps as planned, the setting, and the workout logged for it if any. plan_id is from plan.", "path": "/api/gym/plans/{plan_id}",
+                        "params": {"plan_id": P("int", True, (1, 10**9), "path")}},
+    "gym_workouts": {"d": "Gym workouts that were logged (newest first): per exercise the sets with reps, load and whether done.", "path": "/api/gym/workouts", "params": {"limit": P("int", rule=(1, 100))}},
+    "gym_last_loads": {"d": ("The most recent logged load and reps for each exercise (ids from gym_exercises, comma separated, up to 60), with a small suggestion for next time such as raising the "
+                             "load a little after every rep was hit. Only what was logged; empty for exercises never logged with a load."), "path": "/api/gym/last-loads",
+                       "params": {"ids": P("str", True, r"[a-z0-9-]+(,[a-z0-9-]+){0,59}")}},
     "gym_settings": {"d": "Which equipment the person has at home, and the default setting (gym or home).", "path": "/api/settings/gym"},
     "plan": {"d": "The planned sessions coming up (with their ids).", "path": "/api/planner"},
     "plan_options": {"d": ("The options for a session on a day (run, ride, swim or strength), each with an option_key for add_planned_session. "
@@ -170,6 +176,13 @@ TOOLS: dict[str, dict] = {
                                 "note": P("str", rule=r".{1,200}", where="body")}},
     "remove_time_off": {"write": "plan", "destructive": True, "method": "DELETE", "path": "/api/time-off/{entry_id}",
                         "d": "Remove a time-off period by id (from time_off).", "params": {"entry_id": P("int", True, (1, 10**9), "path")}},
+    "gym_log_workout": {"write": "log", "method": "POST", "path": "/api/gym/workouts",
+                        "d": ("Log a gym workout that was done. entries is a list, one per exercise: {exercise:<library id> (or name for an unlisted one), sets:[{reps | seconds | distance_m | calories, load:'40 kg' or 'bodyweight', "
+                              "target_reps (what was aimed for, used for next-time suggestions), done:true}]}. Day defaults to today; plan_id links it to the planned session (from plan). "
+                              "Only log what the person says they did."),
+                        "params": {"name": P("str", True, r".{1,80}", "body"), "entries": P("steps", True, None, "body"), "setting": P("enum", rule=("gym", "home"), where="body"),
+                                   "day": _day(where="body", today=True), "plan_id": P("int", rule=(1, 10**9), where="body"), "duration_s": P("int", rule=(0, 86400), where="body"),
+                                   "notes": P("str", rule=r".{1,2000}", where="body")}},
     "gym_build_session": {"write": "plan", "method": "POST", "path": "/api/gym/sessions/build",
                           "d": ("Build a gym session from a template (see gym_templates) and save it. setting gym uses everything; home uses only the person's home equipment (bodyweight if none). "
                                 "level beginner, intermediate or advanced; goal general, strength, muscle or endurance. Same inputs give the same session; change seed for a different mix. "
@@ -637,7 +650,7 @@ class Connector:
                     return f"{pname} must be true or false"
             elif kind == "steps":
                 if not isinstance(value, list) or not 1 <= len(value) <= 200 or not all(isinstance(v, dict) for v in value):
-                    return "steps must be a list of 1 to 200 step objects"
+                    return f"{pname} must be a list of 1 to 200 objects"
             elif kind == "intlist":
                 if not isinstance(value, list) or not 1 <= len(value) <= 4 or not all(isinstance(v, int) and not isinstance(v, bool) and 0 <= v <= 200 for v in value):
                     return f"{pname} must be a list of 1 to 4 whole numbers (positions, starting at 0)"
@@ -687,7 +700,7 @@ class Connector:
                      "clear_race_goal": "Cleared the race goal", "create_goal": "Added a goal", "update_goal": "Changed a goal", "add_time_off": "Added time off",
                      "remove_time_off": "Removed time off", "gym_build_session": "Built a gym session", "gym_save_session": "Saved a gym session",
                      "gym_update_session": "Edited a gym session", "gym_swap_exercise": "Swapped an exercise in a gym session", "gym_set_session_setting": "Switched a gym session between gym and home",
-                     "gym_schedule_session": "Put a gym session on the plan", "gym_delete_session": "Deleted a gym session", "gym_set_home_equipment": "Updated home equipment"}
+                     "gym_schedule_session": "Put a gym session on the plan", "gym_delete_session": "Deleted a gym session", "gym_log_workout": "Logged a gym workout", "gym_set_home_equipment": "Updated home equipment"}
         if name in plan_text:
             return plan_text[name]
         if name == "log_weight":
