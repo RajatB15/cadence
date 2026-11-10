@@ -114,7 +114,7 @@ To pair the phone, tunnel to the full app, open Settings, and scan the QR code o
 
 ```sh
 ssh -L 8780:127.0.0.1:8765 root@<ip>        # leave running; port 8780 so it never clashes with the Mac's own service
-# open http://127.0.0.1:8780/settings
+# open http://127.0.0.1:8780/settings   (writes there need CADENCE_EXTRA_ORIGINS=http://127.0.0.1:8780 in /etc/cadence/cadence.env)
 ```
 
 Then add the page to the Home Screen and turn notifications on again.

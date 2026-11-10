@@ -164,3 +164,12 @@ def test_only_a_hash_of_the_refresh_token_is_stored(env):
     _, tokens = sign_in(client, auth)
     stored = auth._load(C.SESSIONS_KEY)
     assert tokens["refresh_token"] not in stored and tokens["access_token"] not in stored
+
+
+def test_extra_origins_come_from_the_environment_and_only_those(monkeypatch):
+    from cadence_app.config import DEFAULT_ALLOWED_ORIGINS, load_settings
+
+    monkeypatch.setenv("CADENCE_EXTRA_ORIGINS", "http://127.0.0.1:8780/, http://localhost:8780")
+    assert load_settings().allowed_origins == DEFAULT_ALLOWED_ORIGINS + ("http://127.0.0.1:8780", "http://localhost:8780")
+    monkeypatch.delenv("CADENCE_EXTRA_ORIGINS")
+    assert load_settings().allowed_origins == DEFAULT_ALLOWED_ORIGINS

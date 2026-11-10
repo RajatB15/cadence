@@ -59,6 +59,7 @@ def load_settings() -> Settings:
         web_dist=Path(os.environ.get("CADENCE_WEB_DIST", REPO_ROOT / "app" / "web" / "dist")),
         share_port=int(os.environ.get("CADENCE_SHARE_PORT", "8766")),
         share_host=os.environ.get("CADENCE_SHARE_HOST", "0.0.0.0"),
+        allowed_origins=DEFAULT_ALLOWED_ORIGINS + tuple(o.strip().rstrip("/") for o in os.environ.get("CADENCE_EXTRA_ORIGINS", "").split(",") if o.strip()),
         public_url=(os.environ.get("CADENCE_PUBLIC_URL", "").strip().rstrip("/") or None),
         scheduler=os.environ.get("CADENCE_SCHEDULER", "1") != "0",
         sync_every_h=float(os.environ.get("CADENCE_SYNC_EVERY_HOURS", "3")),
