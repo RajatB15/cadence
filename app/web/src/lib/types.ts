@@ -2044,6 +2044,19 @@ export interface GymSession {
   minutes: number;
   patterns: string[];
   outline: string;
+  planned?: { plan_id: number; day: string; start_hour: number | null; logged: boolean }[];
+}
+
+export interface GymImportResult {
+  name: string;
+  format: GymSession["format"];
+  steps: GymStep[];
+  unmatched: string[];
+  ignored: string[];
+  matched: number;
+  total: number;
+  minutes: number;
+  outline: string;
 }
 
 export interface GymDraft {

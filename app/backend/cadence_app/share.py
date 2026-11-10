@@ -44,7 +44,7 @@ LOOPBACK = ("127.0.0.1", "::1", "localhost")
 GLOBAL_FAIL_WINDOW_S, GLOBAL_FAIL_MAX = 10 * 60, 60  # bad guesses from anywhere; limits a spread-out guesser, never a valid key
 BLOCKED_API = ("/api/share", "/api/connector")
 # The only writes a paired phone may make, as anchored (method, regex) pairs matched against the whole path.
-# Everything else (Garmin push/delete of planned sessions, reading feed refresh, credentials, goals, rebuilds, sharing) stays on the Mac.
+# Everything else (Garmin push/delete of planned sessions, reading feed refresh, credentials, rebuilds, sharing) stays off the phone. Goals are phone-writable: the phone is the main device.
 _SEG = r"[^/]+"
 PHONE_WRITES: tuple[tuple[str, re.Pattern[str]], ...] = tuple(
     (method, re.compile(pattern))
@@ -71,6 +71,8 @@ PHONE_WRITES: tuple[tuple[str, re.Pattern[str]], ...] = tuple(
         ("POST", rf"/api/gym/sessions/{_SEG}/(swap|setting|plan)"),
         ("PUT", r"/api/settings/gym"),
         ("POST", r"/api/gym/workouts"),
+        ("POST", r"/api/gym/import"),
+        ("POST", r"/api/gym/plans/[0-9]+/refresh"),
         ("DELETE", rf"/api/gym/workouts/{_SEG}"),
         ("POST", r"/api/reading/book/read"),
         ("PUT", r"/api/reading/book/position"),
@@ -89,7 +91,10 @@ PHONE_WRITES: tuple[tuple[str, re.Pattern[str]], ...] = tuple(
         ("POST", r"/api/food/log"),
         ("POST", r"/api/food/entries/bulk"),
         ("POST", rf"/api/food/entries/{_SEG}/restore"),
-        ("PUT", r"/api/settings/(weather|profile|plan)"),
+        ("PUT", r"/api/settings/(weather|profile|plan|goal)"),
+        ("POST", r"/api/goals"),
+        ("PATCH", rf"/api/goals/{_SEG}"),
+        ("DELETE", rf"/api/goals/{_SEG}"),
         ("PUT", r"/api/settings/calories"),
         ("POST", r"/api/time-off"),
         ("PUT", rf"/api/time-off/{_SEG}"),

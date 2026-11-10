@@ -165,3 +165,31 @@ def test_workouts_are_logged_listed_deleted_and_feed_last_loads(client):
     assert client.delete(f"/api/gym/workouts/{w['id']}", headers=MUTATE).json() == {"deleted": w["id"]}
     assert client.delete(f"/api/gym/workouts/{w['id']}", headers=MUTATE).status_code == 404
     assert client.get("/api/gym/workouts").json()["workouts"] == []
+
+
+def test_a_saved_session_says_where_it_is_planned_and_can_update_its_copies(client):
+    built, plan = _planned(client)
+    got = client.get(f"/api/gym/sessions/{built['id']}").json()
+    assert [(p["plan_id"], p["day"], p["start_hour"], p["logged"]) for p in got["planned"]] == [(plan["id"], "2026-11-11", 6, False)]
+    assert client.get("/api/gym/sessions").json()["sessions"][0]["planned"][0]["plan_id"] == plan["id"]
+    second = client.post(f"/api/gym/sessions/{built['id']}/plan", json={"day": "2026-11-13"}, headers=MUTATE).json()
+    assert [p["day"] for p in client.get(f"/api/gym/sessions/{built['id']}").json()["planned"]] == ["2026-11-13", "2026-11-11"]  # newest first
+    client.put(f"/api/gym/sessions/{built['id']}", json={"name": "Renamed", "steps": [{"exercise": "plank", "sets": 2, "seconds": 40}]}, headers=MUTATE)
+    assert client.get(f"/api/gym/plans/{plan['id']}").json()["title"] == built["name"]  # a copy until you ask
+    up = client.post(f"/api/gym/plans/{plan['id']}/refresh", headers=MUTATE).json()
+    assert up["title"] == "Renamed" and up["steps"][0]["exercise"] == "plank" and up["source"] == "plan"
+    assert client.get(f"/api/gym/plans/{second['id']}").json()["title"] == built["name"]  # the other copy is untouched
+    week = client.get("/api/planner").json()
+    assert next(p for d in week["days"] for p in d["plans"] if p["id"] == plan["id"])["title"] == "Renamed"
+    assert client.post("/api/gym/plans/9999/refresh", headers=MUTATE).status_code == 404
+    client.delete(f"/api/gym/sessions/{built['id']}", headers=MUTATE)
+    assert client.post(f"/api/gym/plans/{plan['id']}/refresh", headers=MUTATE).status_code == 404  # its saved session is gone
+
+
+def test_import_route_returns_a_reviewable_draft(client):
+    r = client.post("/api/gym/import", json={"text": "Main\nGoblet Squat 4x8 @ 16 kg\nPlank 45 sec\nMystery move"}, headers=MUTATE).json()
+    assert r["matched"] == 2 and r["minutes"] >= 2 and "Goblet Squat" in r["outline"] and "Mystery move" in r["ignored"] + r["unmatched"]
+    saved = client.post("/api/gym/sessions", json={"name": "From screenshot", "format": "custom", "steps": r["steps"]}, headers=MUTATE)
+    assert saved.status_code == 201
+    assert client.post("/api/gym/import", json={"text": "hello world"}, headers=MUTATE).status_code == 400
+    assert client.post("/api/gym/import", json={"text": "x"}, headers=MUTATE).status_code == 422

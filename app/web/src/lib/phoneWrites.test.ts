@@ -58,10 +58,18 @@ describe("phoneMayWrite", () => {
     expect(phoneMayWrite("POST", "/api/activities/abc/fetch")).toBe(false);
     expect(phoneMayWrite("POST", "/api/days/2026-01-01/fetch")).toBe(false);
   });
-  it("rejects sharing, credentials and goals", () => {
+  it("rejects sharing, credentials and the connector", () => {
     expect(phoneMayWrite("POST", "/api/share/reset")).toBe(false);
     expect(phoneMayWrite("DELETE", "/api/share/sessions/abc")).toBe(false);
-    expect(phoneMayWrite("POST", "/api/goals")).toBe(false);
     expect(phoneMayWrite("PUT", "/api/credentials")).toBe(false);
+    expect(phoneMayWrite("PUT", "/api/connector")).toBe(false);
+  });
+  it("lets the phone save the race goal and manage goals, since it is the main device", () => {
+    expect(phoneMayWrite("PUT", "/api/settings/goal")).toBe(true);
+    expect(phoneMayWrite("POST", "/api/goals")).toBe(true);
+    expect(phoneMayWrite("PATCH", "/api/goals/3")).toBe(true);
+    expect(phoneMayWrite("DELETE", "/api/goals/3")).toBe(true);
+    expect(phoneMayWrite("DELETE", "/api/settings/goal")).toBe(false);
+    expect(phoneMayWrite("PUT", "/api/goals")).toBe(false);
   });
 });

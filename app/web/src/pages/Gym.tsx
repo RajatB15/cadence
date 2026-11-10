@@ -51,6 +51,17 @@ export function GymPage() {
     onSuccess: (p) => { setPlanned(p.day); client.invalidateQueries({ queryKey: ["planner"] }); client.invalidateQueries({ queryKey: ["insights"] }); },
     onError: (e: Error) => setFailed(e.message || "Couldn’t add it to the plan."),
   });
+  const scheduled = draft?.id ? sessions.data?.sessions.find((x) => x.id === draft.id)?.planned ?? [] : [];
+  const unplan = useMutation({
+    mutationFn: (planId: number) => api.deletePlan(planId),
+    onSuccess: () => { refresh(); ["planner", "overview"].forEach((k) => client.invalidateQueries({ queryKey: [k] })); },
+    onError: (e: Error) => setFailed(e.message || "Couldn’t take it off the plan."),
+  });
+  const resync = useMutation({
+    mutationFn: (planId: number) => api.gymRefreshPlan(planId),
+    onSuccess: () => { refresh(); ["planner", "overview"].forEach((k) => client.invalidateQueries({ queryKey: [k] })); client.invalidateQueries({ queryKey: ["gym", "plan"] }); },
+    onError: (e: Error) => setFailed(e.message || "Couldn’t update that day."),
+  });
   const remove = useMutation({
     mutationFn: (id: number) => api.gymDelete(id),
     onSuccess: () => { setDraft(null); setAsking(false); refresh(); },
@@ -66,7 +77,7 @@ export function GymPage() {
         <>
           <button type="button" className="mb-6 text-sm text-mute hover:text-paper" onClick={() => setDraft(null)}>← Back</button>
           <SessionEditor draft={draft} onChange={setDraft} saving={save.isPending} saveLabel={draft.id ? "Save changes" : "Save session"} dirty={snapshot(draft) !== baseline} planning={plan.isPending}
-            planned={planned} error={failed} onSave={() => save.mutate(draft)} onPlan={(day, hour) => plan.mutate({ d: draft, day, hour })}
+            planned={planned} scheduled={scheduled} onRemoveScheduled={(id) => unplan.mutate(id)} onRefreshScheduled={(id) => resync.mutate(id)} scheduleBusy={unplan.isPending || resync.isPending} error={failed} onSave={() => save.mutate(draft)} onPlan={(day, hour) => plan.mutate({ d: draft, day, hour })}
             onDelete={draft.id ? () => setAsking(true) : undefined} />
           <ConfirmDialog open={asking} title="Delete this session?" body="Copies already put on the plan stay there." confirmLabel="Delete" onCancel={() => setAsking(false)} onConfirm={() => draft.id && remove.mutate(draft.id)} />
         </>

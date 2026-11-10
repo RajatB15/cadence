@@ -15,7 +15,7 @@ import type {
   TrainingTrend,
   Behaviour,
   JournalView,
-  ReadingView, BookView, ConnectorStatus, GymAlternative, GymExercise, GymLastLoad, GymPlanDetail, GymWorkout, GymWorkoutEntry, GymSession, GymSetting, GymSettings, GymStep, GymTemplate,
+  ReadingView, BookView, ConnectorStatus, GymAlternative, GymExercise, GymImportResult, GymLastLoad, GymPlanDetail, GymWorkout, GymWorkoutEntry, GymSession, GymSetting, GymSettings, GymStep, GymTemplate,
   PlanOption,
   Review,
   BodyProfile,
@@ -268,6 +268,8 @@ export const api = {
     request<GymWorkout>("/api/gym/workouts", { method: "POST", body: JSON.stringify(body) }),
   gymWorkouts: (limit = 20) => request<{ workouts: GymWorkout[] }>(`/api/gym/workouts?limit=${limit}`),
   gymWorkoutDelete: (id: number) => request<{ deleted: number }>(`/api/gym/workouts/${id}`, { method: "DELETE" }),
+  gymImport: (text: string) => request<GymImportResult>("/api/gym/import", { method: "POST", body: JSON.stringify({ text }) }),
+  gymRefreshPlan: (planId: number) => request<GymPlanDetail>(`/api/gym/plans/${planId}/refresh`, { method: "POST" }),
   gymTemplates: () => request<{ templates: GymTemplate[]; levels: string[]; goals: string[] }>("/api/gym/templates"),
   gymSettings: () => request<GymSettings>("/api/settings/gym"),
   setGymSettings: (body: { home_equipment?: string[]; default_setting?: GymSetting }) =>

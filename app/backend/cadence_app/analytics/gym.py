@@ -734,3 +734,132 @@ def progression_hint(ex_id: str | None, sets: list[dict]) -> dict | None:
     harder = _neighbours(ex, 1) if ex else []
     extra = f", or try {harder[0]['name']}" if harder else ""
     return {"kind": "increase_reps", "text": f"You hit every rep last time. Add a rep or two per set{extra}."}
+
+
+# --------------------------------------------------------------------- from a screenshot or pasted text
+_RX_SETS_REPS = re.compile(r"\b(\d{1,2})\s*[x×]\s*(\d{1,3})\b(?!\s*(?:m\b|km\b|s\b|sec|min))", re.I)
+_RX_SETS_SECS = re.compile(r"\b(\d{1,2})\s*[x×]\s*(\d{1,4})\s*(?:s|sec|secs|seconds)\b", re.I)
+_RX_SECS = re.compile(r"\b(\d{1,4})\s*(?:s|sec|secs|seconds)\b", re.I)
+_RX_MINS = re.compile(r"\b(\d{1,3})\s*(?:min|mins|minutes)\b", re.I)
+_RX_DIST = re.compile(r"\b(\d+(?:[.,]\d+)?)\s*(km|m)\b", re.I)
+_RX_CAL = re.compile(r"\b(\d{1,3})\s*cal(?:ories)?\b", re.I)
+_RX_REPS = re.compile(r"\b(\d{1,3})\s*reps?\b", re.I)
+_RX_LEAD = re.compile(r"^\s*(\d{1,3})\s+(?=[A-Za-z])")
+_RX_X_REPS = re.compile(r"(?<![\d\w])[x×]\s*(\d{1,3})\b", re.I)  # "squats x10"
+_RX_TRAIL = re.compile(r"(?<=[A-Za-z\)])\s+(\d{1,3})\s*$")  # "Burpees 20"
+_RX_LOAD = re.compile(r"\b(\d+(?:[.,]\d+)?)\s*(kg|kgs|lb|lbs)\b", re.I)
+_RX_ROUNDS = re.compile(r"\b(\d{1,2})\s*(?:rounds?|sets?|rds?)\b|\b[x×]\s*(\d{1,2})\b", re.I)
+
+
+def _lib_index() -> dict[str, dict]:
+    from cadence_app.analytics import exercises as X
+
+    out: dict[str, dict] = {}
+    for e in library()["exercises"]:
+        for alias in [e["name"], *e["aliases"]]:
+            for key in X._keys(alias):
+                out.setdefault(key, e)
+    return out
+
+
+def _prescription(line: str) -> tuple[str, dict]:
+    """(the line without its numbers, a step prescription found in it). Understands 3x10, 4 x 30 s, 45 sec, 2 min, 400 m, 1 km, 12 reps, 20 cal, 20 kg."""
+    rest, rx = line, {}
+    load = _RX_LOAD.search(rest)
+    if load:
+        rx["load"] = f"{load.group(1).replace(',', '.')} {'kg' if load.group(2).lower().startswith('kg') else 'lb'}"
+        rest = rest.replace(load.group(0), " ")
+    for pattern, kind in ((_RX_SETS_SECS, "sets_secs"), (_RX_SETS_REPS, "sets_reps"), (_RX_DIST, "dist"), (_RX_MINS, "mins"), (_RX_SECS, "secs"), (_RX_CAL, "cal"), (_RX_REPS, "reps"), (_RX_X_REPS, "reps"), (_RX_LEAD, "lead"), (_RX_TRAIL, "reps")):
+        m = pattern.search(rest)
+        if not m or any(k in rx for k in ("reps", "seconds", "distance_m", "calories")) and kind not in ("sets_reps", "sets_secs"):
+            continue
+        if kind == "sets_secs":
+            rx.update(sets=int(m.group(1)), seconds=int(m.group(2)))
+        elif kind == "sets_reps":
+            rx.update(sets=int(m.group(1)), reps=int(m.group(2)))
+        elif kind == "dist":
+            n = float(m.group(1).replace(",", "."))
+            rx["distance_m"] = int(round(n * (1000 if m.group(2).lower() == "km" else 1)))
+        elif kind == "mins":
+            rx["seconds"] = int(m.group(1)) * 60
+        elif kind == "secs":
+            rx["seconds"] = int(m.group(1))
+        elif kind == "cal":
+            rx["calories"] = int(m.group(1))
+        else:
+            rx["reps"] = int(m.group(1))
+        rest = rest.replace(m.group(0), " ", 1) if kind != "lead" else rest[m.end():]
+    name = re.sub(r"\s+", " ", re.sub(r"[@:–—\-|,;()]+\s*$", "", re.sub(r"[()|@]", " ", rest))).strip(" -–—:,.")
+    return name, rx
+
+
+GENERIC_WITH_AMOUNT = {"row": "rowing-machine", "rowing": "rowing-machine", "ski": "skierg", "skierg": "skierg", "bike": "assault-bike", "run": "run", "jog": "run", "running": "run"}
+
+
+def _candidates(name: str) -> list[str]:
+    """Keys to look a name up by: as written, singular, and without spaces ("push-ups" -> push up, pushup)."""
+    from cadence_app.analytics import exercises as X
+
+    out: list[str] = []
+    for k in X._keys(name):
+        for v in (k, k[:-1] if k.endswith("s") else k, k.replace(" ", ""), k.replace(" ", "")[:-1] if k.endswith("s") else k.replace(" ", "")):
+            if v not in out:
+                out.append(v)
+    return out
+
+
+def import_text(text: str) -> dict:
+    """A draft gym session from pasted or screenshot text (class listings, a coach's plan): {name, format, steps, unmatched, matched, total}.
+
+    Reuses the class parser to find blocks and exercise lines, reads a prescription from each line when there is one, and matches the name
+    to the library (names and aliases) so the exercise gets its how-to and can be swapped. A line that isn't in the library is kept as your
+    own exercise by name rather than dropped. Nothing is saved; the draft is meant to be reviewed."""
+    from cadence_app.analytics import exercises as X
+
+    blocks = X.parse(text)
+    index = _lib_index()
+    steps: list[dict] = []
+    unmatched: list[str] = []
+    matched = total = 0
+    for b in blocks:
+        inner: list[dict] = []
+        for ex in b["exercises"]:
+            name, rx = _prescription(ex["name"])
+            if not name:
+                continue
+            total += 1
+            lib = next((index[k] for k in _candidates(name) if k in index), None)
+            if lib is None and X._norm(name) in GENERIC_WITH_AMOUNT and any(k in rx for k in ("distance_m", "calories", "seconds")):
+                lib = exercise(GENERIC_WITH_AMOUNT[X._norm(name)])
+            step: dict = {"type": "exercise"}
+            if lib is not None:
+                matched += 1
+                step["exercise"] = lib["id"]
+                base = default_rx(lib)
+            else:
+                unmatched.append(name)
+                step["name"] = name[:80]
+                base = {"sets": 3, "reps": 10}
+            if any(k in rx for k in ("reps", "seconds", "distance_m", "calories")):
+                step.update({k: v for k, v in rx.items() if k in ("sets", "reps", "seconds", "distance_m", "calories", "load")})
+                step.setdefault("sets", 1 if lib is not None and lib["pattern"] in ("mobility", "drill", "cardio") or "reps" not in rx else 3)
+            else:
+                step.update(base)
+                if rx.get("load"):
+                    step["load"] = rx["load"]
+            inner.append(step)
+        if not inner:
+            continue
+        title = re.sub(r"\s+", " ", b.get("name") or "Block").strip()[:60]
+        rounds_m = _RX_ROUNDS.search(title)
+        rounds = int(next(g for g in rounds_m.groups() if g)) if rounds_m else 1
+        steps.append({"type": "group", "title": title, "rounds": max(1, min(rounds, 50)), "steps": inner})
+    used = {X._norm(ex["name"]) for b in blocks for ex in b["exercises"]} | {X._norm(b.get("name") or "") for b in blocks}
+    ignored = []
+    for ln in text.splitlines():
+        clean = re.sub(r"\s+", " ", ln).strip(" •-–—*\t")
+        if clean and not clean.startswith("#") and X._norm(clean) not in used and clean not in ignored and len(clean) <= 80:
+            ignored.append(clean)
+    if not steps:
+        raise GymError("Nothing that looks like an exercise was found. Put one exercise per line, with block titles on their own lines.")
+    return {"name": "Imported session", "format": "custom", "steps": normalize(steps), "unmatched": unmatched, "ignored": ignored[:15], "matched": matched, "total": total}

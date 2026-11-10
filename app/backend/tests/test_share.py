@@ -239,7 +239,7 @@ def test_paired_phone_can_write_the_journal_but_nothing_else(api, web):
     r = c.put("/api/journal/2026-10-21", json={"answers": {"alcohol": 2}}, headers=MUTATE)
     assert r.status_code == 200 and r.json()["answers"]["alcohol"] == 2
     assert c.post("/api/sync/demo", headers=MUTATE).status_code == 405
-    assert c.put("/api/settings/goal", json={}, headers=MUTATE).status_code == 405
+    assert c.put("/api/settings/reading-feed", json={"enabled": True}, headers=MUTATE).status_code == 405
 
 
 def test_paired_phone_can_name_a_strength_class(api, web):
@@ -303,7 +303,7 @@ def test_every_write_route_is_either_allowlisted_or_blocked_from_the_phone(api, 
             assert response.status_code == 405 or template.startswith("/api/share"), (method, template)
     allowed_routes = {(m, t) for m, t in write_routes if phone_may_write(m, re.sub(r"\{[^}]+\}", "1", t))}
     never = ["/api/planner/{plan_id}/garmin", "/api/reading/feed/refresh", "/api/garmin/rebuild", "/api/garmin/stop", "/api/garmin-connect", "/api/garmin-connect/login",
-             "/api/settings/goal", "/api/settings/reading-feed", "/api/settings/training-mode", "/api/settings/weight-goal", "/api/goals", "/api/events", "/api/sync/demo",
+             "/api/settings/reading-feed", "/api/settings/training-mode", "/api/settings/weight-goal", "/api/events", "/api/sync/demo",
              "/api/sources/demo/data", "/api/credentials/reminders/dismiss", "/api/share/reset", "/api/days/{day}/fetch"]
     assert not [(m, t) for m, t in allowed_routes if t in never]
     # Every allowlist entry must still match a real route, so renames don't leave dead (or accidentally broad) rules.
@@ -443,3 +443,23 @@ def test_connector_plan_and_goal_changes_land_in_the_real_app(api, web):
     assert not off["isError"] and "2026-10-28" in _json.dumps(mine.get("/api/time-off").json())
     assert not call("clear_race_goal")["isError"]
     assert [a["tool"] for a in cauth.recent()][0] == "clear_race_goal"
+
+
+def test_a_paired_phone_can_save_the_race_goal_but_not_everything_else():
+    # The Coach page's "Race goal" saves with PUT /api/settings/goal; when this was missing from the allowlist every save from the phone failed with "Couldn't save".
+    assert phone_may_write("PUT", "/api/settings/goal")
+    assert phone_may_write("PUT", "/api/settings/plan") and phone_may_write("POST", "/api/gym/import")
+    assert phone_may_write("POST", "/api/goals") and phone_may_write("PATCH", "/api/goals/3") and phone_may_write("DELETE", "/api/goals/3")
+    assert not phone_may_write("PUT", "/api/settings/timezone") and not phone_may_write("DELETE", "/api/settings/goal")
+    assert not phone_may_write("PUT", "/api/settings/goal/extra") and not phone_may_write("PUT", "/api/goals")
+
+
+def test_the_race_goal_saves_through_the_phone_gate(api, web):
+    c = phone(api, web)
+    pair(c)
+    ok = c.put("/api/settings/goal", json={"distance": "marathon", "date": "2027-03-14", "target_s": 13500}, headers=MUTATE)
+    assert ok.status_code == 200 and ok.json()["goal"]["distance"] == "marathon"
+    made = c.post("/api/goals", json={"kind": "race", "sport": "run", "date": "2027-03-14", "distance_m": 42195, "target_s": 13500}, headers=MUTATE)
+    assert made.status_code == 201  # the Goals page works from the phone too
+    assert c.patch(f"/api/goals/{made.json()['id']}", json={"status": "dropped"}, headers=MUTATE).status_code == 200
+    assert c.put("/api/settings/timezone", json={"timezone": "Asia/Kolkata"}, headers=MUTATE).status_code == 405

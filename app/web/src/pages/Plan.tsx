@@ -1,9 +1,10 @@
+import { AddGymToPlan } from "../components/gym/AddGymToPlan";
 import { edge } from "../lib/color";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { clsx } from "clsx";
-import { Bike, CheckCircle2, CircleDashed, Dumbbell, Footprints, ImageUp, Trash2, Watch, Waves, XCircle } from "lucide-react";
+import { Bike, CheckCircle2, CircleDashed, Dumbbell, Footprints, Trash2, Watch, Waves, XCircle } from "lucide-react";
 import { motion } from "motion/react";
-import { useRef, useState } from "react";
+import { useState } from "react";
 import { Link } from "react-router-dom";
 import { ErrorBlock, LoadingBlock, PageSkeleton, PageHeader, Segmented } from "../components/Shell";
 import { READ_ONLY, api } from "../lib/api";
@@ -13,7 +14,7 @@ import type { PlanOption, PlannedSessionView, Prediction, Sport } from "../lib/t
 import { C } from "../lib/theme";
 
 const SPORTS: { value: Sport; label: string }[] = [
-  { value: "run", label: "Run" }, { value: "ride", label: "Ride" }, { value: "swim", label: "Swim" }, { value: "strength", label: "Strength" },
+  { value: "run", label: "Run" }, { value: "ride", label: "Ride" }, { value: "swim", label: "Swim" }, { value: "strength", label: "Gym" },
 ];
 const SPORT_ICON = { run: Footprints, ride: Bike, swim: Waves, strength: Dumbbell } as const;
 const weekday = new Intl.DateTimeFormat(undefined, { weekday: "short" });
@@ -149,26 +150,16 @@ function DayPlans({ day, plans, today }: { day: string; plans: PlannedSessionVie
 
 function AddSession({ day, today }: { day: string; today: string }) {
   const [sport, setSport] = useState<Sport>("run");
-  const [text, setText] = useState("");
-  const picker = useRef<HTMLInputElement>(null);
   const [own, setOwn] = useState(false);
   const [hour, setHour] = useState<number | null>(null);
   const [fields, setFields] = useState<CustomFields>({ distance: "", pace: "", minutes: "", effort: "auto" });
   const endurance = sport !== "strength";
   const custom = endurance && own ? toSpec(sport, fields) : null;
-  const extra = { strengthText: sport === "strength" ? text : undefined, startHour: endurance ? hour : null, custom };
+  const extra = { startHour: endurance ? hour : null, custom };
   const options = useQuery({
-    queryKey: ["planner-options", day, sport, sport === "strength" ? text : "", extra.startHour, custom],
+    queryKey: ["planner-options", day, sport, extra.startHour, custom],
     queryFn: () => api.plannerOptions(day, sport, extra),
-    enabled: sport === "strength" ? text.trim().length > 3 : !own || custom != null,
-  });
-  const read = useMutation({
-    mutationFn: async (files: File[]) => {
-      const parts = [];
-      for (const f of files) parts.push((await api.readScreenshot(f)).text);
-      return parts.join("\n");
-    },
-    onSuccess: setText,
+    enabled: sport !== "strength" && (!own || custom != null),
   });
   return (
     <section className="surface mb-8 p-5 sm:p-8">
@@ -179,22 +170,7 @@ function AddSession({ day, today }: { day: string; today: string }) {
         </div>
         <Segmented label="Sport" options={SPORTS} value={sport} onChange={setSport} />
       </div>
-      {sport === "strength" && (
-        <div className="mb-6 space-y-3">
-          <p className="text-sm text-mute">Upload the class screenshot now; when the session syncs, it's named automatically.</p>
-          <input ref={picker} type="file" accept="image/*" multiple hidden onChange={(e) => {
-            const files = Array.from(e.target.files ?? []);
-            if (files.length) read.mutate(files);
-            e.target.value = "";
-          }} />
-          <button type="button" className="pop pop-lime w-full justify-center sm:w-auto" disabled={read.isPending} onClick={() => picker.current?.click()}>
-            <ImageUp size={18} /> {read.isPending ? "Reading screenshot…" : text ? "Replace screenshot" : "Upload screenshot"}
-          </button>
-          {read.isError && <p className="text-sm text-coral">{(read.error as Error).message}</p>}
-          <textarea value={text} onChange={(e) => setText(e.target.value)} rows={4} aria-label="Class text" placeholder="…or type the class: block titles on their own lines"
-            className="w-full border border-line-strong bg-ink/40 p-3 font-mono text-base text-paper outline-none focus:border-gold sm:text-sm" />
-        </div>
-      )}
+      {sport === "strength" && <AddGymToPlan day={day} today={today} />}
       {endurance && (
         <div className="mb-6 space-y-4">
           <div className="flex flex-wrap items-end gap-4">
@@ -212,7 +188,7 @@ function AddSession({ day, today }: { day: string; today: string }) {
           {own && <CustomForm sport={sport} fields={fields} onChange={setFields} />}
         </div>
       )}
-      {options.isPending && options.fetchStatus !== "idle" ? (
+      {sport === "strength" ? null : options.isPending && options.fetchStatus !== "idle" ? (
         <LoadingBlock height={240} />
       ) : options.isError ? (
         <ErrorBlock error={options.error} retry={() => options.refetch()} />

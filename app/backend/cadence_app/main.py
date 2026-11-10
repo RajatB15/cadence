@@ -277,6 +277,10 @@ class GymWorkoutRequest(BaseModel):
     notes: str | None = Field(default=None, max_length=2000)
 
 
+class GymImportRequest(BaseModel):
+    text: str = Field(min_length=3, max_length=6000)
+
+
 class GymSessionSetting(BaseModel):
     setting: Literal["gym", "home"]
 
@@ -1336,6 +1340,24 @@ def create_app(
         if not gym_store.delete_workout(session, wid):
             raise HTTPException(404, "No such workout")
         return {"deleted": wid}
+
+    @app.post("/api/gym/import")
+    def gym_import(body: GymImportRequest) -> dict:
+        """A draft session from text read off screenshots (or pasted): exercises matched to the library, a prescription read from each line, lines it
+        couldn't use listed. Nothing is saved; review it, then save it as a session."""
+        def run() -> dict:
+            out = G.import_text(body.text)
+            return {**out, "minutes": G.estimate_minutes(out["steps"]), "outline": G.outline(out["steps"])}
+
+        return _gym(run)
+
+    @app.post("/api/gym/plans/{plan_id}/refresh")
+    def gym_plan_refresh(plan_id: int, session: Session = Depends(get_session)) -> dict:
+        """Update a planned copy to match the saved gym session it came from."""
+        out = gym_store.refresh_plan(session, plan_id, clock.now())
+        if out is None:
+            raise HTTPException(404, "That plan has no saved gym session to update from")
+        return out
 
     @app.get("/api/gym/last-loads")
     def gym_last_loads(ids: str = Query(max_length=1500, pattern=r"^[a-z0-9-]+(,[a-z0-9-]+){0,59}$"), session: Session = Depends(get_session)) -> dict:

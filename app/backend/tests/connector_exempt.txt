@@ -128,3 +128,4 @@ POST /api/gym/alternatives  # editor helper: gym_alternatives covers it by sessi
 POST /api/gym/swap  # editor helper: gym_swap_exercise covers it by session id
 POST /api/gym/convert  # editor helper: gym_set_session_setting covers it by session id
 DELETE /api/gym/workouts/{}  # deleting logged history stays in the app; chat can log and read but not erase it
+POST /api/gym/import  # editor helper: turns screenshot text into a draft; Claude builds steps itself and saves them with gym_save_session

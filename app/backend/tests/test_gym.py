@@ -258,3 +258,28 @@ def test_swap_suggestions_stay_the_same_kind_of_work():
             e = G.exercise(a["id"])
             assert "conditioning" not in e["tags"] and e["pattern"] in G.LIFT_PATTERNS, (d, a)
     assert G.alternatives("back-squat", "easier", GYM)[0]["reason"] == "Same movement, lighter"
+
+
+def test_import_reads_a_screenshots_worth_of_text_into_a_session():
+    text = "Warm up\nWorld's Greatest Stretch 5 reps\nAir squats x 10\nBlock 1 - 3 rounds\nGoblet Squat 4x8 @ 16 kg\nPush-ups 12 reps\nPlank 45 sec\nRun 400 m\nCable twist\nFinisher\nBurpees 20\nWall balls 30\nRow 500m"
+    r = G.import_text(text)
+    assert r["matched"] == r["total"] == 9 and r["unmatched"] == [] and "Cable twist" in r["ignored"]
+    g = {s["title"]: s for s in r["steps"]}
+    assert g["Block 1 - 3 rounds"]["rounds"] == 3 and g["Warm up"]["rounds"] == 1
+    steps = {s["exercise"]: s for grp in r["steps"] for s in grp["steps"]}
+    assert (steps["goblet-squat"]["sets"], steps["goblet-squat"]["reps"], steps["goblet-squat"]["load"]) == (4, 8, "16 kg")
+    assert steps["plank"]["seconds"] == 45 and steps["run"]["distance_m"] == 400 and steps["rowing-machine"]["distance_m"] == 500
+    assert steps["push-up"]["reps"] == 12 and steps["air-squat"]["reps"] == 10 and steps["burpee"]["reps"] == 20 and steps["wall-ball"]["reps"] == 30
+    assert steps["worlds-greatest-stretch"]["sets"] == 1  # a mobility drill is one pass, not three sets
+    assert G.normalize(r["steps"]) == r["steps"]
+
+
+def test_import_keeps_unknown_exercises_as_your_own_and_refuses_empty_text():
+    r = G.import_text("Main\nBack Squat 5x5 100kg\nZercher thing 3x8\nPlank")  # an unknown line between known ones is kept, by name, as your own exercise
+    assert r["unmatched"] == ["Zercher thing"] and any(s.get("name") == "Zercher thing" and (s["sets"], s["reps"]) == (3, 8) for g in r["steps"] for s in g["steps"])
+    lone = G.import_text("Main\nSqueeze the odd thing 3x8\nBack Squat 5x5\nPlank")  # before the first known exercise it is reported, never silently lost
+    assert "Squeeze the odd thing 3x8" in lone["ignored"] + [g["title"] for g in lone["steps"]]  # shown as the block's title or listed as not used, never silently lost
+    bs = next(s for g in r["steps"] for s in g["steps"] if s.get("exercise") == "back-squat")
+    assert (bs["sets"], bs["reps"], bs["load"]) == (5, 5, "100 kg")
+    with pytest.raises(G.GymError):
+        G.import_text("hello there general kenobi")
