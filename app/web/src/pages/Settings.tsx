@@ -1,7 +1,7 @@
 import * as Dialog from "@radix-ui/react-dialog";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { clsx } from "clsx";
-import { Archive, Bell, Database, KeyRound, RefreshCw, ShieldCheck, Smartphone, Trash2, Watch } from "lucide-react";
+import { Archive, Bell, Database, KeyRound, RefreshCw, ShieldCheck, Smartphone, Sparkles, Trash2, Watch } from "lucide-react";
 import { motion } from "motion/react";
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
@@ -12,7 +12,7 @@ import { formatDate, parseDay, timeAgo } from "../lib/format";
 import { currentSubscription, disablePush, enablePush, pushSupport } from "../lib/push";
 import { applyChoice, readChoice, type ThemeChoice } from "../lib/theme";
 import { useCredentialStatus } from "../lib/useCredentialStatus";
-import type { CredentialStatus, ShareStatus, SourceInfo } from "../lib/types";
+import type { ConnectorStatus, CredentialStatus, ShareStatus, SourceInfo } from "../lib/types";
 import { C } from "../lib/theme";
 
 const LEVEL_LABEL: Record<CredentialStatus["level"], { text: string; className: string }> = {
@@ -45,6 +45,11 @@ export function SettingsPage() {
         {!READ_ONLY && (
           <div className="lg:col-span-5">
             <ShareCard />
+          </div>
+        )}
+        {!READ_ONLY && (
+          <div className="lg:col-span-5">
+            <ClaudeConnectorCard />
           </div>
         )}
         {!READ_ONLY && (
@@ -558,6 +563,124 @@ function NotificationsCard() {
           </ul>
         </div>
       )}
+    </section>
+  );
+}
+
+/** Lets the Claude app (including on the iPhone) read your data, read-only, through a connector you approve here. */
+function ClaudeConnectorCard() {
+  const client = useQueryClient();
+  const query = useQuery({ queryKey: ["connector"], queryFn: api.connector, refetchInterval: 30_000 });
+  const onSuccess = (v: ConnectorStatus) => client.setQueryData(["connector"], v);
+  const toggle = useMutation({ mutationFn: api.connectorSet, onSuccess });
+  const newCode = useMutation({ mutationFn: api.connectorCode, onSuccess });
+  const revoke = useMutation({ mutationFn: api.connectorRevoke, onSuccess });
+  const [revoking, setRevoking] = useState<{ id: string; label: string } | null>(null);
+  const [copied, setCopied] = useState(false);
+  if (query.isPending) return <LoadingBlock height={200} />;
+  if (query.isError) return <ErrorBlock error={query.error} retry={() => query.refetch()} />;
+  const c = query.data;
+  const error = toggle.error ?? newCode.error ?? revoke.error;
+  const copy = async () => {
+    if (!c.address) return;
+    try {
+      await navigator.clipboard.writeText(c.address);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      /* the address is shown below to copy by hand */
+    }
+  };
+  return (
+    <section className="surface p-5 sm:p-8">
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div className="flex items-center gap-3">
+          <div className="grid h-11 w-11 place-items-center rounded-2xl bg-gold/15 text-gold">
+            <Sparkles size={18} />
+          </div>
+          <div>
+            <h2 className="font-semibold text-paper">Claude</h2>
+            <p className="text-xs text-mute">Ask Claude about your data · read-only · no API key</p>
+          </div>
+        </div>
+        <button type="button" className={c.enabled ? "pop pop-ghost" : "pop pop-lime"} disabled={toggle.isPending} onClick={() => toggle.mutate(!c.enabled)}>
+          {c.enabled ? "Turn off" : "Turn on"}
+        </button>
+      </div>
+      <p className="mt-4 max-w-2xl text-sm text-mute">
+        Adds Cadence to the Claude app as a connector. Once it’s set up on claude.ai, it works in the Claude app on your iPhone too, on your normal Claude
+        account. Claude can look at your training, sleep, weight, food and plan, and can’t change anything. What it reads becomes part of that conversation
+        with Claude, so it leaves this server when you ask a question.
+      </p>
+      {c.enabled && !c.address && (
+        <p role="note" className="mt-4 border-l-2 border-gold/60 pl-3 text-xs text-mute">
+          Claude reaches Cadence from the internet, so this needs the server’s secure address (CADENCE_PUBLIC_URL, see the deploy guide). On this Mac
+          alone there is nothing for Claude to connect to.
+        </p>
+      )}
+      {c.enabled && c.address && !c.running && (
+        <p role="note" className="mt-4 border-l-2 border-gold/60 pl-3 text-xs text-mute">Phone sharing is switched off, which also stops the connector. Turn it on in the phone card below.</p>
+      )}
+      {c.enabled && c.address && c.running && (
+        <ol className="mt-6 space-y-4 text-sm text-mute">
+          <li>
+            <span className="num mr-2 text-gold">1</span>On claude.ai (web or desktop), open <span className="text-paper">Settings → Connectors → Add custom connector</span> and
+            paste this address:
+            <div className="mt-2 flex flex-wrap items-center gap-3">
+              <code className="num rounded-lg bg-white/5 px-3 py-2 text-xs break-all text-paper">{c.address}</code>
+              <button type="button" className="pop pop-ghost !px-3 !py-1.5 text-xs" onClick={copy}>{copied ? "Copied" : "Copy"}</button>
+            </div>
+          </li>
+          <li>
+            <span className="num mr-2 text-gold">2</span>Claude opens a Cadence page. Type this approval code there:
+            <div className="mt-2 flex flex-wrap items-center gap-3">
+              <span className="num rounded-lg bg-white/5 px-4 py-2 text-2xl tracking-[0.25em] text-cream">{c.code ?? "…"}</span>
+              <span className="text-xs text-dim">
+                {c.code_expires_in_s != null ? `Works once, expires in ${Math.max(1, Math.round(c.code_expires_in_s / 60))} min.` : ""}
+              </span>
+              <button type="button" className="pop pop-ghost !px-3 !py-1.5 text-xs" disabled={newCode.isPending} onClick={() => newCode.mutate()}>New code</button>
+            </div>
+          </li>
+          <li><span className="num mr-2 text-gold">3</span>Open the Claude app on your iPhone, start a chat, and switch Cadence on under the tools menu.</li>
+        </ol>
+      )}
+      {c.enabled && (
+        <div className="mt-8 border-t border-line pt-4">
+          <h3 className="eyebrow mb-3">Connected</h3>
+          {c.connections.length === 0 ? (
+            <p className="text-sm text-mute">Nothing connected yet.</p>
+          ) : (
+            <ul className="divide-y divide-line">
+              {c.connections.map((p) => (
+                <li key={p.id} className="flex flex-wrap items-center justify-between gap-3 py-3">
+                  <div className="min-w-0">
+                    <p className="text-sm text-paper">{p.label || "Claude"}</p>
+                    <p className="text-xs text-dim">
+                      Connected {new Date(`${p.created_at}Z`).toLocaleDateString()} ·{" "}
+                      {p.last_used_at ? `last used ${timeAgo(new Date(`${p.last_used_at}Z`))}` : "not used yet"}
+                    </p>
+                  </div>
+                  <button type="button" className="pop pop-ghost !px-3 !py-1.5 text-xs" disabled={revoke.isPending} onClick={() => setRevoking({ id: p.id, label: p.label || "this connection" })}>
+                    Disconnect
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+      <ConfirmDialog
+        open={revoking != null}
+        title="Disconnect Claude?"
+        body={`${revoking?.label ?? "This connection"} will stop working at once and will need a new approval code to connect again.`}
+        confirmLabel="Disconnect"
+        onCancel={() => setRevoking(null)}
+        onConfirm={() => {
+          if (revoking) revoke.mutate(revoking.id);
+          setRevoking(null);
+        }}
+      />
+      {error && <p className="mt-4 text-sm text-coral">{error.message}</p>}
     </section>
   );
 }

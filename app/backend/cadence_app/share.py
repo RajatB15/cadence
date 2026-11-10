@@ -26,6 +26,7 @@ from starlette.requests import Request
 from starlette.responses import FileResponse, HTMLResponse, JSONResponse, PlainTextResponse, RedirectResponse, Response
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
+from cadence_app.connector import Connector, ConnectorAuth
 from cadence_app.models import AppSetting
 
 log = logging.getLogger(__name__)
@@ -41,7 +42,7 @@ FAIL_FREE, FAIL_MAX_BLOCK_S = 5, 15 * 60
 SHARED_BUCKET_MAX_BLOCK_S = 60  # tailscale serve / reverse proxies that don't forward the client show every peer as loopback: one peer must not lock out the rest for long
 LOOPBACK = ("127.0.0.1", "::1", "localhost")
 GLOBAL_FAIL_WINDOW_S, GLOBAL_FAIL_MAX = 10 * 60, 60  # bad guesses from anywhere; limits a spread-out guesser, never a valid key
-BLOCKED_API = ("/api/share",)
+BLOCKED_API = ("/api/share", "/api/connector")
 # The only writes a paired phone may make, as anchored (method, regex) pairs matched against the whole path.
 # Everything else (Garmin push/delete of planned sessions, reading feed refresh, credentials, goals, rebuilds, sharing) stays on the Mac.
 _SEG = r"[^/]+"
@@ -290,13 +291,17 @@ p{{color:#8d8a82;max-width:32ch}}</style></head><body><main><h1>{escape(title)}<
 class ShareGate:
     """Authenticates every request by per-device session cookie, allows reads plus a strict write allowlist, and serves the built web app."""
 
-    def __init__(self, api: ASGIApp, auth: ShareAuth, web_dir: Path, enabled: Callable[[], bool] = lambda: True):
+    def __init__(self, api: ASGIApp, auth: ShareAuth, web_dir: Path, enabled: Callable[[], bool] = lambda: True, connector: Connector | None = None):
         self.api, self.auth, self.enabled, self.web_dir = api, auth, enabled, web_dir.resolve()
+        self.connector = connector
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         if scope["type"] != "http":
             return
         secure_send = self._secure(send)
+        if self.connector is not None and Connector.handles(scope["path"]):
+            await self.connector(scope, receive, secure_send)  # Claude signs in with its own OAuth token, not the phone cookie
+            return
         response = self._route(Request(scope))
         if response is not None:
             await response(scope, receive, secure_send)
@@ -409,7 +414,9 @@ class ShareServer:
         self.factory, self.web_dir, self.port, self.host = factory, web_dir, port, host
         self.public_url = public_url
         self.auth = ShareAuth(self._setting, self._save)
-        self.gate = ShareGate(api, self.auth, web_dir, lambda: self.running)
+        self.connector_auth = ConnectorAuth(self._setting, self._save)
+        self.connector = Connector(api, self.connector_auth, lambda: self.public_url)
+        self.gate = ShareGate(api, self.auth, web_dir, lambda: self.running, self.connector)
         self._server: uvicorn.Server | None = None
         self._thread: threading.Thread | None = None
         self._lock = threading.Lock()
@@ -462,6 +469,16 @@ class ShareServer:
             self._server = self._thread = None
             if remember:
                 self._save(ENABLED_KEY, None)
+
+    def connector_status(self) -> dict:
+        """What Settings shows for the Claude connector. The approval code is only ever returned here, to the machine's own Settings page."""
+        on = self.connector_auth.enabled()
+        out = {"enabled": on, "running": self.running, "address": f"{self.public_url}/mcp" if self.public_url else None,
+               "code": None, "code_expires_in_s": None, "connections": self.connector_auth.list()}
+        if on and self.running and self.public_url:
+            code, expires = self.connector_auth.approval_code()
+            out["code"], out["code_expires_in_s"] = code, max(0, int(expires - time.time()))
+        return out
 
     def reset(self) -> None:
         """Revokes every paired phone and invalidates the pairing key."""

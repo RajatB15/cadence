@@ -962,6 +962,15 @@ export type ActivityLog =
       streak: { current: number; best: number; unit: string } | null;
     };
 
+export interface ConnectorStatus {
+  enabled: boolean;
+  running: boolean;
+  address: string | null;
+  code: string | null;
+  code_expires_in_s: number | null;
+  connections: { id: string; label: string; created_at: string; last_used_at: string | null }[];
+}
+
 export interface ShareStatus {
   running: boolean;
   port: number;

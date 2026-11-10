@@ -605,6 +605,26 @@ def create_app(
         share.reset()
         return share.status()
 
+    @app.get("/api/connector")
+    def connector_status() -> dict:
+        return share.connector_status()
+
+    @app.put("/api/connector")
+    def connector_set(body: WeatherSetting) -> dict:
+        share.connector_auth.set_enabled(body.enabled)
+        return share.connector_status()
+
+    @app.post("/api/connector/code")
+    def connector_new_code() -> dict:
+        share.connector_auth.rotate_approval()
+        return share.connector_status()
+
+    @app.delete("/api/connector/connections/{session_id}")
+    def connector_revoke(session_id: str) -> dict:
+        if not share.connector_auth.revoke(session_id):
+            raise HTTPException(404, "No such connection")
+        return share.connector_status()
+
     @app.delete("/api/share/sessions/{session_id}")
     def share_revoke(session_id: str) -> dict:
         if not share.revoke(session_id):
