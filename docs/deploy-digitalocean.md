@@ -29,7 +29,7 @@ Useful commands:
 ssh root@<ip> systemctl status cadence
 ssh root@<ip> journalctl -u cadence -n 50 --no-pager    # logs can contain health data; skim for errors only
 ssh root@<ip> systemctl list-timers cadence-backup.timer
-ssh -L 8765:127.0.0.1:8765 root@<ip>                     # then open http://127.0.0.1:8765 on your Mac
+ssh -L 8780:127.0.0.1:8765 root@<ip>                     # then open http://127.0.0.1:8780 on your Mac
 ```
 
 ## One-time setup
@@ -101,11 +101,20 @@ certificate is issued. This puts the app on the public internet: a phone sees no
 QR code (each code works once and expires in 10 minutes, wrong guesses are throttled, phones can only do the allowlisted
 writes, and each can be revoked in Settings). The data on the droplet is still not encrypted at rest.
 
+### Claude connector (optional)
+
+Lets the Claude app, including on your iPhone, answer questions about your data through your normal Claude account
+(no API key). It is a read-only MCP server on the same HTTPS address: `https://<your-address>/mcp`. Turn it on in
+Settings → Claude (through the tunnel, below), add that address on claude.ai under Settings → Connectors → Add custom
+connector, and type the approval code Settings shows. After that it also works in the iPhone app. Each connection is
+revocable in Settings. Whatever Claude reads becomes part of that Claude conversation, so it leaves your server when
+you ask a question; leave the connector off if you don't want that.
+
 To pair the phone, tunnel to the full app, open Settings, and scan the QR code on the phone-sharing card:
 
 ```sh
-ssh -L 8765:127.0.0.1:8765 root@<ip>        # leave running; the Mac's own service must be stopped
-# open http://127.0.0.1:8765/settings
+ssh -L 8780:127.0.0.1:8765 root@<ip>        # leave running; port 8780 so it never clashes with the Mac's own service
+# open http://127.0.0.1:8780/settings
 ```
 
 Then add the page to the Home Screen and turn notifications on again.

@@ -324,3 +324,38 @@ def test_public_url_is_the_pairing_address(api, web):
         assert status["pair_url"].startswith("https://cadence.example.test/pair?key=")
     finally:
         server.stop(remember=False)
+
+
+def test_connector_paths_use_their_own_sign_in_and_phones_cannot_manage_it(api, web):
+    import base64
+    import hashlib
+    from cadence_app.connector import Connector, ConnectorAuth
+
+    store: dict[str, str] = {}
+    cauth = ConnectorAuth(store.get, lambda k, v: store.pop(k, None) if v is None else store.__setitem__(k, v))
+    cauth.set_enabled(True)
+    auth = make_auth()
+    gate = ShareGate(api, auth, web, connector=Connector(api, cauth, lambda: "https://cadence.example.test"))
+    c = TestClient(gate, base_url="https://cadence.example.test")
+    c.share_auth = auth
+    # Unpaired and no cookie: the phone app is closed, but Claude's discovery and sign-in endpoints answer.
+    assert c.get("/api/overview").status_code == 401
+    assert c.get("/.well-known/oauth-authorization-server").status_code == 200
+    assert c.post("/mcp", json={"jsonrpc": "2.0", "id": 1, "method": "ping"}).status_code == 401  # needs Claude's token, not a cookie
+    # A paired phone gets no way to switch the connector on, read its approval code, or revoke connections.
+    pair(c)
+    assert c.get("/api/connector").status_code == 404
+    assert c.put("/api/connector", json={"enabled": True}, headers=MUTATE).status_code == 405
+    assert c.post("/api/connector/code", headers=MUTATE).status_code == 405
+    # Full sign-in through the real app: tools read real (demo) data.
+    cid = c.post("/oauth/register", json={"redirect_uris": ["https://claude.ai/api/mcp/auth_callback"]}).json()["client_id"]
+    verifier = "z" * 64
+    challenge = base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).rstrip(b"=").decode()
+    code, _ = cauth.approval_code()
+    r = c.post("/oauth/authorize", data={"client_id": cid, "redirect_uri": "https://claude.ai/api/mcp/auth_callback", "response_type": "code",
+                                         "code_challenge": challenge, "code_challenge_method": "S256", "approval": code}, follow_redirects=False)
+    grant = re.search(r"code=([^&]+)", r.headers["location"]).group(1)
+    token = c.post("/oauth/token", data={"grant_type": "authorization_code", "code": grant, "client_id": cid,
+                                         "redirect_uri": "https://claude.ai/api/mcp/auth_callback", "code_verifier": verifier}).json()["access_token"]
+    out = c.post("/mcp", json={"jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": {"name": "weight", "arguments": {}}}, headers={"Authorization": f"Bearer {token}"}).json()
+    assert out["result"]["isError"] is False and out["result"]["content"][0]["text"].startswith("{")
