@@ -24,8 +24,8 @@ export interface WorkItem {
 }
 export interface RestItem { kind: "rest"; id: string; seconds: number }
 export type QueueItem = WorkItem | RestItem;
-export interface SetResult { done: boolean; reps?: number; seconds?: number; distance_m?: number; calories?: number; load?: string }
-export interface Run { queue: QueueItem[]; idx: number; results: Record<string, SetResult>; startedAt: number; setting: "gym" | "home" }
+export interface SetResult { done: boolean; reps?: number; seconds?: number; distance_m?: number; calories?: number; load?: string; took_s?: number }
+export interface Run { queue: QueueItem[]; idx: number; results: Record<string, SetResult>; startedAt: number; setting: "gym" | "home"; mark?: number }
 
 const MEASURES = ["reps", "seconds", "distance_m", "calories"] as const;
 
@@ -58,7 +58,10 @@ export function buildQueue(steps: GymStep[]): QueueItem[] {
   return out;
 }
 
-export const startRun = (steps: GymStep[], setting: "gym" | "home", now: number): Run => ({ queue: buildQueue(steps), idx: 0, results: {}, startedAt: now, setting });
+export const startRun = (steps: GymStep[], setting: "gym" | "home", now: number): Run => ({ queue: buildQueue(steps), idx: 0, results: {}, startedAt: now, setting, mark: now });
+
+/** Marks "the current set starts now" (after a rest, or when resuming), so the next set's time excludes the rest. */
+export const markStart = (r: Run, now: number): Run => ({ ...r, mark: now });
 
 export const currentItem = (r: Run): QueueItem | undefined => r.queue[r.idx];
 export const workItems = (r: Run): WorkItem[] => r.queue.filter((q): q is WorkItem => q.kind === "work");
@@ -72,17 +75,18 @@ function nextWork(queue: QueueItem[], from: number): number {
 }
 
 /** Records the current set as done and moves on; returns the rest to take now (the set's own rest, or a rest step that follows). */
-export function finishSet(r: Run, result: Omit<SetResult, "done">): { run: Run; rest: number } {
+export function finishSet(r: Run, result: Omit<SetResult, "done">, now?: number): { run: Run; rest: number } {
   const it = r.queue[r.idx];
   if (!it || it.kind !== "work") return { run: r, rest: 0 };
-  const results = { ...r.results, [it.id]: { ...result, done: true } };
+  const took = now != null && r.mark != null ? Math.max(0, Math.round((now - r.mark) / 1000)) : undefined;
+  const results = { ...r.results, [it.id]: { ...result, done: true, ...(took != null ? { took_s: took } : {}) } };
   let idx = r.idx + 1;
   let rest = it.restAfter;
   if (idx < r.queue.length && r.queue[idx].kind === "rest") {
     rest = Math.max(rest, (r.queue[idx] as RestItem).seconds);
     idx = nextWork(r.queue, idx);
   }
-  return { run: { ...r, idx, results }, rest };
+  return { run: { ...r, idx, results, mark: now ?? r.mark }, rest };
 }
 
 /** Skips the current set (kept in the log as not done). */
@@ -158,16 +162,18 @@ export function toEntries(r: Run, nameOf: (id: string) => string | undefined): G
   for (const w of workItems(r)) {
     const res = r.results[w.id];
     if (!res) continue;
-    const ident = w.exercise ?? `name:${w.name ?? "Exercise"}`;
+    const ident = `${w.block}|${w.exercise ?? `name:${w.name ?? "Exercise"}`}`;
     let e = map.get(ident);
     if (!e) {
       e = w.exercise ? { exercise: w.exercise, sets: [] } : { name: w.name ?? "Exercise", sets: [] };
+      if (w.block) e.block = w.block;
       map.set(ident, e);
       order.push(ident);
     }
     const set: GymLoggedSet = { done: res.done };
     for (const m of MEASURES) if (res[m] != null) set[m] = res[m];
     if (res.load) set.load = res.load;
+    if (res.took_s != null) set.took_s = res.took_s;
     if (w.target.reps != null) set.target_reps = w.target.reps;
     e.sets.push(set);
   }
@@ -203,8 +209,29 @@ export function parseKg(load: string | undefined | null): number | null {
 }
 
 /** A load nudged by `delta` kg (never below zero); from nothing or text it starts at the nudge. */
-export function bumpLoad(load: string | undefined, delta: number): string {
-  const kg = parseKg(load) ?? 0;
+export function bumpLoad(load: string | undefined, delta: number, startAt = 0): string {
+  const text = (load ?? "").trim();
+  if (text && parseKg(text) == null) return load as string; // "20 kg x2", "red band": the steppers leave typed text alone
+  if (!text && delta > 0 && startAt > 0) return `${startAt} kg`; // from nothing, the first plus jumps to a real starting weight
+  const kg = text ? (parseKg(text) as number) : 0;
   const next = Math.max(0, Math.round((kg + delta) * 100) / 100);
   return next === 0 ? "" : `${next} kg`;
+}
+
+/** The load to start a set with: what you used for the same exercise earlier in this workout, else the plan's or last time's. */
+export function seedLoad(r: Run, item: WorkItem): string {
+  if (item.exercise) {
+    for (let i = r.idx - 1; i >= 0; i--) {
+      const q = r.queue[i];
+      const res = q.kind === "work" ? r.results[q.id] : undefined;
+      if (q.kind === "work" && q.exercise === item.exercise && res?.done && res.load) return res.load;
+    }
+  }
+  return item.load ?? "";
+}
+
+/** Whether a weight box makes sense: not for runs, rowing, stretches, drills or jumps, which have distance, time or nothing to load. */
+export function usesLoad(pattern: string | undefined, unit: string | undefined): boolean {
+  if (pattern && ["cardio", "mobility", "drill"].includes(pattern)) return false;
+  return unit !== "calories";
 }

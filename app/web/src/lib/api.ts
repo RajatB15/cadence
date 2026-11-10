@@ -264,7 +264,7 @@ export const api = {
   gymExercise: (id: string, setting?: GymSetting) => request<GymExercise>(`/api/gym/exercises/${encodeURIComponent(id)}${setting ? `?setting=${setting}` : ""}`),
   gymPlan: (id: number) => request<GymPlanDetail>(`/api/gym/plans/${id}`),
   gymLastLoads: (ids: string[]) => request<{ loads: Record<string, GymLastLoad> }>(`/api/gym/last-loads?ids=${ids.join(",")}`),
-  gymLogWorkout: (body: { name: string; setting: GymSetting; plan_id?: number | null; session_id?: number | null; duration_s?: number | null; entries: GymWorkoutEntry[]; notes?: string | null }) =>
+  gymLogWorkout: (body: { name: string; setting: GymSetting; plan_id?: number | null; session_id?: number | null; duration_s?: number | null; rpe?: number | null; entries: GymWorkoutEntry[]; notes?: string | null }) =>
     request<GymWorkout>("/api/gym/workouts", { method: "POST", body: JSON.stringify(body) }),
   gymWorkouts: (limit = 20) => request<{ workouts: GymWorkout[] }>(`/api/gym/workouts?limit=${limit}`),
   gymWorkoutDelete: (id: number) => request<{ deleted: number }>(`/api/gym/workouts/${id}`, { method: "DELETE" }),

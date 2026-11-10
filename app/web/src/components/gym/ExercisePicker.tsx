@@ -23,10 +23,10 @@ export function ExercisePicker({ open, setting, title = "Add an exercise", onPic
           <Search size={16} className="text-dim" aria-hidden />
           <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search: squat, sled, band…" aria-label="Search exercises" className="w-full bg-transparent py-3 text-lg text-paper outline-none" autoFocus />
         </label>
-        <div className="flex flex-wrap gap-2" role="group" aria-label="Movement">
-          <button type="button" aria-pressed={pattern == null} className={`chip ${pattern == null ? "border-gold text-cream" : "text-mute"}`} onClick={() => setPattern(null)}>All</button>
+        <div className="-mx-1 flex flex-nowrap gap-2 overflow-x-auto px-1 pb-1" role="group" aria-label="Movement">
+          <button type="button" aria-pressed={pattern == null} className={`chip shrink-0 ${pattern == null ? "border-gold text-cream" : "text-mute"}`} onClick={() => setPattern(null)}>All</button>
           {patterns.map((p) => (
-            <button key={p} type="button" aria-pressed={pattern === p} className={`chip ${pattern === p ? "border-gold text-cream" : "text-mute"}`} onClick={() => setPattern(p)}>{PATTERN_LABEL[p] ?? p}</button>
+            <button key={p} type="button" aria-pressed={pattern === p} className={`chip shrink-0 ${pattern === p ? "border-gold text-cream" : "text-mute"}`} onClick={() => setPattern(p)}>{PATTERN_LABEL[p] ?? p}</button>
           ))}
         </div>
         {query.isError ? (

@@ -146,15 +146,17 @@ def test_seed_changes_the_picks_and_minutes_trims_accessories():
 
 def test_hyrox_template_is_eight_rounds_of_run_then_station_with_blank_loads():
     s = G.build("hyrox", "gym", GYM)
-    groups = s["steps"]
+    assert s["steps"][0]["title"] == "Warm-up" and G.exercise_ids(s["steps"][:1])  # a warm-up before the race pattern
+    groups = s["steps"][1:]
     assert len(groups) == 8 and all(g["type"] == "group" and len(g["steps"]) == 2 for g in groups)
     assert [g["steps"][1]["exercise"] for g in groups] == [x for x, _ in G.HYROX_STATIONS]
     assert all(g["steps"][0]["exercise"] == "run" and g["steps"][0]["distance_m"] == 1000 for g in groups)
     assert groups[7]["steps"][1]["reps"] == 100 and groups[1]["steps"][1]["distance_m"] == 50 and groups[3]["steps"][1]["distance_m"] == 80
     assert all("load" not in g["steps"][1] for g in groups) and any("official rulebook" in n for n in s["notes"])
     half = G.build("hyrox_practice", "gym", GYM)
-    assert half["steps"][0]["steps"][0]["distance_m"] == 500 and half["steps"][7]["steps"][1]["reps"] == 50
+    assert half["steps"][1]["steps"][0]["distance_m"] == 500 and half["steps"][8]["steps"][1]["reps"] == 50
     assert 50 <= G.estimate_minutes(s["steps"]) <= 120 and G.estimate_minutes(half["steps"]) < G.estimate_minutes(s["steps"])
+    assert any("fixed format" in n for n in s["notes"])  # honest that the time asked for can't change a fixed race
 
 
 def test_hyrox_at_home_swaps_the_kit_and_says_what_changed():
@@ -162,7 +164,7 @@ def test_hyrox_at_home_swaps_the_kit_and_says_what_changed():
     ids = G.exercise_ids(s["steps"])
     assert all(G.available(G.exercise(i), HOME) for i in ids)
     assert not ({"sled-push", "sled-pull", "skierg", "rowing-machine", "wall-ball", "sandbag-lunge"} & set(ids))
-    assert sum("→" in n for n in s["notes"]) >= 5 and len(s["steps"]) == 8
+    assert sum("→" in n for n in s["notes"]) >= 5 and len(s["steps"]) == 9
 
 
 def test_convert_setting_refits_and_reports():
@@ -183,7 +185,7 @@ def test_text_for_the_parser_round_trips_patterns():
     expected = {G.exercise(i)["pattern"] for i in G.exercise_ids(s["steps"])}
     assert expected <= parsed | {None} and {"squat", "hinge", "push", "pull"} <= parsed
     h = G.to_text("Hyrox", G.build("hyrox", "gym", GYM)["steps"])
-    assert "Sled Push" in h and h.count("#") == 8
+    assert "Sled Push" in h and h.count("#") == 9
 
 
 def test_describe_outline_and_minutes_are_readable():
@@ -227,3 +229,32 @@ def test_progression_hints_are_suggestions_from_logged_sets_only():
     assert G.progression_hint("push-up", [{"done": True, "reps": 10}]) is None  # no target recorded: nothing to go on
     assert G.progression_hint("push-up", [{"done": False, "reps": 10, "target_reps": 10}]) is None
     assert G.parse_kg("42,5 kg") == 42.5 and G.parse_kg("bodyweight") is None and G.parse_kg("") is None and G.parse_kg("20 lb") is None
+
+
+def test_generated_sessions_land_near_the_time_asked_and_use_real_lifts():
+    for tid, setting, minutes in [("full_body", "gym", 45), ("lower", "gym", 45), ("push", "gym", 30), ("full_body", "home", 45), ("conditioning", "home", 30), ("run_lift", "gym", 45)]:
+        owned = G.owned_set(setting, ["kettlebell", "band", "backpack"] if setting == "home" else None)
+        s = G.build(tid, setting, owned, minutes, "intermediate", "general", 1)
+        est = G.estimate_minutes(s["steps"])
+        assert abs(est - minutes) <= max(8, minutes * 0.2), (tid, setting, minutes, est)
+    full = G.build("full_body", "gym", GYM, 45, "intermediate", "strength", 3)
+    main = [G.exercise(i) for i in G.exercise_ids([g for g in full["steps"] if g.get("title") == "Main"])]
+    assert not any("conditioning" in e["tags"] or "hyrox" in e["tags"] for e in G.exercise_ids and (G.exercise(i) for i in G.exercise_ids(full["steps"][1:])))
+    assert {"squat", "hinge", "push", "pull"} <= {e["pattern"] for e in main}
+    gym_ids = {i for t in G.TEMPLATES if t not in ("hyrox", "hyrox_practice") for sd in range(1, 4) for i in G.exercise_ids(G.build(t, "gym", GYM, 45, "intermediate", "general", sd)["steps"])}
+    assert not {"backpack-row", "backpack-curl"} & gym_ids  # backpack moves only appear when you say you have a backpack
+    home = G.build("full_body", "home", G.owned_set("home", []), 45, "beginner", "general", 1)
+    assert any("Pulling with no equipment" in n for n in home["notes"]) or any(G.exercise(i)["pattern"] == "pull" and "warmup" not in G.exercise(i)["tags"] for i in G.exercise_ids(home["steps"]))
+    withpack = G.build("full_body", "home", G.owned_set("home", ["backpack"]), 45, "intermediate", "general", 1)
+    assert "backpack-row" in G.exercise_ids(withpack["steps"]) or "backpack-curl" in G.exercise_ids(withpack["steps"])
+    circuit = G.build("conditioning", "home", G.owned_set("home", []), 30, "intermediate", "general", 1)
+    runs = [s for g in circuit["steps"] if g.get("title") == "Circuit" for s in g["steps"] if s.get("exercise") == "run"]
+    assert all(r["distance_m"] <= 400 for r in runs)  # no 1 km run inside every round
+
+
+def test_swap_suggestions_stay_the_same_kind_of_work():
+    for d in ("different", "harder", "easier"):
+        for a in G.alternatives("back-squat", d, GYM, limit=10):
+            e = G.exercise(a["id"])
+            assert "conditioning" not in e["tags"] and e["pattern"] in G.LIFT_PATTERNS, (d, a)
+    assert G.alternatives("back-squat", "easier", GYM)[0]["reason"] == "Same movement, lighter"

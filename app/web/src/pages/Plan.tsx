@@ -31,6 +31,7 @@ export function PlanPage() {
   const selected = day ?? w.today;
   const plans = w.days.find((d) => d.day === selected)?.plans ?? [];
   const p = w.projection;
+  const nextGym = w.days.filter((d) => d.day >= w.today).flatMap((d) => d.plans).find((x) => x.gym && x.status !== "done" && !x.logged);
   return (
     <>
       <PageHeader eyebrow="Next 7 days" title={<>Plan your <em className="text-gold">week.</em></>}>
@@ -38,6 +39,16 @@ export function PlanPage() {
         <Link to="/goals" className="pop pop-ghost">Goals</Link>
         <Link to="/lab?tab=accuracy" className="pop pop-ghost">How accurate?</Link>
       </PageHeader>
+      {nextGym && (
+        <Link to={`/workout/${nextGym.id}`} className="surface surface-hover edge mb-6 flex items-center justify-between gap-4 p-4 sm:p-5" style={edge(C.gold)}>
+          <span className="min-w-0">
+            <span className="eyebrow block">Next gym session · {nextGym.day === w.today ? "today" : nextGym.day === w.days[1]?.day ? "tomorrow" : formatDate(nextGym.day)}</span>
+            <span className="block truncate font-display text-2xl text-cream">{nextGym.title}</span>
+            <span className="num block text-sm text-mute">≈ {nextGym.minutes} min{nextGym.start_hour != null ? ` · ${hourLabel(nextGym.start_hour)}` : ""}</span>
+          </span>
+          <span className="pop pop-lime shrink-0 !py-3"><Dumbbell size={14} /> View plan</span>
+        </Link>
+      )}
       {p && (
         <p className="-mt-6 mb-8 text-sm text-mute">
           Following the plan (~{p.weekly_load} load a week) takes your fitness from <span className="num text-sky">{p.fitness_now.toFixed(0)}</span> to about{" "}
@@ -101,7 +112,7 @@ function DayPlans({ day, plans, today }: { day: string; plans: PlannedSessionVie
               </p>
               {p.gym && (
                 <div className="mt-3 flex flex-wrap items-center gap-3">
-                  <Link to={`/workout/${p.id}`} className={clsx("pop !px-4 !py-2 text-sm", !p.logged && p.status !== "done" && "pop-lime")}>
+                  <Link to={`/workout/${p.id}`} className={clsx("pop !px-5 !py-3 text-sm", !p.logged && p.status !== "done" && "pop-lime")}>
                     <Dumbbell size={14} /> {p.logged ? "View workout" : "View plan and start"}
                   </Link>
                   {p.logged && <span className="text-xs text-lime">Logged</span>}

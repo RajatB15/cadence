@@ -14,6 +14,7 @@ import type { GymDraft, GymSession, GymSetting } from "../lib/types";
 type Tab = "sessions" | "build" | "exercises";
 
 const blank = (setting: GymSetting): GymDraft => ({ name: "", setting, format: "custom", steps: [], notes: null });
+const snapshot = (d: GymDraft) => JSON.stringify({ n: d.name.trim(), s: d.setting, st: d.steps, no: d.notes ?? null });
 const fromSession = (s: GymSession): GymDraft => ({ id: s.id, name: s.name, setting: s.setting, format: s.format, steps: s.steps, notes: s.notes });
 
 export function GymPage() {
@@ -22,6 +23,7 @@ export function GymPage() {
   const settings = useGymSettings();
   const [tab, setTab] = useState<Tab>("sessions");
   const [draft, setDraft] = useState<GymDraft | null>(null);
+  const [baseline, setBaseline] = useState<string>("");
   const [planned, setPlanned] = useState<string | null>(null);
   const [asking, setAsking] = useState(false);
   const [failed, setFailed] = useState<string | null>(null);
@@ -38,7 +40,7 @@ export function GymPage() {
 
   const save = useMutation({
     mutationFn: (d: GymDraft) => (d.id ? api.gymUpdate(d.id, { name: d.name.trim(), setting: d.setting, format: d.format, steps: d.steps, notes: d.notes }) : api.gymCreate({ name: d.name.trim(), setting: d.setting, format: d.format, steps: d.steps, notes: d.notes })),
-    onSuccess: (s) => { setDraft(fromSession(s)); setFailed(null); refresh(); },
+    onSuccess: (s) => { const d = fromSession(s); setDraft(d); setBaseline(snapshot(d)); setFailed(null); refresh(); },
     onError: (e: Error) => setFailed(e.message || "Couldn’t save that."),
   });
   const plan = useMutation({
@@ -54,7 +56,7 @@ export function GymPage() {
     onSuccess: () => { setDraft(null); setAsking(false); refresh(); },
   });
 
-  const open = (d: GymDraft) => { setDraft(d); setPlanned(null); setFailed(null); window.scrollTo({ top: 0 }); };
+  const open = (d: GymDraft, fresh = false) => { setDraft(d); setBaseline(fresh ? "" : snapshot(d)); setPlanned(null); setFailed(null); window.scrollTo({ top: 0 }); };
   const count = sessions.data?.sessions.length ?? 0;
 
   return (
@@ -63,7 +65,7 @@ export function GymPage() {
       {draft ? (
         <>
           <button type="button" className="mb-6 text-sm text-mute hover:text-paper" onClick={() => setDraft(null)}>← Back</button>
-          <SessionEditor draft={draft} onChange={setDraft} saving={save.isPending} saveLabel={draft.id ? "Save changes" : "Save session"} planning={plan.isPending}
+          <SessionEditor draft={draft} onChange={setDraft} saving={save.isPending} saveLabel={draft.id ? "Save changes" : "Save session"} dirty={snapshot(draft) !== baseline} planning={plan.isPending}
             planned={planned} error={failed} onSave={() => save.mutate(draft)} onPlan={(day, hour) => plan.mutate({ d: draft, day, hour })}
             onDelete={draft.id ? () => setAsking(true) : undefined} />
           <ConfirmDialog open={asking} title="Delete this session?" body="Copies already put on the plan stay there." confirmLabel="Delete" onCancel={() => setAsking(false)} onConfirm={() => draft.id && remove.mutate(draft.id)} />
@@ -76,7 +78,7 @@ export function GymPage() {
             ))}
           </div>
           {tab === "sessions" && <SessionList q={sessions} onOpen={(s) => open(fromSession(s))} onBuild={() => setTab("build")} />}
-          {tab === "build" && <Build defaultSetting={settings.data?.default_setting ?? "gym"} onDraft={open} />}
+          {tab === "build" && <Build defaultSetting={settings.data?.default_setting ?? "gym"} onDraft={(d) => open(d, true)} />}
           {tab === "exercises" && <Exercises />}
         </>
       )}
@@ -134,12 +136,12 @@ function Build({ defaultSetting, onDraft }: { defaultSetting: GymSetting; onDraf
     <div className="space-y-8">
       <section>
         <p className="eyebrow mb-3">Template</p>
-        <ul className="stagger grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        <ul className="stagger grid grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-3">
           {templates.data.templates.map((t) => (
             <li key={t.id}>
-              <button type="button" aria-pressed={template === t.id} onClick={() => setTemplate(t.id)} className={clsx("surface surface-hover h-full w-full space-y-1 p-4 text-left", template === t.id && "!border-gold")}>
-                <span className="block font-display text-xl text-cream">{t.name}</span>
-                <span className="block text-sm text-mute">{t.blurb}</span>
+              <button type="button" aria-pressed={template === t.id} onClick={() => setTemplate(t.id)} className={clsx("surface surface-hover h-full w-full space-y-1 p-3 text-left sm:p-4", template === t.id && "!border-gold")}>
+                <span className="block font-display text-lg text-cream sm:text-xl">{t.name}</span>
+                <span className="hidden text-sm text-mute sm:block">{t.blurb}</span>
               </button>
             </li>
           ))}
@@ -159,10 +161,10 @@ function Build({ defaultSetting, onDraft }: { defaultSetting: GymSetting; onDraf
         )}
         {hyrox && <p className="max-w-2xl text-sm text-mute">Eight rounds of a 1 km run then a station, in race order. Station loads are left blank: set them from the current official rulebook for your division. At home, the stations that need a sled, rower or SkiErg are swapped for the closest bodyweight work.</p>}
         {setting === "home" && <HomeEquipment />}
-        <div className="flex flex-wrap gap-3">
-          <button type="button" className="pop pop-lime" disabled={gen.isPending} onClick={() => gen.mutate(seed)}>{gen.isPending ? "Building…" : "Build it"}</button>
-          <button type="button" className="pop pop-ghost" disabled={gen.isPending} onClick={() => gen.mutate(seed + 1)} title="A different mix of exercises"><Shuffle size={14} /> Shuffle</button>
-          <button type="button" className="pop pop-ghost" onClick={() => onDraft(blank(setting))}><Plus size={14} /> Start from scratch</button>
+        <div className="sticky bottom-[5.75rem] z-10 -mx-2 flex flex-wrap gap-3 rounded-2xl border border-line bg-ink/95 p-3 backdrop-blur md:static md:mx-0 md:border-0 md:bg-transparent md:p-0">
+          <button type="button" className="pop pop-lime !py-3" disabled={gen.isPending} onClick={() => gen.mutate(seed)}>{gen.isPending ? "Building…" : "Build it"}</button>
+          <button type="button" className="pop pop-ghost !py-3" disabled={gen.isPending} onClick={() => gen.mutate(seed + 1)} title="A different mix of exercises"><Shuffle size={14} /> Shuffle</button>
+          <button type="button" className="pop pop-ghost !py-3" onClick={() => onDraft(blank(setting))}><Plus size={14} /> From scratch</button>
         </div>
         {gen.isError && <p role="alert" className="text-sm text-coral">{(gen.error as Error).message || "Couldn’t build that."}</p>}
         {notes.length > 0 && <ul className="text-xs text-dim">{notes.map((n) => <li key={n}>{n}</li>)}</ul>}
@@ -183,7 +185,7 @@ function HomeEquipment() {
     <div>
       <p className="eyebrow mb-2">What you have at home</p>
       <div className="flex flex-wrap gap-2" role="group" aria-label="Home equipment">
-        {q.data.equipment.filter((e) => ["dumbbell", "kettlebell", "barbell", "bench", "rack", "pullup_bar", "band", "box", "medicine_ball", "sandbag", "rings", "bike", "treadmill", "rower", "skierg", "sled"].includes(e)).map((e) => (
+        {q.data.equipment.filter((e) => ["backpack", "dumbbell", "kettlebell", "barbell", "bench", "rack", "pullup_bar", "band", "box", "medicine_ball", "sandbag", "rings", "bike", "treadmill", "rower", "skierg", "sled"].includes(e)).map((e) => (
           <button key={e} type="button" aria-pressed={have.has(e)} disabled={save.isPending} onClick={() => toggle(e)} className={clsx("chip pointer-coarse:py-2", have.has(e) ? "border-gold text-cream" : "text-mute")}>{EQUIPMENT_LABEL[e] ?? e}</button>
         ))}
       </div>
@@ -210,10 +212,10 @@ function Exercises() {
         <Segmented label="Setting" options={[{ value: "all" as const, label: "All" }, { value: "gym" as const, label: "Gym" }, { value: "home" as const, label: "Home" }]} value={setting} onChange={setSetting} />
         <span className="num text-sm text-dim">{query.data ? `${query.data.count} of ${query.data.total}` : ""}</span>
       </div>
-      <div className="flex flex-wrap gap-2" role="group" aria-label="Movement">
-        <button type="button" aria-pressed={pattern == null} className={clsx("chip pointer-coarse:py-2", pattern == null ? "border-gold text-cream" : "text-mute")} onClick={() => setPattern(null)}>All</button>
+      <div className="-mx-1 flex flex-nowrap gap-2 overflow-x-auto px-1 pb-1 sm:flex-wrap sm:overflow-visible" role="group" aria-label="Movement">
+        <button type="button" aria-pressed={pattern == null} className={clsx("chip shrink-0 pointer-coarse:py-2", pattern == null ? "border-gold text-cream" : "text-mute")} onClick={() => setPattern(null)}>All</button>
         {(query.data?.patterns ?? Object.keys(PATTERN_LABEL)).map((p) => (
-          <button key={p} type="button" aria-pressed={pattern === p} className={clsx("chip pointer-coarse:py-2", pattern === p ? "border-gold text-cream" : "text-mute")} onClick={() => setPattern(p)}>{PATTERN_LABEL[p] ?? p}</button>
+          <button key={p} type="button" aria-pressed={pattern === p} className={clsx("chip shrink-0 pointer-coarse:py-2", pattern === p ? "border-gold text-cream" : "text-mute")} onClick={() => setPattern(p)}>{PATTERN_LABEL[p] ?? p}</button>
         ))}
       </div>
       {query.isPending ? <LoadingBlock height={200} /> : query.isError ? <ErrorBlock error={query.error} retry={() => query.refetch()} /> : query.data.exercises.length === 0 ? (

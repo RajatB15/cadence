@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { addSet, bumpLoad, parseKg, buildQueue, currentItem, finishSet, goBack, isFinished, progress, skipExercise, skipSet, startRun, swapRemaining, toEntries, volumeKg, withLastLoads, workItems } from "./workoutQueue";
+import { addSet, bumpLoad, markStart, parseKg, seedLoad, usesLoad, buildQueue, currentItem, finishSet, goBack, isFinished, progress, skipExercise, skipSet, startRun, swapRemaining, toEntries, volumeKg, withLastLoads, workItems } from "./workoutQueue";
 import type { GymStep } from "./types";
+import type { WorkItem } from "./workoutQueue";
 
 const steps = (): GymStep[] => [
   { type: "exercise", exercise: "back-squat", sets: 3, reps: 5, load: "80 kg", rest_s: 120 },
@@ -75,9 +76,10 @@ describe("running through it", () => {
     while (!isFinished(r) && guard++ < 50) r = finishSet(r, { reps: 5, load: "80 kg" }).run;
     expect(isFinished(r)).toBe(true);
     const entries = toEntries(r, () => undefined);
-    expect(entries.map((e) => e.exercise ?? e.name)).toEqual(["back-squat", "run", "burpee", "Odd machine"]);
+    expect(entries.map((e) => e.exercise ?? e.name)).toEqual(["back-squat", "run", "burpee", "Odd machine"]); // one entry per block and exercise: a circuit's rounds merge, separate Hyrox blocks stay apart
     expect(entries[0].sets).toHaveLength(3);
     expect(entries[0].sets[0]).toEqual({ done: true, reps: 5, load: "80 kg", target_reps: 5 });
+    expect(entries[1]).toMatchObject({ exercise: "run", block: "Finisher" });
     expect(entries[1].sets).toHaveLength(2);
   });
   it("counts volume only from numeric loads", () => {
@@ -96,6 +98,36 @@ describe("loads", () => {
     expect(bumpLoad(undefined, 2.5)).toBe("2.5 kg");
     expect(bumpLoad("2.5 kg", -2.5)).toBe("");
     expect(bumpLoad("20 kg", -5)).toBe("15 kg");
-    expect(bumpLoad("band", 2.5)).toBe("2.5 kg");
+    expect(bumpLoad("band", 2.5)).toBe("band"); // typed text is left alone
+    expect(bumpLoad("20 kg x2", 2.5)).toBe("20 kg x2");
+    expect(bumpLoad("", 2.5, 40)).toBe("40 kg"); // the first plus jumps to a real starting load
+    expect(bumpLoad("", -2.5, 40)).toBe("");
+  });
+});
+
+describe("split times, carried weight and which exercises take a weight", () => {
+  it("times each set from when it started, excluding the rest", () => {
+    let r = startRun(steps(), "gym", 1000);
+    const a = finishSet(r, { reps: 5 }, 31_000);
+    expect(a.run.results[r.queue[0].id].took_s).toBe(30);
+    r = markStart(a.run, 61_000); // 30 s of rest later
+    const b = finishSet(r, { reps: 5 }, 76_000);
+    expect(b.run.results[r.queue[1].id].took_s).toBe(15);
+    expect(finishSet(startRun(steps(), "gym", 0), { reps: 5 }).run.results["q0"].took_s).toBeUndefined();
+  });
+  it("starts each set from the weight just used for that exercise", () => {
+    let r = startRun(steps(), "gym", 0);
+    r = finishSet(r, { reps: 5, load: "85 kg" }).run;
+    expect(seedLoad(r, currentItem(r) as WorkItem)).toBe("85 kg");
+    const fresh = startRun(steps(), "gym", 0);
+    expect(seedLoad(fresh, currentItem(fresh) as WorkItem)).toBe("80 kg"); // the plan's own
+  });
+  it("only offers a weight where one makes sense", () => {
+    expect(usesLoad("squat", "reps")).toBe(true);
+    expect(usesLoad("carry", "distance")).toBe(true); // a sled or a farmers carry has a load
+    expect(usesLoad("cardio", "distance")).toBe(false);
+    expect(usesLoad("mobility", "time")).toBe(false);
+    expect(usesLoad("drill", "distance")).toBe(false);
+    expect(usesLoad("cardio", "calories")).toBe(false);
   });
 });

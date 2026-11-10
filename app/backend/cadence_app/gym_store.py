@@ -154,7 +154,7 @@ def plan_detail(session: Session, plan_id: int) -> dict | None:
 
 # --------------------------------------------------------------------- workouts you did
 MAX_ENTRIES, MAX_SETS = 60, 40
-SET_NUM = {"reps": (0, 500), "seconds": (0, 7200), "distance_m": (0, 100_000), "calories": (0, 500), "target_reps": (1, 500)}
+SET_NUM = {"reps": (0, 500), "seconds": (0, 7200), "distance_m": (0, 100_000), "calories": (0, 500), "target_reps": (1, 500), "took_s": (0, 86400)}
 
 
 def _clean_entries(entries: object) -> list[dict]:
@@ -188,7 +188,10 @@ def _clean_entries(entries: object) -> list[dict]:
             if load is not None and str(load).strip():
                 one["load"] = str(load).strip()[:40]
             clean_sets.append(one)
-        entry = {"sets": clean_sets}
+        entry: dict = {"sets": clean_sets}
+        block = str(e.get("block") or "").strip()[:60]
+        if block:
+            entry["block"] = block
         entry["exercise" if ex_id is not None else "name"] = str(ex_id) if ex_id is not None else name
         out.append(entry)
     return out
@@ -197,19 +200,21 @@ def _clean_entries(entries: object) -> list[dict]:
 def workout_dict(w: GymWorkout) -> dict:
     entries = json.loads(w.entries)
     sets = [st for e in entries for st in e["sets"]]
-    return {"id": w.id, "day": w.day, "plan_id": w.plan_id, "session_id": w.session_id, "name": w.name, "setting": w.setting, "duration_s": w.duration_s,
+    return {"id": w.id, "day": w.day, "plan_id": w.plan_id, "session_id": w.session_id, "name": w.name, "setting": w.setting, "duration_s": w.duration_s, "rpe": w.rpe,
             "entries": [{**e, "label": G.exercise(e["exercise"])["name"] if "exercise" in e else e.get("name")} for e in entries], "notes": w.notes,
             "sets_done": sum(1 for st in sets if st.get("done")), "sets_total": len(sets)}
 
 
 def log_workout(session: Session, day: date, name: str, setting: str, entries: object, plan_id: int | None, session_id: int | None, duration_s: int | None,
-                notes: str | None, now: datetime) -> dict:
+                notes: str | None, now: datetime, rpe: int | None = None) -> dict:
     name = (name or "").strip()[:80]
     if not name:
         raise G.GymError("Give the workout a name")
     if setting not in G.SETTINGS:
         raise G.GymError("setting must be gym or home")
-    row = GymWorkout(day=day, plan_id=plan_id, session_id=session_id, name=name, setting=setting, duration_s=duration_s,
+    if rpe is not None and not 1 <= rpe <= 10:
+        raise G.GymError("rpe must be from 1 to 10")
+    row = GymWorkout(day=day, plan_id=plan_id, session_id=session_id, name=name, setting=setting, duration_s=duration_s, rpe=rpe,
                      entries=json.dumps(_clean_entries(entries)), notes=(notes.strip()[:2000] if notes and notes.strip() else None), created_at=now)
     session.add(row)
     session.commit()

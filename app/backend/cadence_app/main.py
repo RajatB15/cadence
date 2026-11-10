@@ -272,6 +272,7 @@ class GymWorkoutRequest(BaseModel):
     plan_id: int | None = Field(default=None, ge=1)
     session_id: int | None = Field(default=None, ge=1)
     duration_s: int | None = Field(default=None, ge=0, le=86400)
+    rpe: int | None = Field(default=None, ge=1, le=10)
     entries: list[dict] = Field(min_length=1, max_length=60)
     notes: str | None = Field(default=None, max_length=2000)
 
@@ -1324,7 +1325,7 @@ def create_app(
     @app.post("/api/gym/workouts", status_code=201)
     def gym_workout_log(body: GymWorkoutRequest, session: Session = Depends(get_session)) -> dict:
         return _gym(lambda: gym_store.log_workout(session, body.day or clock.today(), body.name, body.setting, body.entries, body.plan_id, body.session_id,
-                                                  body.duration_s, body.notes, clock.now()))
+                                                  body.duration_s, body.notes, clock.now(), body.rpe))
 
     @app.get("/api/gym/workouts")
     def gym_workouts(limit: int = Query(30, ge=1, le=100), session: Session = Depends(get_session)) -> dict:

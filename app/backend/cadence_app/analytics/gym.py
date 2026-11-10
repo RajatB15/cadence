@@ -37,6 +37,7 @@ GOALS = ("general", "strength", "muscle", "endurance")
 MAX_DEPTH, MAX_STEPS = 3, 200
 BODYWEIGHT = "bodyweight"
 EQUIVALENT = {"bench": "box", "box": "bench"}  # a sturdy surface does for either
+LIFT_PATTERNS = {"squat", "hinge", "lunge", "push", "pull"}
 NO_CROSSOVER = {"mobility", "drill", "cardio"}  # warm-up, mobility and conditioning work is only ever replaced by its own kind
 
 
@@ -63,7 +64,7 @@ def equipment_names() -> list[str]:
 def owned_set(setting: str, home_equipment: list[str] | None) -> set[str]:
     """Everything for the gym; for home, only what you said you own (bodyweight always)."""
     if setting == "gym":
-        return set(library()["equipment"])
+        return set(library()["equipment"]) - {"backpack"}  # a gym has the real kit; a loaded backpack is a home stand-in
     owned = {BODYWEIGHT} | {e for e in (home_equipment or []) if e in library()["equipment"]}
     return owned | {EQUIVALENT[e] for e in owned if e in EQUIVALENT}
 
@@ -350,6 +351,11 @@ def _overlap(a: dict, b: dict) -> float:
     return base + lead
 
 
+def _same_kind(cur: dict, e: dict) -> bool:
+    """Conditioning work (thrusters, wall balls, swings) is only replaced by conditioning work, and a strength lift by a strength lift."""
+    return ("conditioning" in cur["tags"]) == ("conditioning" in e["tags"])
+
+
 def alternatives(ex_id: str, direction: str, owned: set[str], exclude: set[str] | None = None, limit: int = 5) -> list[dict]:
     """Ranked replacements: [{id, name, level, needs, reason}]. direction is easier, harder or different."""
     cur = exercise(ex_id)
@@ -369,20 +375,21 @@ def alternatives(ex_id: str, direction: str, owned: set[str], exclude: set[str] 
             if gap * sign <= 0:
                 continue
             if same_family:
-                reason = f"Same movement, {abs(gap)} step{'s' if abs(gap) > 1 else ''} {direction}"
+                reason = f"Same movement, {'lighter' if direction == 'easier' else 'tougher'}"
                 scored.append(((0, abs(gap), -shared), e, reason))
-            elif e["pattern"] == cur["pattern"] and shared > 0:
+            elif e["pattern"] == cur["pattern"] and shared > 0 and _same_kind(cur, e):
                 reason = f"Similar {cur['pattern']} work ({', '.join(sorted(_muscles(cur) & _muscles(e)))}), {direction}"
                 scored.append(((1, abs(gap), -shared), e, reason))
         else:
-            if same_family or abs(gap) > 1 or e["pattern"] != cur["pattern"] or shared == 0:
+            if same_family or abs(gap) > 1 or e["pattern"] != cur["pattern"] or shared == 0 or not _same_kind(cur, e):
                 continue
             reason = f"A different {cur['pattern']} exercise for {', '.join(sorted(_muscles(cur) & _muscles(e)))}"
             scored.append(((0, -shared, abs(gap)), e, reason))
     if direction == "different" and len(scored) < limit and cur["pattern"] not in NO_CROSSOVER:  # widen: another pattern that trains the same muscles
         for e in pool:
             shared = _overlap(cur, e)
-            if e["pattern"] != cur["pattern"] and shared >= 0.9 and abs(e["level"] - cur["level"]) <= 1 and e["unit"] == cur["unit"]:
+            if (e["pattern"] != cur["pattern"] and shared >= 0.9 and abs(e["level"] - cur["level"]) <= 1 and e["unit"] == cur["unit"]
+                    and cur["pattern"] in LIFT_PATTERNS and e["pattern"] in LIFT_PATTERNS and _same_kind(cur, e)):
                 scored.append(((1, -shared, abs(e["level"] - cur["level"])), e, f"Trains the same muscles ({', '.join(sorted(_muscles(cur) & _muscles(e)))}) with a different movement"))
     seen: set[str] = set()
     out = []
@@ -559,9 +566,12 @@ def build(template_id: str, setting: str = "gym", owned: set[str] | None = None,
             steps, changes = convert_setting(steps, owned)
             notes += [f"{c['from']} → {c['to'] or 'kept'} ({c['why']})" for c in changes]
         notes.append("Station loads are blank on purpose: set them from the current official rulebook for your division.")
-        return {"name": name + (" (home)" if setting == "home" else ""), "format": "hyrox", "setting": setting, "steps": normalize(steps), "notes": notes}
+        hy = normalize(steps)
+        notes.append(f"Hyrox is a fixed format: about {estimate_minutes(hy)} min at an easy pace whatever time you set, plus the warm-up.")
+        return {"name": name + (" (home)" if setting == "home" else ""), "format": "hyrox", "setting": setting, "steps": hy, "notes": notes}
     rng = random.Random(f"{template_id}:{setting}:{level}:{goal}:{seed}")
     lo, hi = LEVELS[level]
+    skip = ("warmup",) if template_id == "conditioning" else ("warmup", "conditioning", "hyrox")  # lifts are lifts: swings, thrusters and sled work belong elsewhere
     if template_id == "run_lift":
         return {"name": name, "format": "hybrid", "setting": setting, "steps": normalize(_run_lift(rng, owned, lo, hi, minutes, goal)), "notes": notes}
     taken_fam: set[str] = set()
@@ -577,44 +587,92 @@ def build(template_id: str, setting: str = "gym", owned: set[str] | None = None,
     if template_id != "conditioning":
         warm.append(step_for(_pick(rng, owned, ["plyometric", "cardio"], 1, 1, taken_fam, taken_ids, tag_skip=()) or exercise("jumping-jack"), goal, "warmup"))
     main, extra = [], []
-    slots = tpl["slots"]
-    trim = 0 if minutes >= 40 else 1 if minutes >= 30 else 2
-    for role, patterns, count in slots:
+    for role, patterns, count in tpl["slots"]:
         for _ in range(count):
-            e = _pick(rng, owned, patterns, lo, hi, taken_fam, taken_ids)
+            e = _pick(rng, owned, patterns, lo, hi, taken_fam, taken_ids, tag_skip=skip)
             if e is None:
                 notes.append(f"Nothing available for {'/'.join(patterns)} with your equipment, so it was left out")
                 continue
             taken_ids.add(e["id"])
             taken_fam.add(e["family"])
             (extra if role in ("accessory", "core") else main).append((role, e))
-    if trim:
-        extra = extra[: max(1, len(extra) - trim)]
+    if any(e["pattern"] == "pull" and "warmup" in e["tags"] for _, e in main + extra):
+        notes.append("Pulling with no equipment is limited to light shoulder-blade work. Tick a loaded backpack, band or pull-up bar in your home equipment to add rows and pull-ups.")
+    warm_group = [{"type": "group", "title": "Warm-up", "rounds": 1, "steps": warm}] if warm else []
     if tpl["format"] == "circuit":
         inner = [step_for(e, "endurance", "circuit") | {"rest_s": 0} for _, e in main]
-        for s in inner:
-            s["sets"] = 1
-            if "reps" in s:
-                s["reps"] = 12 if exercise(s["exercise"])["pattern"] != "plyometric" else 8
-        rounds = 4 if minutes >= 40 else 3
-        steps = [{"type": "group", "title": "Warm-up", "rounds": 1, "steps": warm}] if warm else []
-        steps.append({"type": "group", "title": "Circuit", "rounds": rounds, "rest_s": 90, "steps": inner})
+        for s_ in inner:
+            s_["sets"] = 1
+            ex = exercise(s_["exercise"])
+            if "reps" in s_:
+                s_["reps"] = 12 if ex["pattern"] != "plyometric" else 8
+            if "distance_m" in s_ and ex["pattern"] == "cardio":
+                s_["distance_m"] = 200  # a short effort inside a round, not a 1 km run
+        per_round = sum(_step_seconds({**s_, "type": "exercise"}) for s_ in inner) + 90
+        warm_s = sum(_step_seconds(s_) for s_ in warm_group)
+        rounds = min(8, max(2, round((minutes * 60 - warm_s) / max(per_round, 1))))
+        steps = warm_group + [{"type": "group", "title": "Circuit", "rounds": rounds, "rest_s": 90, "steps": inner}]
     else:
-        steps = [{"type": "group", "title": "Warm-up", "rounds": 1, "steps": warm}] if warm else []
-        if main:
-            steps.append({"type": "group", "title": "Main", "rounds": 1, "steps": [step_for(e, goal, role) for role, e in main]})
-        acc = [step_for(e, "muscle" if role == "accessory" and goal == "strength" else goal, role) for role, e in extra]
-        if acc:
-            steps.append({"type": "group", "title": "Accessory and core", "rounds": 1, "steps": acc})
+        main_steps = [step_for(e, goal, role) for role, e in main]
+        acc_steps = [step_for(e, "muscle" if role == "accessory" and goal == "strength" else goal, role) for role, e in extra]
+        main_steps, acc_steps = _fit(warm_group, main_steps, acc_steps, minutes, goal, rng, owned, taken_fam, taken_ids, lo, hi, skip)
+        steps = warm_group + ([{"type": "group", "title": "Main", "rounds": 1, "steps": main_steps}] if main_steps else [])
+        if acc_steps:
+            steps.append({"type": "group", "title": "Accessory and core", "rounds": 1, "steps": acc_steps})
     if setting == "home":
         notes.append("Home session: only bodyweight and the equipment you listed. Make it harder with slower reps, pauses or a harder version.")
+    out_steps = normalize(steps)
+    est = estimate_minutes(out_steps)
+    if abs(est - minutes) > max(5, minutes * 0.15):
+        notes.append(f"This comes to about {est} min (you asked for {minutes}): it can't be stretched or shrunk further without padding or cutting what the template needs.")
     return {"name": name + (" (home)" if setting == "home" and template_id not in HOME_NAMES else ""), "format": tpl["format"], "setting": setting,
-            "steps": normalize(steps), "notes": notes}
+            "steps": out_steps, "notes": notes}
+
+
+ACCESSORY_ORDER = ["lunge", "hips", "push", "pull", "core", "calves"]
+
+
+def _fit(warm_group, main_steps, acc_steps, minutes, goal, rng, owned, taken_fam, taken_ids, lo, hi, skip):
+    """Grow or trim a straight session toward the minutes asked (within about 10%): more sets on the main lifts and another accessory when
+    short; fewer sets and accessories when long. Deterministic for the same rng state."""
+    def groups():
+        return warm_group + [{"type": "group", "title": "m", "rounds": 1, "steps": main_steps}] + ([{"type": "group", "title": "a", "rounds": 1, "steps": acc_steps}] if acc_steps else [])
+
+    cycle = 0
+    for _ in range(30):
+        est = estimate_minutes(groups()) if main_steps else 0
+        if not main_steps or minutes * 0.9 <= est <= minutes * 1.1:
+            break
+        if est < minutes * 0.9:
+            cycle += 1
+            growable = [s for s in main_steps if "reps" in s and s.get("sets", 1) < 5]
+            if len(acc_steps) < 5 and (cycle % 2 == 0 or not growable):
+                e = _pick(rng, owned, [ACCESSORY_ORDER[(len(acc_steps) + cycle) % len(ACCESSORY_ORDER)]], lo, hi, taken_fam, taken_ids, tag_skip=skip)
+                if e:
+                    taken_ids.add(e["id"])
+                    taken_fam.add(e["family"])
+                    acc_steps.append(step_for(e, "muscle" if goal == "strength" else goal, "accessory"))
+                    continue
+            if growable:
+                min(growable, key=lambda s: s.get("sets", 1))["sets"] += 1
+                continue
+            break
+        reducible = [s for s in main_steps if s.get("sets", 1) > 2]
+        if reducible:
+            max(reducible, key=lambda s: s.get("sets", 1))["sets"] -= 1
+        elif len(acc_steps) > 1:
+            acc_steps.pop()
+        else:
+            break
+    return main_steps, acc_steps
 
 
 def _hyrox(practice: bool) -> list[dict]:
     scale = 0.5 if practice else 1
-    steps = []
+    steps: list[dict] = [{"type": "group", "title": "Warm-up", "rounds": 1, "steps": [
+        {"type": "exercise", "exercise": "worlds-greatest-stretch", "sets": 1, "reps": 5},
+        {"type": "exercise", "exercise": "a-skip", "sets": 2, "distance_m": 30},
+        {"type": "exercise", "exercise": "run", "sets": 1, "distance_m": 400, "note": "easy"}]}]
     for i, (ex_id, amount) in enumerate(HYROX_STATIONS, 1):
         station = {"type": "exercise", "exercise": ex_id}
         station.update({k: max(1, round(v * scale)) for k, v in amount.items()})
@@ -626,12 +684,12 @@ def _hyrox(practice: bool) -> list[dict]:
 
 
 def _run_lift(rng: random.Random, owned: set[str], lo: int, hi: int, minutes: int, goal: str) -> list[dict]:
-    rounds = 6 if minutes >= 50 else 4 if minutes >= 35 else 3
+    rounds = min(8, max(3, round((minutes - 5) / 5.4)))  # about 5.4 min per round: an 800 m run and a set of a lift
     taken_fam: set[str] = set()
     taken_ids: set[str] = set()
     lifts = []
     for pats in (["squat", "lunge"], ["hinge"], ["push"], ["pull"]):
-        e = _pick(rng, owned, pats, lo, hi, taken_fam, taken_ids)
+        e = _pick(rng, owned, pats, lo, hi, taken_fam, taken_ids, tag_skip=("warmup", "conditioning", "hyrox"))
         if e:
             taken_ids.add(e["id"])
             taken_fam.add(e["family"])

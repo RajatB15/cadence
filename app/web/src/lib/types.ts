@@ -2055,8 +2055,8 @@ export interface GymDraft {
   notes: string | null;
 }
 
-export interface GymLoggedSet { reps?: number; seconds?: number; distance_m?: number; calories?: number; load?: string; target_reps?: number; done: boolean }
-export interface GymWorkoutEntry { exercise?: string; name?: string; label?: string; sets: GymLoggedSet[] }
+export interface GymLoggedSet { took_s?: number; reps?: number; seconds?: number; distance_m?: number; calories?: number; load?: string; target_reps?: number; done: boolean }
+export interface GymWorkoutEntry { exercise?: string; name?: string; label?: string; block?: string; sets: GymLoggedSet[] }
 export interface GymWorkout {
   id: number;
   day: string;
@@ -2065,6 +2065,7 @@ export interface GymWorkout {
   name: string;
   setting: GymSetting;
   duration_s: number | null;
+  rpe: number | null;
   entries: GymWorkoutEntry[];
   notes: string | null;
   sets_done: number;
