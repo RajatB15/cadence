@@ -15,7 +15,7 @@ import type {
   TrainingTrend,
   Behaviour,
   JournalView,
-  ReadingView, BookView, ConnectorStatus,
+  ReadingView, BookView, ConnectorStatus, GymAlternative, GymExercise, GymSession, GymSetting, GymSettings, GymStep, GymTemplate,
   PlanOption,
   Review,
   BodyProfile,
@@ -256,6 +256,34 @@ export const api = {
   reading: () => request<ReadingView>("/api/reading"),
   setReading: (id: string, status: "read" | "saved" | "skipped" | "unread") =>
     request<ReadingView>(`/api/reading/${encodeURIComponent(id)}`, { method: "PUT", body: JSON.stringify({ status }) }),
+  gymLibrary: (params: { q?: string; pattern?: string; setting?: GymSetting; level?: number; limit?: number } = {}) => {
+    const qs = new URLSearchParams();
+    for (const [k, v] of Object.entries(params)) if (v !== undefined && v !== "") qs.set(k, String(v));
+    return request<{ exercises: GymExercise[]; count: number; patterns: string[]; equipment: string[]; total: number }>(`/api/gym/library?${qs}`);
+  },
+  gymExercise: (id: string, setting?: GymSetting) => request<GymExercise>(`/api/gym/exercises/${encodeURIComponent(id)}${setting ? `?setting=${setting}` : ""}`),
+  gymTemplates: () => request<{ templates: GymTemplate[]; levels: string[]; goals: string[] }>("/api/gym/templates"),
+  gymSettings: () => request<GymSettings>("/api/settings/gym"),
+  setGymSettings: (body: { home_equipment?: string[]; default_setting?: GymSetting }) =>
+    request<GymSettings>("/api/settings/gym", { method: "PUT", body: JSON.stringify(body) }),
+  gymGenerate: (body: { template: string; setting: GymSetting; minutes: number; level: string; goal: string; seed: number }) =>
+    request<{ name: string; format: GymSession["format"]; setting: GymSetting; steps: GymStep[]; notes: string[]; minutes: number; outline: string }>("/api/gym/generate", { method: "POST", body: JSON.stringify(body) }),
+  gymPreview: (steps: GymStep[]) =>
+    request<{ steps: GymStep[]; minutes: number; outline: string; patterns: string[] }>("/api/gym/preview", { method: "POST", body: JSON.stringify({ steps }) }),
+  gymAlternatives: (body: { exercise: string; direction: "easier" | "harder" | "different"; setting: GymSetting; exclude?: string[] }) =>
+    request<{ alternatives: GymAlternative[] }>("/api/gym/alternatives", { method: "POST", body: JSON.stringify(body) }),
+  gymSwap: (body: { steps: GymStep[]; path: number[]; exercise: string; setting: GymSetting }) =>
+    request<{ steps: GymStep[] }>("/api/gym/swap", { method: "POST", body: JSON.stringify(body) }),
+  gymConvert: (steps: GymStep[], setting: GymSetting) =>
+    request<{ steps: GymStep[]; changes: { from: string; to: string | null; why: string }[] }>("/api/gym/convert", { method: "POST", body: JSON.stringify({ steps, setting }) }),
+  gymSessions: () => request<{ sessions: GymSession[] }>("/api/gym/sessions"),
+  gymCreate: (body: { name: string; setting: GymSetting; format: GymSession["format"]; steps: GymStep[]; notes?: string | null }) =>
+    request<GymSession>("/api/gym/sessions", { method: "POST", body: JSON.stringify(body) }),
+  gymUpdate: (id: number, body: Partial<{ name: string; setting: GymSetting; format: GymSession["format"]; steps: GymStep[]; notes: string | null }>) =>
+    request<GymSession>(`/api/gym/sessions/${id}`, { method: "PUT", body: JSON.stringify(body) }),
+  gymDelete: (id: number) => request<{ deleted: number }>(`/api/gym/sessions/${id}`, { method: "DELETE" }),
+  gymPlan: (id: number, body: { day: string; start_hour?: number | null }) =>
+    request<{ id: number; day: string }>(`/api/gym/sessions/${id}/plan`, { method: "POST", body: JSON.stringify(body) }),
   readingBook: () => request<BookView>("/api/reading/book"),
   readBookPart: () => request<BookView>("/api/reading/book/read", { method: "POST" }),
   setBookPosition: (part: number) => request<BookView>("/api/reading/book/position", { method: "PUT", body: JSON.stringify({ part }) }),

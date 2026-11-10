@@ -1990,6 +1990,73 @@ export interface ReadingView {
   feed: { available: boolean; enabled: boolean; fetched_at: string | null; items: ReadingFeedItem[] };
 }
 
+// ---- gym planner ----
+
+export type GymSetting = "gym" | "home";
+export type GymUnit = "reps" | "time" | "distance" | "calories";
+
+export interface GymExercise {
+  id: string;
+  name: string;
+  aliases: string[];
+  pattern: string;
+  family: string;
+  level: number;
+  equipment: string[][];
+  needs: string;
+  unit: GymUnit;
+  muscles: { primary: string[]; secondary: string[] };
+  cues: string[];
+  mistakes: string[];
+  tags: string[];
+  easier: { id: string; name: string }[];
+  harder: { id: string; name: string }[];
+  available?: boolean;
+}
+
+export interface GymExerciseStep {
+  type: "exercise";
+  exercise?: string;
+  name?: string;
+  sets?: number;
+  reps?: number;
+  seconds?: number;
+  distance_m?: number;
+  calories?: number;
+  load?: string;
+  rest_s?: number;
+  note?: string;
+}
+export interface GymRestStep { type: "rest"; seconds: number }
+export interface GymGroupStep { type: "group"; title: string; rounds: number; rest_s?: number; steps: GymStep[] }
+export type GymStep = GymExerciseStep | GymRestStep | GymGroupStep;
+
+export interface GymSession {
+  id: number;
+  name: string;
+  setting: GymSetting;
+  format: "straight" | "circuit" | "hybrid" | "hyrox" | "custom";
+  steps: GymStep[];
+  notes: string | null;
+  exercises: number;
+  minutes: number;
+  patterns: string[];
+  outline: string;
+}
+
+export interface GymDraft {
+  id?: number;
+  name: string;
+  setting: GymSetting;
+  format: GymSession["format"];
+  steps: GymStep[];
+  notes: string | null;
+}
+
+export interface GymTemplate { id: string; name: string; format: string; blurb: string }
+export interface GymSettings { home_equipment: string[]; default_setting: GymSetting; equipment: string[] }
+export interface GymAlternative { id: string; name: string; level: number; needs: string; reason: string }
+
 export interface BookPart {
   index: number;
   chapter: number;

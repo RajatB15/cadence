@@ -1,0 +1,129 @@
+# Routes with no Claude connector tool, and why. One per line: METHOD /path  # reason.
+# New routes must either get tools in connector.py TOOLS or a reason here (tests/test_connector_coverage.py).
+# 'legacy' = feature from before the connector rule: add tools and delete the line, never add new legacy lines.
+
+DELETE /api/connector/connections/{}  # sharing and the connector's own controls stay on the machine
+DELETE /api/events/{}  # legacy: connector tools not built yet
+DELETE /api/events/{}/activities/{}  # legacy: connector tools not built yet
+DELETE /api/food/dishes/{}/names/{}  # legacy: connector tools not built yet
+DELETE /api/food/meals/{}  # legacy: connector tools not built yet
+DELETE /api/food/portion-memory  # legacy: connector tools not built yet
+DELETE /api/garmin-connect  # secret: credentials never go through the connector
+DELETE /api/goals/{}  # legacy: connector tools not built yet
+DELETE /api/phases/{}  # legacy: connector tools not built yet
+DELETE /api/planner/{}/garmin  # legacy: connector tools not built yet
+DELETE /api/share/sessions/{}  # sharing and the connector's own controls stay on the machine
+DELETE /api/sources/demo/data  # sync, backup and vault admin: not for chat
+DELETE /api/strength/{}  # legacy: connector tools not built yet
+DELETE /api/weight/entries/{}  # legacy: connector tools not built yet
+DELETE /api/wellbeing/{}  # legacy: connector tools not built yet
+GET /api/activities/summary  # legacy: connector tools not built yet
+GET /api/backup/status  # sync, backup and vault admin: not for chat
+GET /api/connector  # sharing and the connector's own controls stay on the machine
+GET /api/credentials/status  # secret: credentials never go through the connector
+GET /api/events  # legacy: connector tools not built yet
+GET /api/events/{}  # legacy: connector tools not built yet
+GET /api/food/barcode/{}  # legacy: connector tools not built yet
+GET /api/food/crawl  # legacy: connector tools not built yet
+GET /api/food/dishes  # legacy: connector tools not built yet
+GET /api/food/quick  # legacy: connector tools not built yet
+GET /api/food/suggest  # legacy: connector tools not built yet
+GET /api/garmin-connect  # secret: credentials never go through the connector
+GET /api/garmin/status  # sync, backup and vault admin: not for chat
+GET /api/garmin/vault/item/{}  # sync, backup and vault admin: not for chat
+GET /api/garmin/vault/{}  # sync, backup and vault admin: not for chat
+GET /api/health  # sync, backup and vault admin: not for chat
+GET /api/improve  # legacy: connector tools not built yet
+GET /api/improve/{}  # legacy: connector tools not built yet
+GET /api/insights  # legacy: connector tools not built yet
+GET /api/journal  # legacy: connector tools not built yet
+GET /api/lab/accuracy  # legacy: analysis lab views not yet exposed as tools
+GET /api/lab/model  # legacy: analysis lab views not yet exposed as tools
+GET /api/lab/routes  # legacy: analysis lab views not yet exposed as tools
+GET /api/lab/whatif  # legacy: analysis lab views not yet exposed as tools
+GET /api/lab/whatif/replay  # legacy: analysis lab views not yet exposed as tools
+GET /api/phases  # legacy: connector tools not built yet
+GET /api/phases/active  # legacy: connector tools not built yet
+GET /api/phases/{}  # legacy: connector tools not built yet
+GET /api/push  # this phone's notification subscription; device-bound
+GET /api/reading  # legacy: connector tools not built yet
+GET /api/reading/book  # legacy: connector tools not built yet
+GET /api/settings/calories  # settings: changed in the app (plan tuning is deliberately not exposed)
+GET /api/settings/profile  # settings: changed in the app (plan tuning is deliberately not exposed)
+GET /api/settings/reading-feed  # settings: changed in the app (plan tuning is deliberately not exposed)
+GET /api/settings/timezone  # settings: changed in the app (plan tuning is deliberately not exposed)
+GET /api/settings/weather  # settings: changed in the app (plan tuning is deliberately not exposed)
+GET /api/share  # sharing and the connector's own controls stay on the machine
+GET /api/sources  # sync, backup and vault admin: not for chat
+GET /api/sync/runs  # sync, backup and vault admin: not for chat
+GET /api/trends/{}  # legacy: connector tools not built yet
+GET /api/weight/entries  # legacy: connector tools not built yet
+GET /api/wellbeing  # legacy: connector tools not built yet
+PATCH /api/events/{}  # legacy: connector tools not built yet
+PATCH /api/food/dishes/{}  # legacy: connector tools not built yet
+PATCH /api/food/dishes/{}/names/{}  # legacy: connector tools not built yet
+PATCH /api/food/entries/{}  # legacy: connector tools not built yet
+PATCH /api/food/meals/{}  # legacy: connector tools not built yet
+PATCH /api/journal/behaviours/{}  # legacy: connector tools not built yet
+POST /api/activities/{}/fetch  # sync, backup and vault admin: not for chat
+POST /api/connector/code  # sharing and the connector's own controls stay on the machine
+POST /api/credentials/reminders/dismiss  # secret: credentials never go through the connector
+POST /api/days/{}/fetch  # legacy: connector tools not built yet
+POST /api/events  # legacy: connector tools not built yet
+POST /api/events/{}/activities  # legacy: connector tools not built yet
+POST /api/focus  # legacy: connector tools not built yet
+POST /api/focus/{}/dismiss  # legacy: connector tools not built yet
+POST /api/food/copy  # legacy: connector tools not built yet
+POST /api/food/dishes  # legacy: connector tools not built yet
+POST /api/food/dishes/{}/names  # legacy: connector tools not built yet
+POST /api/food/entries  # legacy: connector tools not built yet
+POST /api/food/entries/bulk  # legacy: connector tools not built yet
+POST /api/food/entries/{}/restore  # legacy: connector tools not built yet
+POST /api/food/label  # legacy: connector tools not built yet
+POST /api/food/label/text  # legacy: connector tools not built yet
+POST /api/food/meals  # legacy: connector tools not built yet
+POST /api/garmin-connect/code  # secret: credentials never go through the connector
+POST /api/garmin-connect/login  # secret: credentials never go through the connector
+POST /api/garmin/rebuild  # legacy: connector tools not built yet
+POST /api/garmin/stop  # legacy: connector tools not built yet
+POST /api/garmin/sync  # sync, backup and vault admin: not for chat
+POST /api/gym/alternatives  # legacy: connector tools not built yet
+POST /api/gym/convert  # legacy: connector tools not built yet
+POST /api/gym/generate  # legacy: connector tools not built yet
+POST /api/gym/swap  # legacy: connector tools not built yet
+POST /api/journal/behaviours  # legacy: connector tools not built yet
+POST /api/phases  # legacy: connector tools not built yet
+POST /api/planner/{}/garmin  # legacy: connector tools not built yet
+POST /api/push/subscribe  # this phone's notification subscription; device-bound
+POST /api/push/test  # this phone's notification subscription; device-bound
+POST /api/push/unsubscribe  # this phone's notification subscription; device-bound
+POST /api/reading/book/read  # legacy: connector tools not built yet
+POST /api/reading/feed/refresh  # legacy: connector tools not built yet
+POST /api/share/reset  # sharing and the connector's own controls stay on the machine
+POST /api/share/start  # sharing and the connector's own controls stay on the machine
+POST /api/share/stop  # sharing and the connector's own controls stay on the machine
+POST /api/strength/ocr  # legacy: connector tools not built yet
+POST /api/strength/parse  # legacy: connector tools not built yet
+POST /api/sync/demo  # sync, backup and vault admin: not for chat
+PUT /api/connector  # sharing and the connector's own controls stay on the machine
+PUT /api/connector/writes  # sharing and the connector's own controls stay on the machine
+PUT /api/journal/{}  # legacy: connector tools not built yet
+PUT /api/phases/{}  # legacy: connector tools not built yet
+PUT /api/push/prefs  # this phone's notification subscription; device-bound
+PUT /api/reading/book/position  # legacy: connector tools not built yet
+PUT /api/reading/{}  # legacy: connector tools not built yet
+PUT /api/settings/calories  # settings: changed in the app (plan tuning is deliberately not exposed)
+PUT /api/settings/plan  # settings: changed in the app (plan tuning is deliberately not exposed)
+PUT /api/settings/profile  # settings: changed in the app (plan tuning is deliberately not exposed)
+PUT /api/settings/reading-feed  # settings: changed in the app (plan tuning is deliberately not exposed)
+PUT /api/settings/timezone  # settings: changed in the app (plan tuning is deliberately not exposed)
+PUT /api/settings/training-mode  # legacy: connector tools not built yet
+PUT /api/settings/weather  # settings: changed in the app (plan tuning is deliberately not exposed)
+PUT /api/settings/weight-goal  # legacy: connector tools not built yet
+PUT /api/strength/{}  # legacy: connector tools not built yet
+PUT /api/time-off/{}  # legacy: connector tools not built yet
+POST /api/gym/preview  # editor helper: validates and times unsaved steps; the connector's save and build tools validate the same way
+POST /api/gym/generate  # editor helper: gym_build_session covers it (generate and save in one step)
+POST /api/gym/alternatives  # editor helper: gym_alternatives covers it by session id
+POST /api/gym/swap  # editor helper: gym_swap_exercise covers it by session id
+POST /api/gym/convert  # editor helper: gym_set_session_setting covers it by session id

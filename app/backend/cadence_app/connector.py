@@ -86,6 +86,19 @@ TOOLS: dict[str, dict] = {
     "find_food": {"d": "Search the food library and the person's own dish names. Use it to get a dish_id before log_food.", "path": "/api/food/search",
                   "params": {"q": P("str", True, r".{1,100}"), "limit": P("int", rule=(1, 20))}},
     "saved_meals": {"d": "The person's saved meals (combinations they log together), with ids for log_saved_meal.", "path": "/api/food/meals"},
+    "gym_exercises": {"d": ("Search the gym exercise library (about 140 exercises) by name, movement pattern, level or whether they are possible in the gym or at home. "
+                            "Each result has cues (how to do it), common mistakes, muscles, equipment, and easier/harder versions."), "path": "/api/gym/library",
+                      "params": {"q": P("str", rule=r".{1,80}"), "pattern": P("enum", rule=("squat", "hinge", "lunge", "push", "pull", "carry", "core", "plyometric", "olympic", "calves", "hips", "cardio", "drill", "mobility")),
+                                 "setting": P("enum", rule=("gym", "home")), "level": P("int", rule=(1, 5)), "limit": P("int", rule=(1, 40))}},
+    "gym_exercise": {"d": "One exercise with its how-to guide: cues, common mistakes, muscles, equipment, and the easier and harder versions.", "path": "/api/gym/exercises/{ex_id}",
+                     "params": {"ex_id": P("str", True, r"[a-z0-9-]{1,60}", "path"), "setting": P("enum", rule=("gym", "home"))}},
+    "gym_templates": {"d": "The session templates gym_build_session can build (full body, upper, lower, push, pull, legs and core, conditioning, run + lift, Hyrox race and practice) and the levels and goals.", "path": "/api/gym/templates"},
+    "gym_sessions": {"d": "The saved gym sessions (ids, setting, format, minutes, outline of every step).", "path": "/api/gym/sessions"},
+    "gym_session": {"d": "One saved gym session in full, including steps. Step positions are indexes, e.g. [1, 0] is the first step inside the second group.", "path": "/api/gym/sessions/{gid}",
+                    "params": {"gid": P("int", True, (1, 10**9), "path")}},
+    "gym_alternatives": {"d": "Replacement options for one exercise in a saved session, easier, harder or different, within the session's gym or home setting. Nothing changes.", "path": "/api/gym/sessions/{gid}/alternatives",
+                         "params": {"gid": P("int", True, (1, 10**9), "path"), "path": P("str", True, r"\d{1,3}(\.\d{1,3}){0,3}"), "direction": P("enum", rule=("easier", "harder", "different"))}},
+    "gym_settings": {"d": "Which equipment the person has at home, and the default setting (gym or home).", "path": "/api/settings/gym"},
     "plan": {"d": "The planned sessions coming up (with their ids).", "path": "/api/planner"},
     "plan_options": {"d": ("The options for a session on a day (run, ride, swim or strength), each with an option_key for add_planned_session. "
                            "Optionally shape a custom run/ride/swim with distance_m or minutes, and effort."), "path": "/api/planner/options",
@@ -157,6 +170,42 @@ TOOLS: dict[str, dict] = {
                                 "note": P("str", rule=r".{1,200}", where="body")}},
     "remove_time_off": {"write": "plan", "destructive": True, "method": "DELETE", "path": "/api/time-off/{entry_id}",
                         "d": "Remove a time-off period by id (from time_off).", "params": {"entry_id": P("int", True, (1, 10**9), "path")}},
+    "gym_build_session": {"write": "plan", "method": "POST", "path": "/api/gym/sessions/build",
+                          "d": ("Build a gym session from a template (see gym_templates) and save it. setting gym uses everything; home uses only the person's home equipment (bodyweight if none). "
+                                "level beginner, intermediate or advanced; goal general, strength, muscle or endurance. Same inputs give the same session; change seed for a different mix. "
+                                "Hyrox templates leave station loads blank for the person to set from the official rulebook."),
+                          "params": {"template": P("enum", True, tuple(("full_body", "upper", "lower", "push", "pull", "legs_core", "conditioning", "run_lift", "hyrox", "hyrox_practice")), "body"),
+                                     "setting": P("enum", rule=("gym", "home"), where="body"), "minutes": P("int", rule=(10, 120), where="body"),
+                                     "level": P("enum", rule=("beginner", "intermediate", "advanced"), where="body"), "goal": P("enum", rule=("general", "strength", "muscle", "endurance"), where="body"),
+                                     "seed": P("int", rule=(1, 100000), where="body"), "name": P("str", rule=r".{1,80}", where="body")}},
+    "gym_save_session": {"write": "plan", "method": "POST", "path": "/api/gym/sessions",
+                         "d": ("Save a gym session you assembled yourself. steps is an ordered list; each step is {type:'exercise', exercise:<library id from gym_exercises> (or name for an unlisted one), "
+                               "sets, and one of reps / seconds / distance_m / calories, optional load like '20 kg', rest_s, note}, or {type:'rest', seconds}, or {type:'group', title, rounds, rest_s, steps:[...]} "
+                               "which nests (a circuit, or Hyrox's run then station repeated). Running is the exercise 'run' with distance_m; also 'rowing-machine', 'skierg', 'assault-bike'. "
+                               "format is straight, circuit, hybrid, hyrox or custom."),
+                         "params": {"name": P("str", True, r".{1,80}", "body"), "steps": P("steps", True, None, "body"), "setting": P("enum", rule=("gym", "home"), where="body"),
+                                    "format": P("enum", rule=("straight", "circuit", "hybrid", "hyrox", "custom"), where="body"), "notes": P("str", rule=r".{1,2000}", where="body")}},
+    "gym_update_session": {"write": "plan", "method": "PUT", "path": "/api/gym/sessions/{gid}",
+                           "d": "Rename a saved gym session, change its notes, or replace its steps (same step format as gym_save_session). Give at least one field.",
+                           "params": {"gid": P("int", True, (1, 10**9), "path"), "name": P("str", rule=r".{1,80}", where="body"), "notes": P("str", rule=r".{1,2000}", where="body"),
+                                      "steps": P("steps", rule=None, where="body")}},
+    "gym_swap_exercise": {"write": "plan", "method": "POST", "path": "/api/gym/sessions/{gid}/swap",
+                          "d": ("Replace one exercise in a saved session. path is the step position, e.g. [0] or [1, 0] inside a group. Give direction (easier, harder or different: picks the best option "
+                                "for the session's setting; see gym_alternatives first to choose) or an exact exercise id. The sets, reps and load stay when the unit is the same."),
+                          "params": {"gid": P("int", True, (1, 10**9), "path"), "path": P("intlist", True, None, "body"), "direction": P("enum", rule=("easier", "harder", "different"), where="body"),
+                                     "exercise": P("str", rule=r"[a-z0-9-]{1,60}", where="body")}},
+    "gym_set_session_setting": {"write": "plan", "method": "POST", "path": "/api/gym/sessions/{gid}/setting",
+                                "d": "Switch a saved session between gym and home. Exercises that need missing equipment are swapped for the closest ones, and the changes are listed in the reply.",
+                                "params": {"gid": P("int", True, (1, 10**9), "path"), "setting": P("enum", True, ("gym", "home"), "body")}},
+    "gym_schedule_session": {"write": "plan", "method": "POST", "path": "/api/gym/sessions/{gid}/plan",
+                             "d": "Put a snapshot of a saved gym session on a day in the plan (within the next week), as a planned strength session. Later edits to the saved session don't change it.",
+                             "params": {"gid": P("int", True, (1, 10**9), "path"), "day": _day(True, "body"), "start_hour": P("int", rule=(0, 23), where="body")}},
+    "gym_delete_session": {"write": "plan", "destructive": True, "method": "DELETE", "path": "/api/gym/sessions/{gid}",
+                           "d": "Delete a saved gym session (sessions already put on the plan stay).", "params": {"gid": P("int", True, (1, 10**9), "path")}},
+    "gym_set_home_equipment": {"write": "plan", "method": "PUT", "path": "/api/settings/gym",
+                               "d": "Say which equipment the person has at home, and optionally the default setting. Replaces the list; bodyweight is always available.",
+                               "params": {"home_equipment": P("enumlist", rule=("dumbbell", "kettlebell", "barbell", "bench", "rack", "pullup_bar", "cable", "machine", "band", "box", "sled", "skierg", "rower", "treadmill", "medicine_ball", "sandbag", "rings", "bike"), where="body"),
+                                          "default_setting": P("enum", rule=("gym", "home"), where="body")}},
 }
 
 
@@ -165,11 +214,17 @@ def _tool_schema(name: str) -> dict:
     props, required = {}, []
     for pname, spec in (tool.get("params") or {}).items():
         kind, rule = spec["kind"], spec["rule"]
-        out: dict = {"type": {"int": "integer", "num": "number", "items": "array", "bool": "boolean"}.get(kind, "string")}
+        out: dict = {"type": {"int": "integer", "num": "number", "items": "array", "bool": "boolean", "steps": "array", "intlist": "array", "enumlist": "array"}.get(kind, "string")}
         if kind in ("int", "num"):
             out.update(minimum=rule[0], maximum=rule[1])
         elif kind == "enum":
             out["enum"] = list(rule)
+        elif kind == "steps":
+            out.update(minItems=1, maxItems=200, items={"type": "object"})
+        elif kind == "intlist":
+            out.update(minItems=1, maxItems=4, items={"type": "integer", "minimum": 0})
+        elif kind == "enumlist":
+            out.update(maxItems=30, items={"type": "string", "enum": list(rule)})
         elif kind == "items":
             out.update(minItems=1, maxItems=MAX_FOOD_ITEMS, items={"type": "object", "additionalProperties": False, "properties": {
                 k: {"type": "integer" if t is int else "number" if t is float else "string"} for k, t in FOOD_ITEM_KEYS.items()}})
@@ -580,6 +635,15 @@ class Connector:
             elif kind == "bool":
                 if not isinstance(value, bool):
                     return f"{pname} must be true or false"
+            elif kind == "steps":
+                if not isinstance(value, list) or not 1 <= len(value) <= 200 or not all(isinstance(v, dict) for v in value):
+                    return "steps must be a list of 1 to 200 step objects"
+            elif kind == "intlist":
+                if not isinstance(value, list) or not 1 <= len(value) <= 4 or not all(isinstance(v, int) and not isinstance(v, bool) and 0 <= v <= 200 for v in value):
+                    return f"{pname} must be a list of 1 to 4 whole numbers (positions, starting at 0)"
+            elif kind == "enumlist":
+                if not isinstance(value, list) or len(value) > 30 or not all(v in rule for v in value):
+                    return f"{pname} must be a list of: {', '.join(rule)}"
             elif kind == "enum":
                 if value not in rule:
                     return f"{pname} must be one of: {', '.join(rule)}"
@@ -591,8 +655,8 @@ class Connector:
             elif not isinstance(value, str) or not re.fullmatch(rule, value, re.S):
                 return f"{pname} is not in the expected format"
             {"path": path_vals, "query": query, "body": body}[spec["where"]][pname] = str(value).lower() if isinstance(value, bool) else value
-        if name in ("log_check_in", "update_goal") and not body:
-            return "Give at least one field to change" if name == "update_goal" else "Give at least one of feel, soreness, pain_level, pain_area, illness, life_stress or note"
+        if name in ("log_check_in", "update_goal", "gym_update_session", "gym_set_home_equipment") and not body:
+            return "Give at least one field to change" if name != "log_check_in" else "Give at least one of feel, soreness, pain_level, pain_area, illness, life_stress or note"
         return path_vals, query, body
 
     @staticmethod
@@ -621,7 +685,9 @@ class Connector:
             return "Removed a food entry"
         plan_text = {"add_planned_session": "Added a session to the plan", "remove_planned_session": "Removed a planned session", "set_race_goal": "Set the race goal",
                      "clear_race_goal": "Cleared the race goal", "create_goal": "Added a goal", "update_goal": "Changed a goal", "add_time_off": "Added time off",
-                     "remove_time_off": "Removed time off"}
+                     "remove_time_off": "Removed time off", "gym_build_session": "Built a gym session", "gym_save_session": "Saved a gym session",
+                     "gym_update_session": "Edited a gym session", "gym_swap_exercise": "Swapped an exercise in a gym session", "gym_set_session_setting": "Switched a gym session between gym and home",
+                     "gym_schedule_session": "Put a gym session on the plan", "gym_delete_session": "Deleted a gym session", "gym_set_home_equipment": "Updated home equipment"}
         if name in plan_text:
             return plan_text[name]
         if name == "log_weight":
