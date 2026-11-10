@@ -104,7 +104,7 @@ writes, and each can be revoked in Settings). The data on the droplet is still n
 ### Claude connector (optional)
 
 Lets the Claude app, including on your iPhone, answer questions about your data through your normal Claude account
-(no API key). It is an MCP server on the same HTTPS address, read-only unless you also switch on "Let Claude log things" (food, weight and check-ins only, with a list of what it did): `https://<your-address>/mcp`. Turn it on in
+(no API key). It is an MCP server on the same HTTPS address, read-only unless you also switch on "Let Claude log things" (food, weight, check-ins) and/or "Let Claude change plan and goals" (race goal, goals, planned sessions, time off), each separate, with a list of what it did: `https://<your-address>/mcp`. Turn it on in
 Settings → Claude (through the tunnel, below), add that address on claude.ai under Settings → Connectors → Add custom
 connector, and type the approval code Settings shows. After that it also works in the iPhone app. Each connection is
 revocable in Settings. Whatever Claude reads becomes part of that Claude conversation, so it leaves your server when
