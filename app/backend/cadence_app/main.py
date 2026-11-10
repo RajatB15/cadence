@@ -523,7 +523,7 @@ def create_app(
         engine.dispose()
 
     app = FastAPI(title="Cadence", lifespan=lifespan, docs_url=None, redoc_url=None)
-    share = ShareServer(app, factory, settings.web_dist, settings.share_port, settings.share_host, settings.public_url)
+    share = ShareServer(app, factory, settings.web_dist, settings.share_port, settings.share_host, settings.public_url, clock.today)
     app.state.share = share
     app.state.notifier, app.state.scheduler = notifier, scheduler
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=ALLOWED_HOSTS)
@@ -612,6 +612,13 @@ def create_app(
     @app.put("/api/connector")
     def connector_set(body: WeatherSetting) -> dict:
         share.connector_auth.set_enabled(body.enabled)
+        return share.connector_status()
+
+    @app.put("/api/connector/writes")
+    def connector_writes(body: WeatherSetting) -> dict:
+        if body.enabled and not share.connector_auth.enabled():
+            raise HTTPException(400, "Turn the Claude connector on first")
+        share.connector_auth.set_writes(body.enabled)
         return share.connector_status()
 
     @app.post("/api/connector/code")

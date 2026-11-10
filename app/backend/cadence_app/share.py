@@ -15,7 +15,7 @@ import subprocess
 import threading
 import time
 from collections.abc import Callable
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from html import escape
 from pathlib import Path
 
@@ -410,12 +410,12 @@ def lan_addresses() -> list[str]:
 
 
 class ShareServer:
-    def __init__(self, api: ASGIApp, factory: sessionmaker, web_dir: Path, port: int, host: str = "0.0.0.0", public_url: str | None = None):
+    def __init__(self, api: ASGIApp, factory: sessionmaker, web_dir: Path, port: int, host: str = "0.0.0.0", public_url: str | None = None, today: Callable[[], date] | None = None):
         self.factory, self.web_dir, self.port, self.host = factory, web_dir, port, host
         self.public_url = public_url
         self.auth = ShareAuth(self._setting, self._save)
         self.connector_auth = ConnectorAuth(self._setting, self._save)
-        self.connector = Connector(api, self.connector_auth, lambda: self.public_url)
+        self.connector = Connector(api, self.connector_auth, lambda: self.public_url, today or date.today)
         self.gate = ShareGate(api, self.auth, web_dir, lambda: self.running, self.connector)
         self._server: uvicorn.Server | None = None
         self._thread: threading.Thread | None = None
@@ -474,7 +474,8 @@ class ShareServer:
         """What Settings shows for the Claude connector. The approval code is only ever returned here, to the machine's own Settings page."""
         on = self.connector_auth.enabled()
         out = {"enabled": on, "running": self.running, "address": f"{self.public_url}/mcp" if self.public_url else None,
-               "code": None, "code_expires_in_s": None, "connections": self.connector_auth.list()}
+               "code": None, "code_expires_in_s": None, "connections": self.connector_auth.list(),
+               "writes": self.connector_auth.writes_enabled(), "recent": self.connector_auth.recent()}
         if on and self.running and self.public_url:
             code, expires = self.connector_auth.approval_code()
             out["code"], out["code_expires_in_s"] = code, max(0, int(expires - time.time()))

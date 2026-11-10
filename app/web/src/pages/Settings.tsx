@@ -574,13 +574,14 @@ function ClaudeConnectorCard() {
   const onSuccess = (v: ConnectorStatus) => client.setQueryData(["connector"], v);
   const toggle = useMutation({ mutationFn: api.connectorSet, onSuccess });
   const newCode = useMutation({ mutationFn: api.connectorCode, onSuccess });
+  const writes = useMutation({ mutationFn: api.connectorWrites, onSuccess });
   const revoke = useMutation({ mutationFn: api.connectorRevoke, onSuccess });
   const [revoking, setRevoking] = useState<{ id: string; label: string } | null>(null);
   const [copied, setCopied] = useState(false);
   if (query.isPending) return <LoadingBlock height={200} />;
   if (query.isError) return <ErrorBlock error={query.error} retry={() => query.refetch()} />;
   const c = query.data;
-  const error = toggle.error ?? newCode.error ?? revoke.error;
+  const error = toggle.error ?? newCode.error ?? revoke.error ?? writes.error;
   const copy = async () => {
     if (!c.address) return;
     try {
@@ -600,7 +601,7 @@ function ClaudeConnectorCard() {
           </div>
           <div>
             <h2 className="font-semibold text-paper">Claude</h2>
-            <p className="text-xs text-mute">Ask Claude about your data · read-only · no API key</p>
+            <p className="text-xs text-mute">Ask Claude about your data · no API key</p>
           </div>
         </div>
         <button type="button" className={c.enabled ? "pop pop-ghost" : "pop pop-lime"} disabled={toggle.isPending} onClick={() => toggle.mutate(!c.enabled)}>
@@ -609,7 +610,7 @@ function ClaudeConnectorCard() {
       </div>
       <p className="mt-4 max-w-2xl text-sm text-mute">
         Adds Cadence to the Claude app as a connector. Once it’s set up on claude.ai, it works in the Claude app on your iPhone too, on your normal Claude
-        account. Claude can look at your training, sleep, weight, food and plan, and can’t change anything. What it reads becomes part of that conversation
+        account. Claude can look at your training, sleep, weight, food and plan. By default it can’t change anything. What it reads becomes part of that conversation
         with Claude, so it leaves this server when you ask a question.
       </p>
       {c.enabled && !c.address && (
@@ -643,6 +644,32 @@ function ClaudeConnectorCard() {
           </li>
           <li><span className="num mr-2 text-gold">3</span>Open the Claude app on your iPhone, start a chat, and switch Cadence on under the tools menu.</li>
         </ol>
+      )}
+      {c.enabled && (
+        <div className="mt-8 border-t border-line pt-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="max-w-xl">
+              <h3 className="eyebrow mb-1">Let Claude log things</h3>
+              <p className="text-sm text-mute">
+                Off: Claude only reads. On: it can also log food and saved meals, remove a food entry (restorable for a week), record your weight and save a
+                check-in, when you ask it to. It can’t touch your plan, goals, Garmin or settings.
+              </p>
+            </div>
+            <button type="button" role="switch" aria-checked={c.writes} aria-label="Let Claude log things" className={c.writes ? "pop pop-lime" : "pop pop-ghost"}
+              disabled={writes.isPending} onClick={() => writes.mutate(!c.writes)}>
+              {c.writes ? "On" : "Off"}
+            </button>
+          </div>
+          {c.recent.length > 0 && (
+            <ul className="mt-4 space-y-1 text-xs text-dim">
+              {c.recent.slice(0, 6).map((r, i) => (
+                <li key={`${r.at}-${i}`}>
+                  <span className="num text-mute">{timeAgo(new Date(`${r.at}Z`))}</span> · {r.summary}{r.ok ? "" : " (didn’t go through)"}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
       )}
       {c.enabled && (
         <div className="mt-8 border-t border-line pt-4">

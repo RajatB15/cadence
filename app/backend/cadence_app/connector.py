@@ -27,7 +27,7 @@ import secrets
 import threading
 import time
 from collections.abc import Callable
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from urllib.parse import parse_qs, urlencode
 
 import httpx
@@ -39,7 +39,7 @@ log = logging.getLogger(__name__)
 
 PATHS = ("/.well-known/oauth-protected-resource", "/.well-known/oauth-authorization-server", "/oauth/", "/mcp")
 ALLOWED_REDIRECTS = ("https://claude.ai/api/mcp/auth_callback", "https://claude.com/api/mcp/auth_callback")
-SESSIONS_KEY, ENABLED_KEY = "connector_sessions", "connector_enabled"
+SESSIONS_KEY, ENABLED_KEY, WRITES_KEY, AUDIT_KEY = "connector_sessions", "connector_enabled", "connector_writes", "connector_audit"
 APPROVAL_TTL_S, CODE_TTL_S, ACCESS_TTL_S, REFRESH_TTL_S = 10 * 60, 5 * 60, 60 * 60, 90 * 86400
 MAX_SESSIONS = 10
 FAIL_FREE, FAIL_MAX_BLOCK_S = 3, 30 * 60
@@ -57,24 +57,91 @@ INSTRUCTIONS = (
 )
 
 _DAY = r"\d{4}-\d{2}-\d{2}"
-# name -> (description, path template, {param: (kind, required, pattern|max, where)}); every tool is a GET.
-TOOLS: dict[str, tuple[str, str, dict[str, tuple]]] = {
-    "today": ("Today at a glance: readiness, today's session, energy burned vs eaten, sleep and the day's coach notes.", "/api/overview", {}),
-    "day": ("Everything recorded for one day (sleep, recovery, activities, food, notes).", "/api/days/{day}", {"day": ("str", True, _DAY, "path")}),
-    "recent_activities": ("Recent workouts, newest first, with distance, time, pace/power and heart rate.", "/api/activities",
-                          {"limit": ("int", False, 20, "query"), "family": ("str", False, r"[a-z_]{1,16}", "query")}),
-    "activity": ("One workout in detail, by its id from recent_activities.", "/api/activities/{activity_id}", {"activity_id": ("str", True, r"\d{1,20}", "path")}),
-    "training_summary": ("Training volume and trends across weeks.", "/api/trends/training", {}),
-    "review": ("The weekly or monthly review of training, sleep and fitness.", "/api/reviews/{kind}", {"kind": ("str", True, r"week|month", "path")}),
-    "weight": ("Weight history and trend, with the body-composition estimates (formula-based, not measured).", "/api/weight", {}),
-    "food": ("What was eaten on a day, with calorie ranges, protein and the day's targets.", "/api/food", {"day": ("str", False, _DAY, "query")}),
-    "plan": ("The planned sessions coming up.", "/api/planner", {}),
-    "goals": ("Goals (races, distances, weight) and whether each looks feasible.", "/api/goals", {}),
-    "time_off": ("Travel, illness, injury and holiday periods and how the plan eases around them.", "/api/time-off", {}),
-    "score": ("The overall fitness score and the biggest gaps.", "/api/score", {}),
-    "outcomes": ("The last 12 weeks compared with the 12 before.", "/api/outcomes", {}),
-    "metric": ("History of one metric (for example resting_hr, hrv, vo2max, sleep_hours).", "/api/metrics/{metric}", {"metric": ("str", True, r"[a-z0-9_]{1,40}", "path")}),
+MEALS = ("breakfast", "lunch", "snack", "dinner")
+FOOD_ITEM_KEYS = {"dish_id": int, "servings": float, "grams": float, "unit": str, "name": str, "kcal": float, "protein_g": float, "carbs_g": float, "fat_g": float}
+MAX_FOOD_ITEMS = 12
+
+
+def P(kind: str, required: bool = False, rule=None, where: str = "query", today: bool = False) -> dict:
+    return {"kind": kind, "required": required, "rule": rule, "where": where, "today": today}
+
+
+def _day(required: bool = False, where: str = "query", today: bool = False) -> dict:
+    return P("str", required, _DAY, where, today)
+
+
+# name -> {description, method, path, params, write}. Reads are GETs; the few writes are the daily-logging actions the phone is
+# also allowed (never plan changes, Garmin, goals, settings, credentials or sharing) and only run when "Let Claude log things" is on.
+TOOLS: dict[str, dict] = {
+    "today": {"d": "Today at a glance: readiness, today's session, energy burned vs eaten, sleep and the day's coach notes.", "path": "/api/overview"},
+    "day": {"d": "Everything recorded for one day (sleep, recovery, activities, food, notes).", "path": "/api/days/{day}", "params": {"day": _day(True, "path")}},
+    "recent_activities": {"d": "Recent workouts, newest first, with distance, time, pace/power and heart rate.", "path": "/api/activities",
+                          "params": {"limit": P("int", rule=(1, 20)), "family": P("str", rule=r"[a-z_]{1,16}")}},
+    "activity": {"d": "One workout in detail, by its id from recent_activities.", "path": "/api/activities/{activity_id}", "params": {"activity_id": P("str", True, r"\d{1,20}", "path")}},
+    "training_summary": {"d": "Training volume and trends across weeks.", "path": "/api/trends/training"},
+    "review": {"d": "The weekly or monthly review of training, sleep and fitness.", "path": "/api/reviews/{kind}", "params": {"kind": P("enum", True, ("week", "month"), "path")}},
+    "weight": {"d": "Weight history and trend, with the body-composition estimates (formula-based, not measured).", "path": "/api/weight"},
+    "food": {"d": "What was eaten on a day, with calorie ranges, protein and the day's targets.", "path": "/api/food", "params": {"day": _day()}},
+    "find_food": {"d": "Search the food library and the person's own dish names. Use it to get a dish_id before log_food.", "path": "/api/food/search",
+                  "params": {"q": P("str", True, r".{1,100}"), "limit": P("int", rule=(1, 20))}},
+    "saved_meals": {"d": "The person's saved meals (combinations they log together), with ids for log_saved_meal.", "path": "/api/food/meals"},
+    "plan": {"d": "The planned sessions coming up.", "path": "/api/planner"},
+    "goals": {"d": "Goals (races, distances, weight) and whether each looks feasible.", "path": "/api/goals"},
+    "time_off": {"d": "Travel, illness, injury and holiday periods and how the plan eases around them.", "path": "/api/time-off"},
+    "score": {"d": "The overall fitness score and the biggest gaps.", "path": "/api/score"},
+    "outcomes": {"d": "The last 12 weeks compared with the 12 before.", "path": "/api/outcomes"},
+    "metric": {"d": "History of one metric (for example resting_hr, hrv, vo2max, sleep_hours).", "path": "/api/metrics/{metric}", "params": {"metric": P("str", True, r"[a-z0-9_]{1,40}", "path")}},
+    # --- writes
+    "log_saved_meal": {"write": True, "method": "POST", "path": "/api/food/meals/{meal_id}/log",
+                       "d": "Log one of the person's saved meals (ids from saved_meals). Call once per meal; it adds entries. Day defaults to today.",
+                       "params": {"meal_id": P("int", True, (1, 10**9), "path"), "meal": P("enum", True, MEALS, "body"), "day": _day(where="body", today=True),
+                                  "scale": P("num", rule=(0.1, 10), where="body")}},
+    "log_food": {"write": True, "method": "POST", "path": "/api/food/log",
+                 "d": ("Log food eaten, as one meal. Each item is either a library dish ({dish_id, servings or grams}) found with find_food, or a one-off "
+                       "({name, kcal, protein_g?, carbs_g?, fat_g?}) when it isn't in the library; say that kcal is an estimate. Call once per meal; it adds entries. "
+                       "Day defaults to today."),
+                 "params": {"meal": P("enum", True, MEALS, "body"), "items": P("items", True, None, "body"), "day": _day(where="body", today=True)}},
+    "remove_food_entry": {"write": True, "destructive": True, "method": "DELETE", "path": "/api/food/entries/{entry_id}",
+                          "d": "Remove one food entry by id (from food or log_food results). It can be restored in the app for a week.",
+                          "params": {"entry_id": P("int", True, (1, 10**9), "path")}},
+    "log_weight": {"write": True, "method": "POST", "path": "/api/weight/entries",
+                   "d": "Record a weigh-in in kg (one per day; a new one replaces that day's). Day defaults to today.",
+                   "params": {"weight_kg": P("num", True, (25, 400), "body"), "day": _day(where="body", today=True)}},
+    "log_check_in": {"write": True, "method": "PUT", "path": "/api/wellbeing/{day}",
+                     "d": ("Save today's self-report; give at least one field. feel 1 (rough) to 5 (great); soreness and pain_level 0 (none) to 3 (a lot); "
+                           "illness 0 (none) to 2 (ill); life_stress 1 (low) to 3 (high). A check-in only ever pulls the plan towards less."),
+                     "params": {"day": _day(where="path", today=True), "feel": P("int", rule=(1, 5), where="body"), "soreness": P("int", rule=(0, 3), where="body"),
+                                "pain_level": P("int", rule=(0, 3), where="body"), "pain_area": P("str", rule=r".{1,40}", where="body"),
+                                "illness": P("int", rule=(0, 2), where="body"), "life_stress": P("int", rule=(1, 3), where="body"),
+                                "note": P("str", rule=r".{1,200}", where="body")}},
 }
+
+
+def _tool_schema(name: str) -> dict:
+    tool = TOOLS[name]
+    props, required = {}, []
+    for pname, spec in (tool.get("params") or {}).items():
+        kind, rule = spec["kind"], spec["rule"]
+        out: dict = {"type": {"int": "integer", "num": "number", "items": "array"}.get(kind, "string")}
+        if kind in ("int", "num"):
+            out.update(minimum=rule[0], maximum=rule[1])
+        elif kind == "enum":
+            out["enum"] = list(rule)
+        elif kind == "items":
+            out.update(minItems=1, maxItems=MAX_FOOD_ITEMS, items={"type": "object", "additionalProperties": False, "properties": {
+                k: {"type": "integer" if t is int else "number" if t is float else "string"} for k, t in FOOD_ITEM_KEYS.items()}})
+        else:
+            out["pattern"] = f"^(?:{rule})$"
+        if spec["today"]:
+            out["description"] = "YYYY-MM-DD; today when left out"
+        props[pname] = out
+        if spec["required"]:
+            required.append(pname)
+    write = bool(tool.get("write"))
+    ann = {"readOnlyHint": not write, "openWorldHint": False}
+    if write:
+        ann["destructiveHint"] = bool(tool.get("destructive"))
+    return {"name": name, "description": tool["d"], "inputSchema": {"type": "object", "properties": props, "required": required, "additionalProperties": False}, "annotations": ann}
 
 
 def _sha(text: str) -> str:
@@ -87,22 +154,6 @@ def _b64url(raw: bytes) -> str:
 
 def _now_iso() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S")
-
-
-def _tool_schema(name: str) -> dict:
-    description, _, params = TOOLS[name]
-    props, required = {}, []
-    for pname, (kind, req, rule, _where) in params.items():
-        spec: dict = {"type": "integer" if kind == "int" else "string"}
-        if kind == "int":
-            spec.update(minimum=1, maximum=rule)
-        else:
-            spec["pattern"] = f"^(?:{rule})$"
-        props[pname] = spec
-        if req:
-            required.append(pname)
-    return {"name": name, "description": description, "inputSchema": {"type": "object", "properties": props, "required": required, "additionalProperties": False},
-            "annotations": {"readOnlyHint": True, "destructiveHint": False, "openWorldHint": False}}
 
 
 class ConnectorAuth:
@@ -126,6 +177,30 @@ class ConnectorAuth:
         self._save(ENABLED_KEY, "1" if on else None)
         if not on:
             self.revoke_all()
+
+    def writes_enabled(self) -> bool:
+        return self.enabled() and self._load(WRITES_KEY) == "1"
+
+    def set_writes(self, on: bool) -> None:
+        self._save(WRITES_KEY, "1" if on else None)
+
+    def audit(self, tool: str, summary: str, ok: bool) -> None:
+        """The last 30 things Claude changed (tool, a plain summary, when). Never the content of what it read."""
+        with self._lock:
+            try:
+                rows = json.loads(self._load(AUDIT_KEY) or "[]")
+            except ValueError:
+                rows = []
+            rows = (rows if isinstance(rows, list) else [])[-29:]
+            rows.append({"at": _now_iso(), "tool": tool, "summary": summary[:120], "ok": ok})
+            self._save(AUDIT_KEY, json.dumps(rows))
+
+    def recent(self) -> list[dict]:
+        try:
+            rows = json.loads(self._load(AUDIT_KEY) or "[]")
+        except ValueError:
+            return []
+        return list(reversed(rows)) if isinstance(rows, list) else []
 
     # --- approval code (shown in Settings only)
     def approval_code(self) -> tuple[str, float]:
@@ -262,6 +337,7 @@ class ConnectorAuth:
             self._store({})
             self._access.clear()
             self._approval = None
+            self._save(WRITES_KEY, None)
 
 
 async def _form(request: Request) -> dict[str, str]:
@@ -284,8 +360,9 @@ button{{font:inherit;padding:12px 20px;border-radius:999px;border:0;background:#
 class Connector:
     """The ASGI app for the connector's paths. `api` is the main Cadence app, called in-process with GET only."""
 
-    def __init__(self, api: ASGIApp, auth: ConnectorAuth, public_url: Callable[[], str | None] = lambda: None):
-        self.api, self.auth, self.public_url = api, auth, public_url
+    def __init__(self, api: ASGIApp, auth: ConnectorAuth, public_url: Callable[[], str | None] = lambda: None,
+                 today: Callable[[], date] = date.today):
+        self.api, self.auth, self.public_url, self.today = api, auth, public_url, today
 
     @staticmethod
     def handles(path: str) -> bool:
@@ -425,7 +502,8 @@ class Connector:
         if method == "ping":
             return ok({})
         if method == "tools/list":
-            return ok({"tools": [_tool_schema(n) for n in TOOLS]})
+            writes = self.auth.writes_enabled()
+            return ok({"tools": [_tool_schema(n) for n, t in TOOLS.items() if writes or not t.get("write")]})
         if method == "tools/call":
             name = params.get("name")
             if name not in TOOLS:
@@ -433,30 +511,99 @@ class Connector:
             return ok(await self._call(name, params.get("arguments") if isinstance(params.get("arguments"), dict) else {}))
         return err(-32601, "Method not found")
 
-    async def _call(self, name: str, args: dict) -> dict:
-        _, template, params = TOOLS[name]
-        path_vals, query = {}, {}
-        for pname, (kind, required, rule, where) in params.items():
+    def _validate(self, name: str, args: dict) -> tuple[dict, dict, dict] | str:
+        """(path values, query, body) for good arguments, else a message saying what is wrong."""
+        params = TOOLS[name].get("params") or {}
+        if set(args) - set(params):
+            return "Unexpected argument: " + ", ".join(sorted(set(args) - set(params)))
+        path_vals: dict = {}
+        query: dict = {}
+        body: dict = {}
+        for pname, spec in params.items():
             value = args.get(pname)
             if value is None:
-                if required:
-                    return _result(f"Missing argument: {pname}", True)
-                continue
-            if kind == "int":
-                if isinstance(value, bool) or not isinstance(value, int) or not 1 <= value <= rule:
-                    return _result(f"{pname} must be a whole number from 1 to {rule}", True)
-            elif not isinstance(value, str) or not re.fullmatch(rule, value):
-                return _result(f"{pname} is not in the expected format", True)
-            (path_vals if where == "path" else query)[pname] = value
-        if set(args) - set(params):
-            return _result("Unexpected argument: " + ", ".join(sorted(set(args) - set(params))), True)
+                if spec["today"]:
+                    value = self.today().isoformat()
+                elif spec["required"]:
+                    return f"Missing argument: {pname}"
+                else:
+                    continue
+            kind, rule = spec["kind"], spec["rule"]
+            if kind in ("int", "num"):
+                ok = isinstance(value, (int, float)) and not isinstance(value, bool) and (kind == "num" or isinstance(value, int))
+                if not ok or not rule[0] <= value <= rule[1]:
+                    return f"{pname} must be a {'whole ' if kind == 'int' else ''}number from {rule[0]} to {rule[1]}"
+            elif kind == "enum":
+                if value not in rule:
+                    return f"{pname} must be one of: {', '.join(rule)}"
+            elif kind == "items":
+                clean = self._items(value)
+                if isinstance(clean, str):
+                    return clean
+                value = clean
+            elif not isinstance(value, str) or not re.fullmatch(rule, value, re.S):
+                return f"{pname} is not in the expected format"
+            {"path": path_vals, "query": query, "body": body}[spec["where"]][pname] = value
+        if TOOLS[name].get("write") and name == "log_check_in" and not body:
+            return "Give at least one of feel, soreness, pain_level, pain_area, illness, life_stress or note"
+        return path_vals, query, body
+
+    @staticmethod
+    def _items(value: object) -> list[dict] | str:
+        if not isinstance(value, list) or not 1 <= len(value) <= MAX_FOOD_ITEMS:
+            return f"items must be a list of 1 to {MAX_FOOD_ITEMS} foods"
+        out = []
+        for item in value:
+            if not isinstance(item, dict) or not item or set(item) - set(FOOD_ITEM_KEYS):
+                return "Each food may only have: " + ", ".join(FOOD_ITEM_KEYS)
+            for key, v in item.items():
+                kind = FOOD_ITEM_KEYS[key]
+                if isinstance(v, bool) or not (isinstance(v, str) if kind is str else isinstance(v, (int, float)) if kind is float else isinstance(v, int)):
+                    return f"{key} has the wrong type"
+            if ("dish_id" in item) == ("name" in item):
+                return "Each food needs either a dish_id (from find_food) or a name with kcal, not both"
+            out.append(item)
+        return out
+
+    def _summary(self, name: str, args: dict) -> str:
+        if name == "log_food":
+            return f"Logged {len(args.get('items') or [])} item(s) for {args.get('meal', 'a meal')}"
+        if name == "log_saved_meal":
+            return f"Logged a saved meal for {args.get('meal', 'a meal')}"
+        if name == "remove_food_entry":
+            return "Removed a food entry"
+        if name == "log_weight":
+            return "Recorded a weight"
+        return "Saved a check-in"
+
+    async def _call(self, name: str, args: dict) -> dict:
+        tool = TOOLS[name]
+        write = bool(tool.get("write"))
+        if write and not self.auth.writes_enabled():
+            return _result("Writing is switched off in Cadence. The person can turn on \"Let Claude log things\" in Cadence → Settings → Claude.", True)
+        checked = self._validate(name, args)
+        if isinstance(checked, str):
+            return _result(checked, True)
+        path_vals, query, body = checked
+        method = tool.get("method", "GET")
+        kwargs: dict = {"params": query} if method == "GET" else {"json": body} if method != "DELETE" else {}
         try:
             async with httpx.AsyncClient(transport=httpx.ASGITransport(app=self.api), base_url="http://127.0.0.1", timeout=30) as client:
-                response = await client.get(template.format(**path_vals), params=query, headers={"X-Cadence-Request": "1"})
+                response = await client.request(method, tool["path"].format(**path_vals), headers={"X-Cadence-Request": "1"}, **kwargs)
         except httpx.HTTPError:
+            if write:
+                self.auth.audit(name, self._summary(name, args), False)
             return _result("Cadence couldn't be reached just now.", True)
+        if write:
+            self.auth.audit(name, self._summary(name, args), response.status_code == 200)
         if response.status_code == 404:
             return _result("Nothing found for that request.", True)
+        if response.status_code in (400, 422):
+            try:
+                detail = response.json().get("detail")
+            except ValueError:
+                detail = None
+            return _result(f"Cadence didn't accept that: {detail if isinstance(detail, str) else 'check the values'}", True)
         if response.status_code != 200:
             return _result(f"Cadence answered with an error ({response.status_code}).", True)
         try:
