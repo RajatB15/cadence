@@ -1,4 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
+import { Link } from "react-router-dom";
+import { formatDate } from "../../lib/format";
 import { ArrowLeftRight, BookOpen, ChevronDown, ChevronUp, Pencil, Plus, Timer, Trash2, X } from "lucide-react";
 import { useDeferredValue, useState } from "react";
 import { api } from "../../lib/api";
@@ -28,7 +30,7 @@ function Num({ label, value, onChange, max }: { label: string; value: number | u
   );
 }
 
-export function SessionEditor({ draft, onChange, onSave, saving, saveLabel, dirty, onDelete, onPlan, planning, planned, error }: {
+export function SessionEditor({ draft, onChange, onSave, saving, saveLabel, dirty, onDelete, onPlan, planning, planned, scheduled = [], onRemoveScheduled, onRefreshScheduled, scheduleBusy, error }: {
   draft: GymDraft;
   onChange: (d: GymDraft) => void;
   onSave: () => void;
@@ -39,6 +41,10 @@ export function SessionEditor({ draft, onChange, onSave, saving, saveLabel, dirt
   onPlan: (day: string, hour: number | null) => void;
   planning: boolean;
   planned?: string | null;
+  scheduled?: { plan_id: number; day: string; start_hour: number | null; logged: boolean }[];
+  onRemoveScheduled?: (planId: number) => void;
+  onRefreshScheduled?: (planId: number) => void;
+  scheduleBusy?: boolean;
   error?: string | null;
 }) {
   const lib = useGymLibrary();
@@ -48,7 +54,8 @@ export function SessionEditor({ draft, onChange, onSave, saving, saveLabel, dirt
   const [picker, setPicker] = useState<Picker | null>(null);
   const [converted, setConverted] = useState<{ changes: { from: string; to: string | null; why: string }[]; prev: GymDraft } | null>(null);
   const [failed, setFailed] = useState<string | null>(null);
-  const [day, setDay] = useState(() => localDay(0));
+  const taken = new Set(scheduled.map((p) => p.day));
+  const [day, setDay] = useState(() => Array.from({ length: 8 }, (_, i) => localDay(i)).find((d) => !taken.has(d)) ?? localDay(0));
   const [hour, setHour] = useState<number | null>(null);
   const steps = draft.steps;
   const deferred = useDeferredValue(steps);
@@ -199,18 +206,39 @@ export function SessionEditor({ draft, onChange, onSave, saving, saveLabel, dirt
           {onDelete && <button type="button" className="pop pop-ghost !py-3 md:ml-auto" onClick={onDelete}><Trash2 size={14} /> Delete</button>}
         </div>
         <div className="border-t border-line pt-5">
-          <p className="eyebrow mb-3">Put it on the plan</p>
+          {scheduled.length > 0 && (
+            <div className="mb-6">
+              <p className="eyebrow mb-3">On your plan</p>
+              <ul className="space-y-2">
+                {scheduled.map((p) => (
+                  <li key={p.plan_id} className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-line bg-white/[0.02] px-4 py-3">
+                    <div>
+                      <p className="text-paper">{p.day === localDay(0) ? "Today" : p.day === localDay(1) ? "Tomorrow" : formatDate(p.day)}{p.start_hour != null ? ` · ${String(p.start_hour).padStart(2, "0")}:00` : ""}</p>
+                      <p className="text-xs text-dim">{p.logged ? "Done and logged" : p.day < localDay(0) ? "Past, not logged" : "Planned"}</p>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Link to={`/workout/${p.plan_id}`} className="pop pop-ghost !px-3 !py-2 text-sm">View</Link>
+                      {!p.logged && onRefreshScheduled && <button type="button" className="pop pop-ghost !px-3 !py-2 text-sm" disabled={scheduleBusy || dirty} title={dirty ? "Save your changes first" : "Make that day match this session"} onClick={() => onRefreshScheduled(p.plan_id)}>Update to match</button>}
+                      {!p.logged && onRemoveScheduled && <button type="button" className="pop pop-ghost !px-3 !py-2 text-sm text-coral" disabled={scheduleBusy} onClick={() => onRemoveScheduled(p.plan_id)}>Remove</button>}
+                    </div>
+                  </li>
+                ))}
+              </ul>
+              <p className="mt-2 text-xs text-dim">Each day holds its own copy. Editing this session doesn’t change them until you press Update to match.</p>
+            </div>
+          )}
+          <p className="eyebrow mb-3">{scheduled.length > 0 ? "Plan it on another day" : "Put it on the plan"}</p>
           <div className="flex flex-wrap items-end gap-4">
             <label className="block"><span className="eyebrow">Day</span>
               <select className="mt-1 block rounded-lg border border-line-strong bg-slate px-3 py-2 text-paper" value={day} onChange={(e) => setDay(e.target.value)}>
-                {days.map((d, i) => <option key={d} value={d}>{i === 0 ? "Today" : i === 1 ? "Tomorrow" : new Date(`${d}T12:00`).toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "short" })}</option>)}
+                {days.map((d, i) => <option key={d} value={d}>{(i === 0 ? "Today" : i === 1 ? "Tomorrow" : new Date(`${d}T12:00`).toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "short" })) + (taken.has(d) ? " (already planned)" : "")}</option>)}
               </select></label>
             <label className="block"><span className="eyebrow">Start</span>
               <select className="mt-1 block rounded-lg border border-line-strong bg-slate px-3 py-2 text-paper" value={hour ?? ""} onChange={(e) => setHour(e.target.value === "" ? null : Number(e.target.value))}>
                 <option value="">Usual time</option>
                 {Array.from({ length: 17 }, (_, i) => i + 5).map((h) => <option key={h} value={h}>{String(h).padStart(2, "0")}:00</option>)}
               </select></label>
-            <button type="button" className="pop" disabled={planning || steps.length === 0 || !draft.name.trim()} onClick={() => onPlan(day, hour)}>{planning ? "Adding…" : "Add to plan"}</button>
+            <button type="button" className="pop" disabled={planning || steps.length === 0 || !draft.name.trim()} onClick={() => onPlan(day, hour)}>{planning ? "Adding…" : scheduled.length > 0 ? "Add another" : "Add to plan"}</button>
           </div>
           <p className="mt-3 text-xs text-dim">A copy goes on that day as a strength session; later edits here don’t change it. It isn’t sent to your watch.</p>
           {planned && <p role="status" className="mt-3 text-sm text-lime">Added for {new Date(`${planned}T12:00`).toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "short" })}.</p>}

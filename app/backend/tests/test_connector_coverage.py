@@ -58,5 +58,5 @@ def test_the_gym_planner_is_fully_covered(tmp_path):
     gym = {r for r in app_routes(tmp_path) if " /api/gym/" in r or r.endswith("/api/settings/gym")}
     # Exempt gym routes must each say why: stateless editor helpers (tools cover the same ground by session id) or deletions that stay in the app.
     helpers = {k for k, v in exempt().items() if " /api/gym/" in k and ("editor helper" in v or "stays in the app" in v)}
-    assert gym and gym <= covered() | helpers and len(helpers) == 6
+    assert gym and gym <= covered() | helpers and len(helpers) == 7
     assert "POST /api/gym/sessions/build" in covered() and "DELETE /api/gym/sessions/{}" in covered()

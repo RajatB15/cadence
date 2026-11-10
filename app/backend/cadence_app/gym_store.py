@@ -69,13 +69,20 @@ def as_dict(row: GymSession) -> dict:
             "created_at": row.created_at, "updated_at": row.updated_at}
 
 
+def planned_copies(session: Session, gid: int) -> list[dict]:
+    """Where this session is on the plan (newest first): [{plan_id, day, start_hour, logged}]. The plan holds copies, so this is how you find them."""
+    rows = session.scalars(select(PlannedSession).where(PlannedSession.option_key == f"gym:{gid}").order_by(PlannedSession.day.desc(), PlannedSession.id.desc()).limit(12)).all()
+    logged = logged_plan_ids(session, [r.id for r in rows])
+    return [{"plan_id": r.id, "day": r.day, "start_hour": r.start_hour, "logged": r.id in logged} for r in rows]
+
+
 def listing(session: Session) -> list[dict]:
-    return [as_dict(r) for r in session.scalars(select(GymSession).order_by(GymSession.updated_at.desc(), GymSession.id.desc()))]
+    return [{**as_dict(r), "planned": planned_copies(session, r.id)} for r in session.scalars(select(GymSession).order_by(GymSession.updated_at.desc(), GymSession.id.desc()))]
 
 
 def get(session: Session, gid: int) -> dict | None:
     row = session.get(GymSession, gid)
-    return as_dict(row) if row else None
+    return {**as_dict(row), "planned": planned_copies(session, gid)} if row else None
 
 
 def _clean(name: str, setting: str, fmt: str, steps: object, notes: str | None) -> tuple[str, str, str, list[dict], str | None]:
@@ -130,6 +137,25 @@ def plan(session: Session, gid: int, day: date, start_hour: int | None, predicte
               "start_hour": start_hour, "steps": None}
     snapshot = {"name": row.name, "setting": row.setting, "format": row.format, "steps": steps, "notes": row.notes}
     return planner_store.create(session, day, option, {**predicted, "gym_session_id": row.id, "setting": row.setting, "gym": snapshot}, now, G.to_text(row.name, steps))
+
+
+def refresh_plan(session: Session, plan_id: int, now: datetime) -> dict | None:
+    """Brings a planned copy up to date with the saved session it came from (steps, title, time). The predicted load is kept as it was. None when the
+    plan isn't a gym copy or its saved session is gone."""
+    p = session.get(PlannedSession, plan_id)
+    if p is None or p.sport != "strength":
+        return None
+    predicted = json.loads(p.predicted)
+    live = session.get(GymSession, predicted.get("gym_session_id") or 0)
+    if live is None:
+        return None
+    steps = json.loads(live.steps)
+    predicted["gym"] = {"name": live.name, "setting": live.setting, "format": live.format, "steps": steps, "notes": live.notes}
+    predicted["setting"] = live.setting
+    p.title, p.detail, p.minutes = live.name[:120], G.outline(steps), G.estimate_minutes(steps)
+    p.strength_text, p.predicted = G.to_text(live.name, steps), json.dumps(predicted, default=str)
+    session.commit()
+    return plan_detail(session, plan_id)
 
 
 def plan_detail(session: Session, plan_id: int) -> dict | None:

@@ -213,6 +213,9 @@ TOOLS: dict[str, dict] = {
     "gym_schedule_session": {"write": "plan", "method": "POST", "path": "/api/gym/sessions/{gid}/plan",
                              "d": "Put a snapshot of a saved gym session on a day in the plan (within the next week), as a planned strength session. Later edits to the saved session don't change it.",
                              "params": {"gid": P("int", True, (1, 10**9), "path"), "day": _day(True, "body"), "start_hour": P("int", rule=(0, 23), where="body")}},
+    "gym_refresh_planned_session": {"write": "plan", "method": "POST", "path": "/api/gym/plans/{plan_id}/refresh",
+                                    "d": "Update a planned gym session (plan_id from plan or gym_session's planned list) to match its saved session after the saved one was edited.",
+                                    "params": {"plan_id": P("int", True, (1, 10**9), "path")}},
     "gym_delete_session": {"write": "plan", "destructive": True, "method": "DELETE", "path": "/api/gym/sessions/{gid}",
                            "d": "Delete a saved gym session (sessions already put on the plan stay).", "params": {"gid": P("int", True, (1, 10**9), "path")}},
     "gym_set_home_equipment": {"write": "plan", "method": "PUT", "path": "/api/settings/gym",
@@ -700,7 +703,7 @@ class Connector:
                      "clear_race_goal": "Cleared the race goal", "create_goal": "Added a goal", "update_goal": "Changed a goal", "add_time_off": "Added time off",
                      "remove_time_off": "Removed time off", "gym_build_session": "Built a gym session", "gym_save_session": "Saved a gym session",
                      "gym_update_session": "Edited a gym session", "gym_swap_exercise": "Swapped an exercise in a gym session", "gym_set_session_setting": "Switched a gym session between gym and home",
-                     "gym_schedule_session": "Put a gym session on the plan", "gym_delete_session": "Deleted a gym session", "gym_log_workout": "Logged a gym workout", "gym_set_home_equipment": "Updated home equipment"}
+                     "gym_schedule_session": "Put a gym session on the plan", "gym_delete_session": "Deleted a gym session", "gym_refresh_planned_session": "Updated a planned gym session", "gym_log_workout": "Logged a gym workout", "gym_set_home_equipment": "Updated home equipment"}
         if name in plan_text:
             return plan_text[name]
         if name == "log_weight":
