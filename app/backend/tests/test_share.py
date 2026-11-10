@@ -359,3 +359,39 @@ def test_connector_paths_use_their_own_sign_in_and_phones_cannot_manage_it(api, 
                                          "redirect_uri": "https://claude.ai/api/mcp/auth_callback", "code_verifier": verifier}).json()["access_token"]
     out = c.post("/mcp", json={"jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": {"name": "weight", "arguments": {}}}, headers={"Authorization": f"Bearer {token}"}).json()
     assert out["result"]["isError"] is False and out["result"]["content"][0]["text"].startswith("{")
+
+
+def test_connector_writes_land_in_the_real_log_only_when_allowed(api, web):
+    import base64
+    import hashlib
+    from cadence_app.connector import Connector, ConnectorAuth
+
+    store: dict[str, str] = {}
+    cauth = ConnectorAuth(store.get, lambda k, v: store.pop(k, None) if v is None else store.__setitem__(k, v))
+    cauth.set_enabled(True)
+    c = TestClient(ShareGate(api, make_auth(), web, connector=Connector(api, cauth, lambda: "https://cadence.example.test", lambda: date(2026, 10, 22))),
+                   base_url="https://cadence.example.test")
+    redirect = "https://claude.ai/api/mcp/auth_callback"
+    cid = c.post("/oauth/register", json={"redirect_uris": [redirect]}).json()["client_id"]
+    verifier = "q" * 64
+    challenge = base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).rstrip(b"=").decode()
+    r = c.post("/oauth/authorize", data={"client_id": cid, "redirect_uri": redirect, "response_type": "code", "code_challenge": challenge,
+                                         "code_challenge_method": "S256", "approval": cauth.approval_code()[0]}, follow_redirects=False)
+    token = c.post("/oauth/token", data={"grant_type": "authorization_code", "code": re.search(r"code=([^&]+)", r.headers["location"]).group(1), "client_id": cid,
+                                         "redirect_uri": redirect, "code_verifier": verifier}).json()["access_token"]
+    call = lambda name, args: c.post("/mcp", json={"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {"name": name, "arguments": args}},  # noqa: E731
+                                     headers={"Authorization": f"Bearer {token}"}).json()["result"]
+    assert call("log_weight", {"weight_kg": 71.2})["isError"]  # writing is off
+    cauth.set_writes(True)
+    assert not call("log_weight", {"weight_kg": 71.2})["isError"]
+    # the real app's own log has it, for today's date
+    assert any(e["day"] == "2026-10-22" and e["weight_kg"] == 71.2 for e in __import__("json").loads(call("weight", {})["content"][0]["text"]).get("entries", []) +
+               TestClient(api, base_url="http://127.0.0.1").get("/api/weight/entries").json()["entries"])
+    found = __import__("json").loads(call("find_food", {"q": "egg"})["content"][0]["text"])
+    assert found["query"] == "egg"
+    out = call("log_food", {"meal": "snack", "items": [{"name": "Test snack", "kcal": 150, "protein_g": 5}]})
+    assert not out["isError"] and "Test snack" in out["content"][0]["text"]
+    day = TestClient(api, base_url="http://127.0.0.1").get("/api/food?day=2026-10-22").json()
+    assert "Test snack" in __import__("json").dumps(day)
+    bad = call("log_food", {"meal": "snack", "items": [{"name": "Huge", "kcal": 999999}]})
+    assert bad["isError"] and "didn't accept" in bad["content"][0]["text"]  # the app's own limits still apply

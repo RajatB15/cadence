@@ -1,4 +1,5 @@
 import base64
+from datetime import date
 import hashlib
 import json
 import re
@@ -15,6 +16,7 @@ REDIRECT = "https://claude.ai/api/mcp/auth_callback"
 VERIFIER = "v" * 64
 CHALLENGE = base64.urlsafe_b64encode(hashlib.sha256(VERIFIER.encode()).digest()).rstrip(b"=").decode()
 SEEN: list[tuple[str, str]] = []
+SEEN_BODIES: list[tuple[str, str, str]] = []
 
 
 def stub_api():
@@ -22,6 +24,10 @@ def stub_api():
         SEEN.append((request.method, request.url.path + ("?" + request.url.query if request.url.query else "")))
         if request.url.path == "/api/days/2000-01-01":
             return JSONResponse({"detail": "none"}, status_code=404)
+        if request.method != "GET":
+            SEEN_BODIES.append((request.method, request.url.path, (await request.body()).decode()))
+            if request.url.path == "/api/food/log":
+                return JSONResponse({"detail": "Pick a dish, or give a name and calories"}, status_code=400) if b"BAD" in await request.body() else JSONResponse({"entries": [{"id": 7}]})
         if request.url.path == "/api/score":
             return JSONResponse({"blob": "x" * (C.MAX_RESULT_CHARS + 500)})
         return JSONResponse({"ok": True, "path": request.url.path})
@@ -36,7 +42,8 @@ def env():
     auth = C.ConnectorAuth(store.get, lambda k, v: store.pop(k, None) if v is None else store.__setitem__(k, v), lambda: clock["t"])
     auth.set_enabled(True)
     SEEN.clear()
-    client = TestClient(C.Connector(stub_api(), auth, lambda: "https://cadence.example.test"), base_url="https://cadence.example.test", follow_redirects=False)
+    SEEN_BODIES.clear()
+    client = TestClient(C.Connector(stub_api(), auth, lambda: "https://cadence.example.test", lambda: date(2026, 11, 10)), base_url="https://cadence.example.test", follow_redirects=False)
     return client, auth, clock
 
 
@@ -118,7 +125,7 @@ def test_mcp_requires_a_token_and_speaks_the_protocol(env):
     assert init["protocolVersion"] == "2025-06-18" and init["serverInfo"]["name"] == "cadence" and "read-only" in init["instructions"]
     assert client.post("/mcp", json={"jsonrpc": "2.0", "method": "notifications/initialized"}, headers={"Authorization": f"Bearer {token}"}).status_code == 202
     tools = rpc(client, token, "tools/list").json()["result"]["tools"]
-    assert {t["name"] for t in tools} == set(C.TOOLS) and all(t["annotations"]["readOnlyHint"] for t in tools)
+    assert {t["name"] for t in tools} == {n for n, t in C.TOOLS.items() if not t.get("write")} and all(t["annotations"]["readOnlyHint"] for t in tools)
     assert rpc(client, token, "nope").json()["error"]["code"] == -32601
     assert rpc(client, token, "tools/call", {"name": "nope"}).json()["error"]["code"] == -32602
 
@@ -138,7 +145,7 @@ def test_tools_only_ever_read_and_validate_their_input(env):
     assert call("review", {"kind": "week"})["isError"] is False and call("review", {"kind": "../x"})["isError"]
     big = call("score")["content"][0]["text"]
     assert "[cut:" in big and len(big) < C.MAX_RESULT_CHARS + 200
-    assert SEEN and all(method == "GET" for method, _ in SEEN)
+    assert SEEN and all(method == "GET" for method, _ in SEEN) and not SEEN_BODIES  # reading never writes
     assert ("GET", "/api/activities?limit=5&family=run") in SEEN
 
 
@@ -173,3 +180,50 @@ def test_extra_origins_come_from_the_environment_and_only_those(monkeypatch):
     assert load_settings().allowed_origins == DEFAULT_ALLOWED_ORIGINS + ("http://127.0.0.1:8780", "http://localhost:8780")
     monkeypatch.delenv("CADENCE_EXTRA_ORIGINS")
     assert load_settings().allowed_origins == DEFAULT_ALLOWED_ORIGINS
+
+
+def test_writes_are_off_until_switched_on_and_then_limited_to_logging(env):
+    client, auth, _ = env
+    token = sign_in(client, auth)[1]["access_token"]
+    call = lambda name, args=None: rpc(client, token, "tools/call", {"name": name, "arguments": args or {}}).json()  # noqa: E731
+    names = lambda: {t["name"] for t in rpc(client, token, "tools/list").json()["result"]["tools"]}  # noqa: E731
+    assert "log_food" not in names() and "find_food" in names()
+    r = call("log_weight", {"weight_kg": 70})["result"]
+    assert r["isError"] and "switched off" in r["content"][0]["text"] and not SEEN_BODIES
+    auth.set_writes(True)
+    listed = {t["name"]: t for t in rpc(client, token, "tools/list").json()["result"]["tools"]}
+    assert {"log_food", "log_saved_meal", "remove_food_entry", "log_weight", "log_check_in"} <= set(listed)
+    assert listed["log_food"]["annotations"]["readOnlyHint"] is False and listed["remove_food_entry"]["annotations"]["destructiveHint"] is True
+    assert listed["log_weight"]["annotations"]["destructiveHint"] is False
+    # Nothing outside the logging tools exists, whatever it is called.
+    assert call("delete_everything")["error"]["code"] == -32602
+    # Day defaults to today, the body is only what was asked.
+    assert call("log_weight", {"weight_kg": 70.4})["result"]["isError"] is False
+    assert SEEN_BODIES[-1] == ("POST", "/api/weight/entries", json.dumps({"weight_kg": 70.4, "day": "2026-11-10"}, separators=(",", ":")))
+    assert call("log_weight", {"weight_kg": 5})["result"]["isError"] and call("log_weight", {"weight_kg": True})["result"]["isError"]
+    assert call("log_weight", {"weight_kg": 70, "day": "yesterday"})["result"]["isError"]
+    ok = call("log_food", {"meal": "lunch", "items": [{"dish_id": 3, "servings": 1}, {"name": "Paneer fry", "kcal": 320, "protein_g": 22}]})["result"]
+    assert not ok["isError"] and json.loads(SEEN_BODIES[-1][2])["meal"] == "lunch" and json.loads(SEEN_BODIES[-1][2])["day"] == "2026-11-10"
+    for bad in ([], [{"dish_id": 3, "name": "x"}], [{"kcal": 5}], [{"name": "x", "kcal": 5, "save_dish": True}], [{"dish_id": "3"}], "eggs", [{"dish_id": 1}] * 13):
+        assert call("log_food", {"meal": "lunch", "items": bad})["result"]["isError"], bad
+    assert call("log_food", {"meal": "brunch", "items": [{"dish_id": 1}]})["result"]["isError"]
+    app_said_no = call("log_food", {"meal": "lunch", "items": [{"name": "BAD", "kcal": 5}]})["result"]
+    assert app_said_no["isError"] and "Pick a dish" in app_said_no["content"][0]["text"]  # the app's own reason is passed on
+    assert call("remove_food_entry", {"entry_id": 7})["result"]["isError"] is False and SEEN_BODIES[-1][0] == "DELETE"
+    assert call("log_saved_meal", {"meal_id": 2, "meal": "lunch", "scale": 1.5})["result"]["isError"] is False
+    assert call("log_check_in")["result"]["isError"]  # nothing to save
+    assert call("log_check_in", {"feel": 4, "note": "slept well"})["result"]["isError"] is False
+    assert SEEN_BODIES[-1][:2] == ("PUT", "/api/wellbeing/2026-11-10") and json.loads(SEEN_BODIES[-1][2]) == {"feel": 4, "note": "slept well"}
+    assert call("log_check_in", {"feel": 9})["result"]["isError"]
+    assert {m for m, _, _ in SEEN_BODIES} <= {"POST", "PUT", "DELETE"}
+    audit = auth.recent()
+    assert audit[0]["tool"] == "log_check_in" and all("kcal" not in a["summary"] and "Paneer" not in a["summary"] for a in audit)  # what changed, never the content
+
+
+def test_turning_the_connector_off_turns_writes_off(env):
+    _, auth, _ = env
+    auth.set_writes(True)
+    assert auth.writes_enabled()
+    auth.set_enabled(False)
+    auth.set_enabled(True)
+    assert not auth.writes_enabled()
