@@ -41,6 +41,7 @@ import { CheckInCard } from "../components/Journal";
 import { TodayBookCard } from "../components/BookReader";
 import { TodayReadCard } from "../components/Reading";
 import { Ring, SEVERITY, VerdictChip, readyColor } from "../components/CoachNotes";
+import { Vessel } from "../components/Vessel";
 import { RefreshChip } from "../components/RefreshButton";
 import { EmptyState } from "../components/EmptyState";
 import { ImproveHomeCard } from "../components/Improve";
@@ -291,13 +292,16 @@ function useWide(): boolean {
 
 // ---- headline dials --------------------------------------------------------------------
 
-function Dial({ label, score, ring, size, title, foot, onClick, to }: {
-  label: string; score: number; ring: string; size: number; title: string; foot: string; onClick?: () => void; to?: string;
+function Dial({ label, score, ring, title, foot, onClick, to }: {
+  label: string; score: number; ring: string; size?: number; title: string; foot: string; onClick?: () => void; to?: string;
 }) {
   const body = (
     <div className="surface surface-hover group relative flex h-full flex-col items-center overflow-hidden px-3 py-5 text-center sm:p-7">
       <p className="eyebrow mb-3 sm:mb-5">{label}</p>
-      <Ring score={score} size={size} label={ring} />
+      <p className="leading-none" aria-label={`${label} ${score} of 100`}>
+        <Vessel fill={score / 100} color={ring === "cadence" ? C.gold : readyColor(score)} className="text-[clamp(84px,24vw,132px)]">{score}</Vessel>
+      </p>
+      <p className="eyebrow mt-1 !text-[11px]">{ring === "live" ? "live" : ring === "cadence" ? "of 100" : "today"}</p>
       <p className="mt-3 font-display text-xl leading-tight text-cream sm:mt-5 sm:text-3xl">{title}</p>
       <p className="mt-1 text-[11px] text-mute sm:text-xs">{foot}</p>
       <span className="eyebrow mt-3 flex items-center gap-1 !text-[11px] opacity-60 transition-opacity group-hover:opacity-100">
@@ -424,14 +428,11 @@ function TodayCall({ coach }: { coach: Brief }) {
   const color = status?.color ?? k.color;
   const hasMore = t.kind === "done" || Boolean(coach.call?.detail);
   return (
-    <motion.section variants={rise} aria-label="Today" className="surface edge p-5 sm:p-7" style={edge(color)}>
+    <motion.section variants={rise} aria-label="Today" className="relative border-t-2 py-6" style={{ borderColor: color }}>
       <div className="flex items-start gap-4">
-        <div className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl" style={{ background: `${color}1f`, color }}>
-          <Icon size={20} />
-        </div>
         <div className="min-w-0 flex-1">
-          <p className="eyebrow mb-1" style={{ color }}>Today · {status?.label ?? k.label}</p>
-          <h2 className="font-display text-3xl leading-tight text-cream sm:text-4xl">{t.title}</h2>
+          <p className="eyebrow mb-2 flex items-center gap-2" style={{ color }}><Icon size={14} aria-hidden /> Today · {status?.label ?? k.label}</p>
+          <h2 className="poster text-[clamp(44px,13vw,76px)]">{t.title}</h2>
           <p className="mt-2 text-mute">{t.kind === "done" ? t.next : t.detail}</p>
           {coach.call?.source === "check-in" && <p className="mt-2 text-xs font-semibold tracking-widest text-gold uppercase">From your check-in</p>}
         </div>
