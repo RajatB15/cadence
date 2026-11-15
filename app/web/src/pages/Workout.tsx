@@ -1,12 +1,13 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { clsx } from "clsx";
-import { ArrowLeft, ArrowLeftRight, BookOpen, Check, Minus, MoreHorizontal, Pencil, Play, Plus, SkipForward, Undo2 } from "lucide-react";
+import { ArrowLeft, ArrowLeftRight, BookOpen, Check, ListChecks, Minus, MoreHorizontal, Pencil, Play, Plus, Shuffle, SkipForward, Undo2 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { ExerciseGuide } from "../components/gym/ExerciseGuide";
 import { ExercisePicker } from "../components/gym/ExercisePicker";
 import { SwapSheet } from "../components/gym/SwapSheet";
+import { AddWhereSheet, ChangeSheet, EditSegmentSheet, WhatsLeftSheet } from "../components/gym/WorkoutEditSheets";
 import { useGymLibrary } from "../components/gym/useGym";
 import { ErrorBlock, LoadingBlock, PageHeader } from "../components/Shell";
 import { api } from "../lib/api";
@@ -14,6 +15,7 @@ import { formatDate } from "../lib/format";
 import { beep, unlockSound } from "../lib/beep";
 import { amount, exerciseIds } from "../lib/gymSteps";
 import type { GymExercise, GymExerciseStep, GymLastLoad, GymLoggedSet, GymPlanDetail, GymStep } from "../lib/types";
+import { deferExercise, editRemaining, editSummary, insertExercise, moveSegment, remaining, removeSegment, type Segment } from "../lib/workoutEdit";
 import { addSet, bumpLoad, clock, currentItem, finishSet, goBack, isFinished, markStart, parseKg, progress, seedLoad, skipExercise, skipSet, startRun, swapRemaining, toEntries, usesLoad, volumeKg, withLastLoads, type Run, type WorkItem } from "../lib/workoutQueue";
 
 type Saved = { run: Run; restUntil: number | null; phase?: "run" | "summary"; savedAt?: number; notes?: string; rpe?: number | null };
@@ -234,6 +236,11 @@ function Runner({ run, plan, lastLoads, restUntil, setRestUntil, onUpdate, onMar
   const [swap, setSwap] = useState(false);
   const [picker, setPicker] = useState(false);
   const [more, setMore] = useState(false);
+  const [left, setLeft] = useState(false); // the What's left sheet
+  const [change, setChange] = useState(false); // the machine-busy / change sheet
+  const [editing, setEditing] = useState<string | null>(null); // a segment id being edited
+  const [addPick, setAddPick] = useState(false);
+  const [adding, setAdding] = useState<GymExercise | null>(null);
   const wake = useRef<{ release: () => Promise<void> } | null>(null);
   const beeped = useRef<string>("");
 
@@ -257,7 +264,7 @@ function Runner({ run, plan, lastLoads, restUntil, setRestUntil, onUpdate, onMar
     setSecs(work.target.seconds);
     setLoadText(seedLoad(run, work));
     setHoldStart(null);
-  }, [work?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [work?.id, work?.target.reps, work?.target.seconds, work?.load]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const resting = restUntil != null && now < restUntil;
   // Rest ending: a tone at 3 s, 2 s, 1 s and a longer one at zero; then the next set's split clock starts.
@@ -308,12 +315,16 @@ function Runner({ run, plan, lastLoads, restUntil, setRestUntil, onUpdate, onMar
   const timed = work.target.seconds != null;
   const segment = work.target.distance_m != null || ex?.pattern === "cardio";
   const startKg = parseKg(last?.load) ?? 10;
+  const segs = remaining(run);
+  const nameOfSeg = (sg: Segment) => (sg.exercise ? nameOf(sg.exercise) ?? sg.exercise : sg.name ?? "Exercise");
+  const editSeg = editing ? segs.find((sg) => sg.id === editing) : undefined;
+  const afterEdit = (next: Run) => { onUpdate(next); };
 
   return (
     <div className="fixed inset-0 z-[70] flex flex-col bg-ink" role="region" aria-label="Workout">
       <header className="shrink-0 border-b border-line px-4 pt-[max(0.75rem,env(safe-area-inset-top))] pb-3">
         <div className="mx-auto flex max-w-2xl items-center justify-between gap-3">
-          <p className="num text-sm text-mute">{prog.done}/{prog.total} sets{prog.skipped ? ` · ${prog.skipped} skipped` : ""}</p>
+          <button type="button" onClick={() => setLeft(true)} aria-label="What's left in this workout" className="num flex min-h-11 items-center gap-2 text-sm text-mute hover:text-paper"><ListChecks size={15} aria-hidden />{prog.done}/{prog.total} sets{prog.skipped ? ` · ${prog.skipped} skipped` : ""}</button>
           <p className="num text-sm text-paper">{clock(elapsed)}</p>
           <button type="button" aria-label="More options" aria-expanded={more} onClick={() => setMore((v) => !v)} className="grid h-11 w-11 place-items-center rounded-full text-mute hover:bg-white/5 hover:text-paper"><MoreHorizontal size={20} /></button>
         </div>
@@ -398,6 +409,7 @@ function Runner({ run, plan, lastLoads, restUntil, setRestUntil, onUpdate, onMar
                 <button type="button" className="pop pop-ghost !py-3 text-sm" onClick={() => onUpdate(skipSet(run))}><SkipForward size={14} /> Skip set</button>
                 <button type="button" className="pop pop-ghost !py-3 text-sm" disabled={run.idx === 0} onClick={() => onUpdate(goBack(run))}><Undo2 size={14} /> Back</button>
               </div>
+              <button type="button" className="pop pop-ghost w-full justify-center !py-3.5 text-base" disabled={holdStart != null} onClick={() => setChange(true)}><Shuffle size={16} /> Machine busy, or change this</button>
             </>
           )}
         </div>
@@ -417,6 +429,19 @@ function Runner({ run, plan, lastLoads, restUntil, setRestUntil, onUpdate, onMar
       <SwapSheet exercise={swap && work.exercise ? work.exercise : null} name={name} setting={plan.setting} exclude={[]} note="Only the sets you haven't done yet change." onBrowse={() => { setSwap(false); setPicker(true); }} onClose={() => setSwap(false)}
         onPick={(id) => { setSwap(false); onUpdate(swapRemaining(run, id, nameOf(id))); }} />
       <ExercisePicker open={picker} setting={plan.setting} title="Do this instead" onPick={(e) => { setPicker(false); onUpdate(swapRemaining(run, e.id, e.name)); }} onClose={() => setPicker(false)} />
+
+      <ChangeSheet open={change} seg={segs[0]} name={segs[0] ? nameOfSeg(segs[0]) : ""} hasNext={segs.length > 1} nextName={segs[1] ? nameOfSeg(segs[1]) : null} onClose={() => setChange(false)}
+        onDefer={(w) => { setChange(false); onUpdate(deferExercise(run, w)); }}
+        onSwap={() => { setChange(false); setSwap(true); }}
+        onEdit={() => { setChange(false); setEditing(segs[0]?.id ?? null); }}
+        onAdd={() => { setChange(false); setAddPick(true); }}
+        onSkip={() => { setChange(false); onUpdate(skipExercise(run)); }}
+        onRemove={() => { setChange(false); if (segs[0]) onUpdate(removeSegment(run, segs[0].id)); }} />
+      <WhatsLeftSheet open={left} run={run} nameOf={nameOfSeg} onClose={() => setLeft(false)} onMove={(id, d) => onUpdate(moveSegment(run, id, d))}
+        onEdit={(id) => { setLeft(false); setEditing(id); }} onRemove={(id) => onUpdate(removeSegment(run, id))} onAdd={() => { setLeft(false); setAddPick(true); }} />
+      <EditSegmentSheet seg={editSeg} nameOf={nameOfSeg} onClose={() => setEditing(null)} onSave={(patch) => { if (editSeg) afterEdit(editRemaining(run, editSeg.id, patch)); setEditing(null); }} />
+      <ExercisePicker open={addPick} setting={plan.setting} title="Add to today" onPick={(e) => { setAddPick(false); setAdding(e); }} onClose={() => setAddPick(false)} />
+      <AddWhereSheet ex={adding} onClose={() => setAdding(null)} onChoose={(spec, at) => { setAdding(null); onUpdate(insertExercise(run, spec, at)); }} />
     </div>
   );
 }
@@ -466,6 +491,7 @@ function Summary({ run, plan, notes, rpe, setNotes, setRpe, nameOf, onDiscard, o
       <div className="surface space-y-4 p-6 sm:p-8">
         <p className="eyebrow">{log.isSuccess ? "Saved" : all ? "Workout complete" : "Session summary"}</p>
         <h2 className="font-display text-4xl text-cream">{prog.done} of {prog.total} sets · {clock(duration)}</h2>
+        {editSummary(run) && <p className="text-sm text-dim">Changed during the workout: {editSummary(run)}.</p>}
         <p className="text-sm text-mute">{[prog.skipped ? `${prog.skipped} skipped` : "", vol ? `${vol.toLocaleString()} kg lifted (weight × reps, where you entered both)` : ""].filter(Boolean).join(" · ") || "Nothing skipped."}</p>
         <ul className="divide-y divide-line">
           {entries.map((e, i) => (

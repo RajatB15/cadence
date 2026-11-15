@@ -21,11 +21,17 @@ export interface WorkItem {
   load?: string;
   restAfter: number;
   note?: string;
+  /** The weight was typed or stepped by hand during the run, so the carry-over from earlier sets must not overwrite it. */
+  loadPinned?: true;
+  /** Added during the run, not part of the plan. */
+  inserted?: true;
 }
 export interface RestItem { kind: "rest"; id: string; seconds: number }
 export type QueueItem = WorkItem | RestItem;
 export interface SetResult { done: boolean; reps?: number; seconds?: number; distance_m?: number; calories?: number; load?: string; took_s?: number }
-export interface Run { queue: QueueItem[]; idx: number; results: Record<string, SetResult>; startedAt: number; setting: "gym" | "home"; mark?: number }
+export interface RunEdit { kind: "defer" | "reorder" | "remove" | "edit" | "insert" | "swap"; label: string }
+/** `edits` is a plain record of what was changed during the run (never sent to the server), for the summary line. */
+export interface Run { queue: QueueItem[]; idx: number; results: Record<string, SetResult>; startedAt: number; setting: "gym" | "home"; mark?: number; edits?: RunEdit[] }
 
 const MEASURES = ["reps", "seconds", "distance_m", "calories"] as const;
 
@@ -141,7 +147,7 @@ export function swapRemaining(r: Run, exercise: string, name?: string): Run {
   const it = r.queue[r.idx];
   if (!it || it.kind !== "work") return r;
   const queue = r.queue.map((q, i) => (q.kind === "work" && q.key === it.key && i >= r.idx && !(q.id in r.results) ? { ...q, exercise, name, key: `${q.key}~${exercise}`, load: undefined } : q));
-  return { ...r, queue };
+  return { ...r, queue, edits: [...(r.edits ?? []), { kind: "swap", label: name ?? exercise }] };
 }
 
 /** Fills the starting load from what you used last time, only where the plan didn't set one. */
@@ -220,6 +226,7 @@ export function bumpLoad(load: string | undefined, delta: number, startAt = 0): 
 
 /** The load to start a set with: what you used for the same exercise earlier in this workout, else the plan's or last time's. */
 export function seedLoad(r: Run, item: WorkItem): string {
+  if (item.loadPinned) return item.load ?? "";
   if (item.exercise) {
     for (let i = r.idx - 1; i >= 0; i--) {
       const q = r.queue[i];

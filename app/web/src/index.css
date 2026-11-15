@@ -501,9 +501,9 @@ body {
 .surface.edge::after { background: linear-gradient(90deg, transparent, var(--edge), transparent); inset-inline: 24px; }
 
 /* ---- Radix dialogs (forms, confirms) share the Sheet's treatment: bottom sheet on phones, centred card on desktop. */
-.dialog-overlay { position: fixed; inset: 0; z-index: 50; background: rgb(0 0 0 / 0.55); }
+.dialog-overlay { position: fixed; inset: 0; z-index: 80; background: rgb(0 0 0 / 0.55); }
 .dialog-content {
-  position: fixed; z-index: 50; left: 0; right: 0; bottom: 0;
+  position: fixed; z-index: 80; left: 0; right: 0; bottom: 0;
   max-height: 90dvh; overflow-y: auto; padding: 24px 20px calc(24px + env(safe-area-inset-bottom));
   border-radius: var(--radius-sheet) var(--radius-sheet) 0 0; border-bottom: 0;
   box-shadow: var(--shadow-float);

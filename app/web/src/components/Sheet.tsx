@@ -31,7 +31,7 @@ export function Sheet({
           <Dialog.Portal forceMount>
             <Dialog.Overlay asChild forceMount>
               <motion.div
-                className="fixed inset-0 z-50 bg-black/55 backdrop-blur-[3px]"
+                className="fixed inset-0 z-[80] bg-black/55 backdrop-blur-[3px]"
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
@@ -40,7 +40,7 @@ export function Sheet({
             <Dialog.Content asChild forceMount aria-describedby={undefined}>
               <motion.div
                 style={lifted}
-                className="surface-raised fixed inset-x-0 bottom-0 z-50 max-h-[90dvh] overflow-y-auto rounded-t-[var(--radius-sheet)] border border-b-0 border-[var(--rim-top)] bg-coal pb-[env(safe-area-inset-bottom)] shadow-[0_-24px_60px_-20px_rgb(0_0_0/0.7)] md:inset-y-0 md:right-0 md:left-auto md:max-h-none md:w-[min(560px,92vw)] md:rounded-l-[var(--radius-sheet)] md:rounded-tr-none md:border-b md:border-r-0"
+                className="surface-raised fixed inset-x-0 bottom-0 z-[80] max-h-[90dvh] overflow-y-auto rounded-t-[var(--radius-sheet)] border border-b-0 border-[var(--rim-top)] bg-coal pb-[env(safe-area-inset-bottom)] shadow-[0_-24px_60px_-20px_rgb(0_0_0/0.7)] md:inset-y-0 md:right-0 md:left-auto md:max-h-none md:w-[min(560px,92vw)] md:rounded-l-[var(--radius-sheet)] md:rounded-tr-none md:border-b md:border-r-0"
                 drag={wide() ? false : "y"}
                 dragConstraints={{ top: 0, bottom: 0 }}
                 dragElastic={{ top: 0, bottom: 0.6 }}
