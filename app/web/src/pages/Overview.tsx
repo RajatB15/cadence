@@ -159,7 +159,9 @@ function Dashboard({ data }: { data: Extract<Overview, { has_data: true }> }) {
   if (coach?.tonight) blocks.tonight = <TonightRow t={coach.tonight} />;
   if (coach?.weather && (coach.weather.hot || coach.weather.better_hour != null)) blocks.weather = <WeatherRow w={coach.weather} />;
   if (coach?.strain) blocks.strain = <StrainRow s={coach.strain} />;
-  if (coach && coach.recent.items.length > 0) blocks.recent = <RecentSessions recent={coach.recent} />;
+  const heroSessionId = hero === "session" && coach?.recent.label === "Today" ? coach.recent.items[0]?.id : null;
+  const recentRest = coach ? coach.recent.items.filter((i) => i.id !== heroSessionId) : [];
+  if (coach && recentRest.length > 0) blocks.recent = <RecentSessions recent={{ ...coach.recent, items: recentRest }} />;
   if (coach && coach.week.items.length > 0) blocks.week = <WeekStrip coach={coach} onOpen={() => setSheet("week")} />;
   blocks.read = (
     <div className="space-y-4">
@@ -194,7 +196,10 @@ function Dashboard({ data }: { data: Extract<Overview, { has_data: true }> }) {
   for (const id of heroReplaces(hero)) delete blocks[id];
   if (hero === "fuel" || hero === "balance") delete blocks.calories;
   const available = new Set(Object.keys(blocks) as SectionId[]);
-  const { primary, more } = sectionLayout(phase, available);
+  const laid = sectionLayout(phase, available);
+  // The week grid is a look-back, not a beat of the day: it lives under More.
+  const primary = laid.primary.filter((id) => id !== "week");
+  const more = laid.primary.includes("week") ? ["week" as SectionId, ...laid.more] : laid.more;
   const wrap = (id: SectionId) => <motion.div key={id} variants={rise}>{blocks[id]}</motion.div>;
 
   return (
@@ -598,7 +603,7 @@ function ReviewPrompt() {
   const to = monthly && !weekly ? "/review?kind=month" : day === 0 ? `/review?kind=week&start=${toDay(monday)}` : "/review";
   return (
     <motion.section variants={rise}>
-      <Link to={to} className="chip text-mute hover:text-paper pointer-coarse:py-2">
+      <Link to={to} className="chip text-mute hover:text-paper pointer-coarse:py-3">
         <TrendingUp size={12} className="text-gold" /> {monthly && !weekly ? "Your month in review" : "Your week in review"}
       </Link>
     </motion.section>
@@ -767,7 +772,7 @@ function RecentSessions({ recent }: { recent: Brief["recent"] }) {
     <motion.section variants={rise} aria-label="Latest sessions">
       <div className="mb-4 flex items-baseline justify-between">
         <h2 className="font-display text-3xl text-cream">{recent.label === "Today" ? "Today's sessions" : `${recent.label}'s sessions`}</h2>
-        <Link to="/activities" className="eyebrow flex items-center gap-1 hover:text-paper">
+        <Link to="/activities" className="eyebrow flex items-center gap-1 py-3 hover:text-paper">
           All activities <ArrowUpRight size={12} />
         </Link>
       </div>

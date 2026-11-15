@@ -90,6 +90,7 @@ export function DayOrbit({ input, children }: { input: OrbitInput; children?: Re
         <li key={l.k} className="flex items-center gap-1.5"><i className="h-2 w-2 rounded-full" style={{ background: ARC_COLOR[l.k] }} />{l.t}</li>
       ))}
     </ul>
+    <p className="mt-1 text-center text-[11px] font-bold tracking-widest text-dim uppercase" aria-hidden>Tap the ring for your day</p>
     <Sheet open={open} onOpenChange={setOpen} eyebrow={`Now ${hhmm(m.now)}`} title="Your day">
       <ul className="divide-y divide-line">
         {m.arcs.map((a, i) => (

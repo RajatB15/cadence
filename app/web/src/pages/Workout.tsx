@@ -7,6 +7,7 @@ import { ConfirmDialog } from "../components/ConfirmDialog";
 import { ExerciseGuide } from "../components/gym/ExerciseGuide";
 import { ExercisePicker } from "../components/gym/ExercisePicker";
 import { SwapSheet } from "../components/gym/SwapSheet";
+import { Ambient } from "../components/Ambient";
 import { AddWhereSheet, ChangeSheet, EditSegmentSheet, WhatsLeftSheet } from "../components/gym/WorkoutEditSheets";
 import { useGymLibrary } from "../components/gym/useGym";
 import { ErrorBlock, LoadingBlock, PageHeader } from "../components/Shell";
@@ -321,8 +322,9 @@ function Runner({ run, plan, lastLoads, restUntil, setRestUntil, onUpdate, onMar
   const afterEdit = (next: Run) => { onUpdate(next); };
 
   return (
-    <div className="fixed inset-0 z-[70] flex flex-col bg-ink" role="region" aria-label="Workout">
-      <header className="shrink-0 border-b border-line px-4 pt-[max(0.75rem,env(safe-area-inset-top))] pb-3">
+    <div className="fixed inset-0 z-[70] flex flex-col isolate bg-ink" role="region" aria-label="Workout">
+      <Ambient />
+      <header className="relative z-[1] shrink-0 border-b border-line px-4 pt-[max(0.75rem,env(safe-area-inset-top))] pb-3">
         <div className="mx-auto flex max-w-2xl items-center justify-between gap-3">
           <button type="button" onClick={() => setLeft(true)} aria-label="What's left in this workout" className="num flex min-h-11 items-center gap-2 text-sm text-mute hover:text-paper"><ListChecks size={15} aria-hidden />{prog.done}/{prog.total} sets{prog.skipped ? ` · ${prog.skipped} skipped` : ""}</button>
           <p className="num text-sm text-paper">{clock(elapsed)}</p>
@@ -340,7 +342,7 @@ function Runner({ run, plan, lastLoads, restUntil, setRestUntil, onUpdate, onMar
         )}
       </header>
 
-      <div className="min-h-0 flex-1 overflow-y-auto px-4 py-5">
+      <div className="relative z-[1] min-h-0 flex-1 overflow-y-auto px-4 py-5">
         <div className="mx-auto max-w-2xl space-y-6">
           {resting ? (
             <div className="space-y-6 text-center" role="timer">
@@ -360,7 +362,7 @@ function Runner({ run, plan, lastLoads, restUntil, setRestUntil, onUpdate, onMar
             <>
               <div className="space-y-2">
                 <p className="eyebrow">{[work.block, work.rounds > 1 ? `Round ${work.round} of ${work.rounds}` : ""].filter(Boolean).join(" · ") || "Main"}</p>
-                <h2 className="font-display text-4xl leading-tight text-cream sm:text-5xl">{name}</h2>
+                <h2 className="poster text-[clamp(44px,13vw,72px)]">{name}</h2>
                 <p className="num text-3xl text-paper">{targetText(work)} <span className="text-lg text-mute">· set {work.set} of {work.sets}</span></p>
                 {work.note && <p className="text-sm text-mute">{work.note}</p>}
                 {segment && split != null && <p className="num text-lg text-gold" aria-label="Time on this segment">{clock(split)} <span className="text-sm text-mute">this segment</span></p>}
@@ -415,7 +417,7 @@ function Runner({ run, plan, lastLoads, restUntil, setRestUntil, onUpdate, onMar
         </div>
       </div>
 
-      <div className="shrink-0 border-t border-line bg-ink px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+      <div className="relative z-[1] shrink-0 border-t border-line bg-ink/80 px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
         <div className="mx-auto max-w-2xl">
           {resting ? (
             <button type="button" className="pop pop-lime w-full justify-center !py-4 text-lg" onClick={() => { unlockSound(); setRestUntil(null); onMark(Date.now()); }}>Skip rest</button>

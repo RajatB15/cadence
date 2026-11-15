@@ -701,6 +701,9 @@ body {
 @property --fill { syntax: "<number>"; inherits: false; initial-value: 0; }
 .vessel {
   --c: var(--color-gold);
+  display: inline-block;
+  /* The glass is the digits, not the taller text box around them: 0 to 1 maps onto the height the digits really occupy. */
+  --level: calc((0.1 + var(--fill) * 0.76) * 100%);
   font-family: var(--font-display);
   font-weight: 800;
   font-variation-settings: "wdth" 75;
@@ -711,14 +714,15 @@ body {
   -webkit-text-stroke: 2px var(--c);
   background:
     linear-gradient(105deg, transparent 42%, rgb(255 255 255 / 0.55) 50%, transparent 58%) 140% 0 / 250% 100% no-repeat,
-    linear-gradient(to top, var(--c) calc(var(--fill) * 100%), transparent calc(var(--fill) * 100%));
+    linear-gradient(to top, transparent calc(var(--level) - 2px), rgb(255 255 255 / 0.9) calc(var(--level) - 2px), rgb(255 255 255 / 0.9) var(--level), transparent var(--level)),
+    linear-gradient(to top, var(--c) var(--level), color-mix(in srgb, var(--c) 24%, transparent) var(--level));
   -webkit-background-clip: text;
   background-clip: text;
   transition: --fill 1.8s cubic-bezier(0.16, 1, 0.3, 1);
 }
 @media (prefers-reduced-motion: no-preference) {
   .vessel { animation: vessel-sheen 6s ease-in-out 1.2s infinite; }
-  @keyframes vessel-sheen { 0%, 55% { background-position: 140% 0, 0 0; } 100% { background-position: -60% 0, 0 0; } }
+  @keyframes vessel-sheen { 0%, 55% { background-position: 140% 0, 0 0, 0 0; } 100% { background-position: -60% 0, 0 0, 0 0; } }
 }
 /* The ring's stretches of sky, one token per stage. They follow light and dark like everything else. */
 :root {
