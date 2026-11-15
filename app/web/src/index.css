@@ -159,10 +159,12 @@
   }
   body {
     min-height: 100dvh;
-    background:
-      radial-gradient(1200px 600px at 85% -10%, var(--glow-a), transparent 60%),
-      radial-gradient(900px 500px at -10% 110%, var(--glow-b), transparent 60%),
-      var(--color-ink);
+    background: var(--color-ink);
+  }
+  /* The sky (see "Living theme" below) sits between the page colour and the content, so the content stack must be its own context. */
+  #root {
+    position: relative;
+    isolation: isolate;
   }
   /* Film grain keeps large dark surfaces from looking flat. */
   body::before {
@@ -238,7 +240,8 @@
   /* ---- Surfaces: one anatomy for every card: fill gradient + 1px rim + top highlight + soft ambient shadow. */
   .surface {
     position: relative;
-    background: linear-gradient(180deg, var(--face-top), var(--face-bottom) 55%), var(--color-coal);
+    /* Slightly see-through (no blur, so it stays cheap): the sky drifting behind shows faintly through every card. */
+    background: linear-gradient(180deg, var(--face-top), var(--face-bottom) 55%), color-mix(in srgb, var(--color-coal) 87%, transparent);
     border: 1px solid var(--rim);
     border-radius: var(--radius-card);
     box-shadow: var(--shadow-card);
@@ -603,4 +606,78 @@ body {
   .lift {
     transition: transform 0.4s var(--ease-out-expo), border-color 0.25s, box-shadow 0.4s;
   }
+}
+
+
+/* ================= Living theme =================
+   The page is light by day and dark by night by itself (lib/sky.ts, applied by index.html before first paint and kept current by
+   lib/livingTheme.ts). Only ambient tints change with the sky and the mood: surfaces and text come from the light/dark tokens above,
+   so contrast does not move. Sky colours are registered colours, so they crossfade over seconds instead of snapping at 07:00. */
+@property --sky-1 { syntax: "<color>"; inherits: true; initial-value: #4f46e5; }
+@property --sky-2 { syntax: "<color>"; inherits: true; initial-value: #7c3aed; }
+@property --sky-3 { syntax: "<color>"; inherits: true; initial-value: #0ea5a4; }
+:root {
+  --sky-1: #4f46e5; --sky-2: #7c3aed; --sky-3: #0ea5a4;
+  --aurora-opacity: 0.46;
+  --aurora-speed: 1;
+  transition: --sky-1 4s ease, --sky-2 4s ease, --sky-3 4s ease;
+}
+:root[data-theme="light"] { --aurora-opacity: 0.5; }
+:root[data-sky="dawn"] { --sky-1: #fb7185; --sky-2: #fbbf24; --sky-3: #a78bfa; }
+:root[data-sky="morning"] { --sky-1: #ffb347; --sky-2: #55b8ff; --sky-3: #38e8c0; }
+:root[data-sky="day"] { --sky-1: #55b8ff; --sky-2: #38e8c0; --sky-3: #b8f53d; }
+:root[data-sky="golden"] { --sky-1: #ff8a3d; --sky-2: #ffc247; --sky-3: #ff5d73; }
+:root[data-sky="dusk"] { --sky-1: #a78bfa; --sky-2: #ff5d73; --sky-3: #ff8a3d; }
+:root[data-sky="night"] { --sky-1: #4f46e5; --sky-2: #7c3aed; --sky-3: #0ea5a4; }
+/* Moods override the sky: warm mint after a session, electric in race week, quiet and desaturated when resting or unwell. */
+:root[data-mood="afterglow"] { --sky-1: #38e8c0; --sky-2: #b8f53d; --sky-3: #ffc247; --aurora-opacity: 0.4; }
+:root[data-mood="electric"] { --sky-1: #55b8ff; --sky-2: #a78bfa; --sky-3: #ff5d73; --aurora-speed: 0.45; --aurora-opacity: 0.42; }
+:root[data-mood="calm"] { --sky-1: #94a3b8; --sky-2: #7dd3c0; --sky-3: #a5b4fc; --aurora-opacity: 0.2; --aurora-speed: 2; }
+:root[data-mood="sage"] { --sky-1: #6ee7b7; --sky-2: #a3e635; --sky-3: #7dd3c0; --aurora-opacity: 0.26; --aurora-speed: 1.6; }
+
+.aurora {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+  opacity: var(--aurora-opacity);
+  transition: opacity 1.5s ease;
+}
+.aurora i {
+  position: absolute;
+  display: block;
+  width: 95vmax;
+  height: 95vmax;
+  border-radius: 50%;
+  will-change: transform;
+}
+.aurora i:nth-child(1) { top: -42vmax; left: -38vmax; background: radial-gradient(closest-side, var(--sky-1), transparent); }
+.aurora i:nth-child(2) { bottom: -46vmax; right: -40vmax; background: radial-gradient(closest-side, var(--sky-2), transparent); }
+.aurora i:nth-child(3) { top: 28%; left: 18%; width: 62vmax; height: 62vmax; background: radial-gradient(closest-side, var(--sky-3), transparent); }
+@media (prefers-reduced-motion: no-preference) {
+  .aurora i:nth-child(1) { animation: aurora-a calc(34s * var(--aurora-speed)) ease-in-out infinite alternate; }
+  .aurora i:nth-child(2) { animation: aurora-b calc(41s * var(--aurora-speed)) ease-in-out infinite alternate; }
+  .aurora i:nth-child(3) { animation: aurora-c calc(27s * var(--aurora-speed)) ease-in-out infinite alternate; }
+  @keyframes aurora-a { to { transform: translate3d(22vmax, 14vmax, 0) scale(1.18); } }
+  @keyframes aurora-b { to { transform: translate3d(-24vmax, -12vmax, 0) scale(1.12); } }
+  @keyframes aurora-c { from { transform: translate3d(-10vmax, 8vmax, 0) scale(0.9); } to { transform: translate3d(14vmax, -10vmax, 0) scale(1.15); } }
+  /* Depth: the sky drifts a little against the page as it scrolls, where the browser can drive animation from scroll (no JavaScript). */
+  @supports (animation-timeline: scroll()) {
+    .aurora { animation: aurora-parallax linear both; animation-timeline: scroll(root); }
+    @keyframes aurora-parallax { to { transform: translate3d(0, -14vh, 0); } }
+  }
+}
+
+/* A heartbeat at your resting rate: purely decorative (the rate is set in --beat, seconds per beat). */
+.pulse { position: relative; display: inline-block; width: 9px; height: 9px; border-radius: 50%; background: var(--color-coral); vertical-align: middle; }
+.pulse::after { content: ""; position: absolute; inset: 0; border-radius: 50%; background: var(--color-coral); opacity: 0; }
+@media (prefers-reduced-motion: no-preference) {
+  .pulse { animation: beat var(--beat, 1s) ease-in-out infinite; }
+  .pulse::after { animation: beat-ring var(--beat, 1s) ease-out infinite; }
+  @keyframes beat { 0%, 56%, 100% { transform: scale(1); } 14% { transform: scale(1.4); } 28% { transform: scale(1); } 42% { transform: scale(1.22); } }
+  @keyframes beat-ring { 0% { transform: scale(1); opacity: 0.55; } 70%, 100% { transform: scale(3.2); opacity: 0; } }
+  /* After a session the card is lit once from within. */
+  .afterglow { animation: afterglow 2.8s ease-out 0.2s 1 both; }
+  @keyframes afterglow { 0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--color-mint) 60%, transparent); } 100% { box-shadow: 0 0 64px 18px transparent; } }
 }

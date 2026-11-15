@@ -1,33 +1,38 @@
-// Theme: dark or light, following the system until the user picks one in Settings.
-// The choice is applied before first paint by the inline script in index.html (same logic as resolveTheme).
+// Theme: dark or light. By default it is "living": light in daylight and dark at night by the clock (see sky.ts), with no setting to
+// touch. Settings can pin Dark or Light or follow the device instead. The choice is applied before first paint by the inline script in
+// index.html (same logic as resolveTheme).
 // JS colours (charts, inline SVG) come from `C`, resolved once per page load; switching theme reloads the page so
 // module-level colour tables never go stale. CSS reads the same palette through the --color-* tokens in index.css.
 
+import { autoTheme } from "./sky";
+
 export type Theme = "dark" | "light";
-export type ThemeChoice = Theme | "system";
+/** "auto" (the default, nothing stored) follows the clock; "system" follows the device. */
+export type ThemeChoice = Theme | "system" | "auto";
 
 export const THEME_KEY = "cadence-theme";
 
-/** Pure: a stored choice (anything unrecognised means system) and the system preference give the theme to show. */
-export function resolveTheme(stored: string | null | undefined, systemPrefersLight: boolean): Theme {
+/** Pure: a stored choice (nothing or anything unrecognised means the living default), the device preference and the time of day give the theme. */
+export function resolveTheme(stored: string | null | undefined, systemPrefersLight: boolean, minutes: number = 12 * 60): Theme {
   if (stored === "dark" || stored === "light") return stored;
-  return systemPrefersLight ? "light" : "dark";
+  if (stored === "system") return systemPrefersLight ? "light" : "dark";
+  return autoTheme(minutes);
 }
 
 export function readChoice(storage: Pick<Storage, "getItem"> | null = safeStorage()): ThemeChoice {
   try {
     const v = storage?.getItem(THEME_KEY);
-    return v === "dark" || v === "light" ? v : "system";
+    return v === "dark" || v === "light" || v === "system" ? v : "auto";
   } catch {
-    return "system";
+    return "auto";
   }
 }
 
-/** Persist a choice; "system" clears it. Returns false when storage is unavailable (private window, blocked data). */
+/** Persist a choice; "auto" (the default) clears it. Returns false when storage is unavailable (private window, blocked data). */
 export function writeChoice(choice: ThemeChoice, storage: Pick<Storage, "setItem" | "removeItem"> | null = safeStorage()): boolean {
   try {
     if (!storage) return false;
-    if (choice === "system") storage.removeItem(THEME_KEY);
+    if (choice === "auto") storage.removeItem(THEME_KEY);
     else storage.setItem(THEME_KEY, choice);
     return true;
   } catch {
@@ -56,7 +61,7 @@ export function currentTheme(): Theme {
     const t = document.documentElement.dataset.theme;
     if (t === "dark" || t === "light") return t;
   }
-  return resolveTheme(readChoice(), systemLight());
+  return resolveTheme(readChoice(), systemLight(), new Date().getHours() * 60 + new Date().getMinutes());
 }
 
 /** Apply a choice to the document, and reload so JS-resolved colours (charts) match. */

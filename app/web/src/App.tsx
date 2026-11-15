@@ -4,6 +4,7 @@ import { lazy, Suspense, useEffect, useRef, type ComponentType, type ReactNode }
 import { BrowserRouter, Route, Routes } from "react-router-dom";
 import { LoadingBlock, Shell } from "./components/Shell";
 import { shouldRetry } from "./lib/api";
+import { useLivingTheme } from "./lib/livingTheme";
 import { useAppLifecycle } from "./lib/useAppLifecycle";
 import { OverviewPage } from "./pages/Overview";
 
@@ -39,6 +40,7 @@ const queryClient = new QueryClient({
 
 function Lifecycle() {
   useAppLifecycle();
+  useLivingTheme();
   return null;
 }
 

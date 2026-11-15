@@ -4,6 +4,7 @@ import { Activity, AlertTriangle, Archive, BookOpen, CalendarCheck, Dumbbell, Fl
 import { motion, useReducedMotion } from "motion/react";
 import { useRef, type ReactNode } from "react";
 import { NavLink, Outlet, useLocation, useMatch } from "react-router-dom";
+import { Ambient } from "./Ambient";
 import { CondensedTitle } from "./CondensedTitle";
 import { RefreshRailButton } from "./RefreshButton";
 import { ReminderBanner } from "./ReminderBanner";
@@ -124,7 +125,8 @@ export function Shell() {
   const route = routeMotion(routeDirection(prev.current, location.pathname), Boolean(reduce));
   return (
     <Tooltip.Provider delayDuration={150}>
-      <div className="min-h-dvh md:pl-24">
+      <Ambient />
+      <div className="relative z-[1] min-h-dvh md:pl-24">
         <aside className="fixed inset-y-0 left-0 z-40 hidden w-24 flex-col items-center border-r border-line bg-ink/70 py-7 backdrop-blur-xl md:flex">
           <Monogram />
           <nav className="mt-14 flex flex-col gap-3" aria-label="Primary">

@@ -163,7 +163,7 @@ export function SessionHero({ coach, energy, view, phase, hour }: { coach: Brief
     { k: "load", v: s.load.toString() },
   ].filter((x): x is { k: string; v: string } => x !== null);
   return (
-    <Frame accent={style.color} label="After your session">
+    <Frame accent={style.color} label="After your session" className="afterglow">
       <div className="flex items-start gap-4">
         <div className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl" style={{ background: `${style.color}1f`, color: style.color }}><Icon size={22} strokeWidth={1.75} /></div>
         <div className="min-w-0 flex-1">

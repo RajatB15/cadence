@@ -32,6 +32,16 @@ Type scale (px): 11 `.eyebrow`, 12 caption, 14 body-small, 16 body, 20 `.t-title
 - Ring gauges: text inside a ring is sized from the hole, never from a guess. `lib/ringFit.ts` (`fitNumeral`, `holeRadius`, `labelWidthPx`) finds the largest numeral whose whole block (numeral plus small label) keeps every corner inside the circle left by the innermost stroke; `useElementWidth` feeds it the live ring width so rings are responsive (320 to 600px and up). Only the numeral and a unit sit inside; descriptive labels go outside the strokes (`CalorieRing` has a caption under the ring). Give a ring root `data-ring-fit` and `data-inner` (hole radius in 200-unit viewBox terms) so a render script can measure text corners against the hole.
 - `CheckHalo` (`components/Halo.tsx`): the one celebration for a goal met, a check badge whose ring breathes out once. Used for fresh achievements only (`isFreshDay`).
 
+## Living theme (2026-11-15)
+
+Nobody is asked to pick a theme. The page turns light by day and dark by night on its own (06:30 to 18:30 is light), and a **sky** of three drifting colour fields sits behind everything, changing through the day: dawn rose and amber, morning gold and blue, day sky and mint, golden-hour orange, dusk violet and coral, night indigo and teal. Rules and mapping live in `lib/sky.ts` (pure, tested); `index.html` repeats them so the first paint is right; `lib/livingTheme.ts` keeps them current while the app is open (a light/dark flip finishes with a reload the next time the app comes forward, never during a workout or under unsaved work).
+
+- Only ambient tints move: `--sky-1..3` (registered colours, so they crossfade over 4 s) and `--aurora-opacity/speed`. Surfaces and text come from the light/dark tokens, so contrast does not change. Cards are slightly see-through (no blur) so the sky shows faintly through them.
+- Mood (`data-mood`, set by Home from the backend phase): afterglow after a session (mint, lime, a one-off glow on the session card), electric in race week (blue, violet, coral, faster), calm when unwell or on time off (desaturated, slower), sage on a rest day.
+- A heartbeat dot beside the date beats at your resting heart rate (`beatSeconds`); decorative and aria-hidden.
+- Cheap on a phone: three `radial-gradient` layers moving on `transform`, no blur filters, a scroll-driven parallax only where `animation-timeline` exists, everything off under `prefers-reduced-motion`.
+- Settings: **Living** (default), Match device, Dark, Light. A stored Dark or Light pins the page.
+
 ## Motion rules
 
 The owner's brief (2026-11-15): the app must not look or feel like a generic fitness tracker. Motion, colour and ambience are allowed to be bold, continuous and expressive; the only hard limits are the ones below. Earlier rules ("calm and short", "celebrations subtle, once", "no glass on cards", "one blur layer") are withdrawn.

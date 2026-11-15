@@ -12,23 +12,30 @@ const broken = {
 };
 
 describe("theme", () => {
-  it("follows the system until a choice is stored", () => {
-    expect(resolveTheme(null, true)).toBe("light");
-    expect(resolveTheme(undefined, false)).toBe("dark");
-    expect(resolveTheme("dark", true)).toBe("dark");
-    expect(resolveTheme("light", false)).toBe("light");
-    expect(resolveTheme("garbage", true)).toBe("light");
+  it("follows the clock until a choice is stored", () => {
+    expect(resolveTheme(null, false, 12 * 60)).toBe("light");
+    expect(resolveTheme(undefined, true, 22 * 60)).toBe("dark");
+    expect(resolveTheme("garbage", true, 7 * 60)).toBe("light");
+    expect(resolveTheme("garbage", false, 3 * 60)).toBe("dark");
+  });
+  it("a pinned choice or the device preference beats the clock", () => {
+    expect(resolveTheme("dark", true, 12 * 60)).toBe("dark");
+    expect(resolveTheme("light", false, 23 * 60)).toBe("light");
+    expect(resolveTheme("system", true, 23 * 60)).toBe("light");
+    expect(resolveTheme("system", false, 12 * 60)).toBe("dark");
   });
   it("persists and clears a choice", () => {
     const s = mem();
-    expect(readChoice(s)).toBe("system");
+    expect(readChoice(s)).toBe("auto");
     expect(writeChoice("light", s)).toBe(true);
     expect(readChoice(s)).toBe("light");
     writeChoice("system", s);
     expect(readChoice(s)).toBe("system");
+    writeChoice("auto", s);
+    expect(readChoice(s)).toBe("auto");
   });
   it("falls back when storage throws or is missing", () => {
-    expect(readChoice(broken)).toBe("system");
+    expect(readChoice(broken)).toBe("auto");
     expect(writeChoice("dark", broken)).toBe(false);
     expect(writeChoice("dark", null)).toBe(false);
   });

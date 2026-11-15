@@ -78,6 +78,7 @@ export function SettingsPage() {
 function AppearanceCard() {
   const [choice] = useState<ThemeChoice>(() => readChoice());
   const options: { id: ThemeChoice; label: string }[] = [
+    { id: "auto", label: "Living" },
     { id: "system", label: "Match device" },
     { id: "dark", label: "Dark" },
     { id: "light", label: "Light" },
@@ -86,7 +87,7 @@ function AppearanceCard() {
     <section className="surface flex flex-wrap items-start justify-between gap-6 p-8" aria-label="Appearance">
       <div className="max-w-xl">
         <p className="eyebrow mb-2">Appearance</p>
-        <p className="text-mute">Dark or light. The default follows your device. Changing it reloads the page once, and it is remembered on this device only.</p>
+        <p className="text-mute">Living (the default) turns light by day and dark by night on its own, with a sky that changes colour through the day and with the mood of your day. Or pin Dark or Light, or follow your device. Changing it reloads the page once, and it is remembered on this device only.</p>
       </div>
       <div role="radiogroup" aria-label="Theme" className="flex flex-wrap gap-2">
         {options.map((o) => (

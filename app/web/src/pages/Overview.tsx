@@ -32,6 +32,7 @@ import { localMinutes } from "../lib/moment";
 import { NowCard } from "../components/home/NowCard";
 import { PhaseHeader } from "../components/home/PhaseHeader";
 import { VitalsRail } from "../components/home/VitalsRail";
+import { moodFor } from "../lib/sky";
 import { heroFor, heroReplaces, isDimmed, localHour, nowView, sectionLayout, type SectionId } from "../lib/home";
 import { PhaseBanner } from "../components/PhaseBanner";
 import { CheckInCard } from "../components/Journal";
@@ -113,6 +114,8 @@ function Dashboard({ data }: { data: Extract<Overview, { has_data: true }> }) {
   const sessionState = phase?.session_state;
   const quiet = sessionState === "deferred" || sessionState === "window_closed";
   const dialSize = wide ? 190 : 112;
+  // The day's mood tints the sky (index.css "Living theme"); it stays as set until Home is next shown.
+  useEffect(() => { document.documentElement.dataset.mood = moodFor(phaseId); }, [phaseId]);
 
   const minutes = localMinutes(phase?.now_local, now.getHours() * 60 + now.getMinutes());
   // The hero is what the backend says this part of the day leads with; the blocks it stands in for are not shown a second time.
@@ -191,6 +194,7 @@ function Dashboard({ data }: { data: Extract<Overview, { has_data: true }> }) {
           phase={phaseId}
           hour={hourNow}
           chip={isDemo ? <DemoChip /> : <RefreshChip />}
+          restingHr={(() => { const m = data.metrics.find((x) => x.metric === "resting_hr"); return m && m.latest_day >= data.today ? m.latest : null; })()}
         />
       </motion.div>
 
