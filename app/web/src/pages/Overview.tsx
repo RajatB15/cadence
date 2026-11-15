@@ -32,6 +32,8 @@ import { localMinutes } from "../lib/moment";
 import { NowCard } from "../components/home/NowCard";
 import { PhaseHeader } from "../components/home/PhaseHeader";
 import { VitalsRail } from "../components/home/VitalsRail";
+import { DayOrbit } from "../components/home/DayOrbit";
+import { minutesOfIso } from "../lib/orbit";
 import { moodFor } from "../lib/sky";
 import { heroFor, heroReplaces, isDimmed, localHour, nowView, sectionLayout, type SectionId } from "../lib/home";
 import { PhaseBanner } from "../components/PhaseBanner";
@@ -170,6 +172,16 @@ function Dashboard({ data }: { data: Extract<Overview, { has_data: true }> }) {
   if (coach && coach.streaks.length > 0) blocks.streaks = <StreakChips streaks={coach.streaks} />;
   if (coach) blocks.wins = <RecoveryWinsCard wins={coach.recovery_wins} />;
 
+  const sleepMetric = data.metrics.find((x) => x.metric === "sleep_hours");
+  const orbitInput = {
+    minutes,
+    sleepH: sleepMetric && sleepMetric.latest_day >= data.today ? sleepMetric.latest : null,
+    wakeMin: coach?.tonight?.wake_min ?? null,
+    bedMin: coach?.tonight?.bed_min ?? null,
+    sessions: (coach?.recent.label === "Today" ? coach.recent.items : []).flatMap((s) => { const at = minutesOfIso(s.start); return at != null && s.moving_s ? [{ startMin: at, minutes: s.moving_s / 60, label: `${s.name}, ${Math.round(s.moving_s / 60)} min` }] : []; }),
+    planned: (data.planned_today ?? []).filter((p) => p.status !== "done" && p.start_hour != null).map((p) => ({ startMin: p.start_hour! * 60, minutes: p.minutes, label: p.title })),
+  };
+
   let lead: ReactNode;
   switch (hero) {
     case "wake": lead = <WakeHero data={data} coach={coach} view={view} phase={phase} hour={hourNow} onReadiness={r ? () => setSheet("readiness") : undefined} />; break;
@@ -197,6 +209,8 @@ function Dashboard({ data }: { data: Extract<Overview, { has_data: true }> }) {
           restingHr={(() => { const m = data.metrics.find((x) => x.metric === "resting_hr"); return m && m.latest_day >= data.today ? m.latest : null; })()}
         />
       </motion.div>
+
+      <motion.div variants={rise}><DayOrbit input={orbitInput} /></motion.div>
 
       <motion.div variants={rise}><HomeHero hero={hero}>{lead}</HomeHero></motion.div>
 

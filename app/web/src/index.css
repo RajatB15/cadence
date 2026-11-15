@@ -1,6 +1,7 @@
 @import "tailwindcss";
 @import "@fontsource-variable/manrope";
 @import "@fontsource-variable/jetbrains-mono";
+@import "@fontsource-variable/bricolage-grotesque/wdth.css";
 
 @theme {
   /* Surfaces and text. Names are kept from the first design: ink = page, coal = card, slate = raised/fill, cream = headings. */
@@ -24,7 +25,7 @@
   --color-mint: #38e8c0;
 
   --font-sans: "Manrope Variable", ui-sans-serif, system-ui, sans-serif;
-  --font-display: "Manrope Variable", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Bricolage Grotesque Variable", "Manrope Variable", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "JetBrains Mono Variable", ui-monospace, monospace;
 
   --ease-snap: cubic-bezier(0.2, 0.9, 0.1, 1);
@@ -680,4 +681,53 @@ body {
   /* After a session the card is lit once from within. */
   .afterglow { animation: afterglow 2.8s ease-out 0.2s 1 both; }
   @keyframes afterglow { 0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--color-mint) 60%, transparent); } 100% { box-shadow: 0 0 64px 18px transparent; } }
+}
+
+
+/* ================= Poster type and vessels =================
+   Display type is Bricolage Grotesque on its narrow axis: tall, tight and a little odd, set big. Numerals can also be vessels: filled
+   like a glass up to a share of something (--fill, 0 to 1), outlined so an empty glass still reads, with a sheen that passes over it. */
+.poster {
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-variation-settings: "wdth" 75;
+  font-variant-numeric: tabular-nums lining-nums;
+  letter-spacing: -0.03em;
+  line-height: 0.88;
+  color: var(--color-cream);
+}
+.font-display { font-family: var(--font-display); font-variation-settings: "wdth" 88; }
+.t-large { font-family: var(--font-display); font-variation-settings: "wdth" 80; }
+@property --fill { syntax: "<number>"; inherits: false; initial-value: 0; }
+.vessel {
+  --c: var(--color-gold);
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-variation-settings: "wdth" 75;
+  font-variant-numeric: tabular-nums lining-nums;
+  letter-spacing: -0.03em;
+  line-height: 0.88;
+  color: transparent;
+  -webkit-text-stroke: 2px var(--c);
+  background:
+    linear-gradient(105deg, transparent 42%, rgb(255 255 255 / 0.55) 50%, transparent 58%) 140% 0 / 250% 100% no-repeat,
+    linear-gradient(to top, var(--c) calc(var(--fill) * 100%), transparent calc(var(--fill) * 100%));
+  -webkit-background-clip: text;
+  background-clip: text;
+  transition: --fill 1.8s cubic-bezier(0.16, 1, 0.3, 1);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .vessel { animation: vessel-sheen 6s ease-in-out 1.2s infinite; }
+  @keyframes vessel-sheen { 0%, 55% { background-position: 140% 0, 0 0; } 100% { background-position: -60% 0, 0 0; } }
+}
+/* The ring's stretches of sky, one token per stage. They follow light and dark like everything else. */
+:root {
+  --orbit-night: #3b3a8f; --orbit-dawn: #e0707f; --orbit-morning: #e9a64a; --orbit-day: #4aa3e0; --orbit-golden: #e8803a; --orbit-dusk: #8b6fd6;
+}
+:root[data-theme="light"] {
+  --orbit-night: #8d8bd6; --orbit-dawn: #f0a0aa; --orbit-morning: #f2c37a; --orbit-day: #86c3ee; --orbit-golden: #f0a56e; --orbit-dusk: #b7a3ec;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .orbit-sun { animation: orbit-breathe 5s ease-in-out infinite; transform-origin: center; transform-box: fill-box; }
+  @keyframes orbit-breathe { 0%, 100% { transform: scale(0.92); opacity: 0.85; } 50% { transform: scale(1.12); opacity: 1; } }
 }

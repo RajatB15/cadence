@@ -1,5 +1,6 @@
 import { motion, useReducedMotion } from "motion/react";
 import { CountUp } from "../CountUp";
+import { Vessel } from "../Vessel";
 import { formatKcal } from "../../lib/home";
 import type { BalanceView, TodayBars, WeekBalance } from "../../lib/balance";
 
@@ -37,9 +38,11 @@ export function BalanceBars({ bars, view, summary }: { bars: TodayBars; view: Ba
     <div role="img" aria-label={summary}>
       <div className="mb-5">
         <p className="eyebrow">{h.label}</p>
-        <p className="numeral mt-1 text-[clamp(40px,13vw,56px)] leading-none" style={{ color: TONE[h.kind] }}>
-          <CountUp value={h.value} format={formatKcal} immediate />
-          <span className="ml-1.5 text-base font-semibold text-mute">kcal</span>
+        <p className="mt-1 leading-none">
+          <Vessel fill={bars.allowance && bars.eaten != null ? Math.min(1, bars.eaten / bars.allowance) : view.mode === "result" && bars.projected ? Math.min(1, bars.burned / ((bars.projected.lo + bars.projected.hi) / 2)) : 0} color={TONE[h.kind]} className="text-[clamp(84px,30vw,150px)]">
+            <CountUp value={h.value} format={formatKcal} immediate />
+          </Vessel>
+          <span className="ml-2 text-base font-semibold text-mute">kcal</span>
         </p>
         {h.sub && <p className="num mt-1.5 text-xs text-mute">{h.sub}</p>}
         {view.ifStopped && <p className="mt-1 text-xs text-dim">If you eat nothing more, the day ends about {formatKcal(Math.max(0, view.ifStopped[0]))} to {formatKcal(Math.max(0, view.ifStopped[1]))} under what you burn.</p>}

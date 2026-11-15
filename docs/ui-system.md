@@ -42,6 +42,12 @@ Nobody is asked to pick a theme. The page turns light by day and dark by night o
 - Cheap on a phone: three `radial-gradient` layers moving on `transform`, no blur filters, a scroll-driven parallax only where `animation-timeline` exists, everything off under `prefers-reduced-motion`.
 - Settings: **Living** (default), Match device, Dark, Light. A stored Dark or Light pins the page.
 
+### Day orbit, poster type and vessels (2026-11-15)
+
+- **Day orbit** (`components/home/DayOrbit.tsx`, pure model `lib/orbit.ts`): the top of Home is the day as one 24-hour ring (midnight at the bottom, 06:00 left, noon top, 18:00 right), the sky's colours around the edge, last night's sleep, sessions done today, a planned session (dashed), the usual eating window and tonight's bedtime as arcs, a sun or moon where you are in the day, and the next thing in the middle. Only what is known is drawn; an arc without data is absent, never zero. The ring is an image with a text summary for screen readers.
+- **Poster type**: display type is Bricolage Grotesque on its narrow width axis (`.poster`, `.font-display`, `.t-large`), set very large for the numbers that matter.
+- **Vessels** (`components/Vessel.tsx`): a big numeral drawn as a glass filled to a share of something (eaten of the day's budget, the day elapsed towards bedtime), outlined so an empty glass still reads, with a sheen that passes over it. The number is ordinary text.
+
 ## Motion rules
 
 The owner's brief (2026-11-15): the app must not look or feel like a generic fitness tracker. Motion, colour and ambience are allowed to be bold, continuous and expressive; the only hard limits are the ones below. Earlier rules ("calm and short", "celebrations subtle, once", "no glass on cards", "one blur layer") are withdrawn.

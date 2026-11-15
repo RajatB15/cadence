@@ -6,6 +6,7 @@ import { Link } from "react-router-dom";
 import { AccentEdge } from "../Card";
 import { Ring, SEVERITY, VerdictChip } from "../CoachNotes";
 import { CountUp } from "../CountUp";
+import { Vessel } from "../Vessel";
 import { Sparkline } from "../Sparkline";
 import { energyState, formatKcal, phaseAccent, type HeroId, type NowView } from "../../lib/home";
 import { deltaTone, formatDuration, formatMetric } from "../../lib/format";
@@ -224,7 +225,7 @@ export function WinddownHero({ data, coach, energy, view, phase, hour }: { data:
       {t ? (
         <Link to="/coach#sleep" className="group block">
           <p className="text-sm text-mute">In bed by</p>
-          <p className="numeral text-[clamp(56px,18vw,88px)] text-cream" style={{ color: accent }}>{hhmm(t.bed_min)}</p>
+          <p className="leading-none"><Vessel fill={Math.max(0, Math.min(1, (nowMin - 6 * 60) / Math.max(60, t.bed_min - 6 * 60)))} color={accent} className="text-[clamp(96px,34vw,170px)]">{hhmm(t.bed_min)}</Vessel></p>
           <p className="mt-1 text-sm text-mute">
             {t.tonight_h.toFixed(1)} h to wake at <span className="num text-paper">{hhmm(t.wake_min)}</span>
             {bedSoon != null && bedSoon > 0 && bedSoon <= 180 ? ` · in about ${bedSoon >= 60 ? `${Math.floor(bedSoon / 60)} h ${bedSoon % 60 ? `${bedSoon % 60} min` : ""}` : `${bedSoon} min`}` : ""}
