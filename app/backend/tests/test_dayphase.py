@@ -83,6 +83,11 @@ def test_matrix(state, h, m):
     assert ph["cards"] and len(set(ph["cards"])) == len(ph["cards"]) and set(ph["cards"]) <= CARD_IDS
     assert sorted(ph["cards"] + ph["hidden"]) == sorted(CARD_IDS) and set(ph["dimmed"]) <= set(ph["cards"])
     assert ph["cards"] == DP.CARDS[ph["phase"]][0]
+    assert ph["hero"] in DP.HEROES
+    if ph["phase"] in ("dawn", "morning"):
+        assert ph["hero"] == ("session" if ph["session_state"] == "done" else "wake")
+    else:
+        assert ph["hero"] == DP.HERO[ph["phase"]]
     for t in strings(copy):
         assert not SHAME.search(t), (state, h, m, t)  # never "open" as a word, never shaming
     late = h >= 21 or h < 4
@@ -177,6 +182,23 @@ def test_step_prompt_only_when_reachable_and_not_late_sick_or_time_off():
     assert DP.phase(DP.Facts(now=at(14, 0), steps=None, step_goal=10000.0))["hints"]["steps"] == "tile"  # unknown steps are not zero
     assert DP.phase(DP.Facts(now=at(14, 0), steps=12000.0, step_goal=10000.0))["hints"]["steps"] == "tile"  # already there
     assert DP.phase(DP.Facts(now=at(22, 0), steps=1000.0, step_goal=10000.0))["hints"]["steps"] == "tile"
+
+
+def test_hero_follows_the_part_of_the_day():
+    assert set(DP.HERO) == set(DP.PHASES) and set(DP.HERO.values()) <= set(DP.HEROES)
+    assert DP.phase(DP.Facts(now=at(8, 0)))["hero"] == "wake"
+    assert DP.phase(DP.Facts(now=at(13, 0)))["hero"] == "fuel"
+    assert DP.phase(DP.Facts(now=at(19, 0)))["hero"] == "balance"
+    assert DP.phase(DP.Facts(now=at(22, 30)))["hero"] == "winddown"
+    assert DP.phase(DP.Facts(now=at(0, 30)))["hero"] == "winddown"  # a new day before 04:00 is still winding down
+    assert DP.phase(DP.Facts(now=at(9, 0), sessions_today=1, last_session_end=at(8, 0), plan_status="done"))["hero"] == "session"
+    assert DP.phase(DP.Facts(now=at(15, 0), sessions_today=1, last_session_end=at(7, 0), plan_status="done"))["hero"] == "session"  # done today, before 21:00
+    assert DP.phase(DP.Facts(now=at(10, 0), plan_kind="rest"))["hero"] == "now"
+    assert DP.phase(DP.Facts(now=at(10, 0), time_off="travel"))["hero"] == "now"
+    assert DP.phase(DP.Facts(now=at(10, 0), illness=2))["hero"] == "now"
+    assert DP.phase(DP.Facts(now=at(10, 0), race_days=0))["hero"] == "now"
+    # The afternoon refinement never fires outside the morning: an afternoon with the session done is post_workout (session) anyway.
+    assert DP.hero_of("morning", "done", 9 * 60) == "session" and DP.hero_of("morning", "open", 9 * 60) == "wake"
 
 
 def test_golden_card_order_per_phase():

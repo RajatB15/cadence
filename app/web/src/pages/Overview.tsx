@@ -27,11 +27,12 @@ import { HomeSkeleton } from "../components/home/HomeSkeleton";
 import { TodayMeters } from "../components/home/TodayMeters";
 import { dayRings } from "../lib/dayRing";
 import { CaloriesCard } from "../components/home/CaloriesCard";
+import { CalorieStrip, HomeHero, SessionHero, WakeHero, WinddownHero } from "../components/home/Hero";
 import { localMinutes } from "../lib/moment";
 import { NowCard } from "../components/home/NowCard";
 import { PhaseHeader } from "../components/home/PhaseHeader";
 import { VitalsRail } from "../components/home/VitalsRail";
-import { isDimmed, localHour, nowView, sectionLayout, type SectionId } from "../lib/home";
+import { heroFor, heroReplaces, isDimmed, localHour, nowView, sectionLayout, type SectionId } from "../lib/home";
 import { PhaseBanner } from "../components/PhaseBanner";
 import { CheckInCard } from "../components/Journal";
 import { TodayBookCard } from "../components/BookReader";
@@ -113,16 +114,21 @@ function Dashboard({ data }: { data: Extract<Overview, { has_data: true }> }) {
   const quiet = sessionState === "deferred" || sessionState === "window_closed";
   const dialSize = wide ? 190 : 112;
 
+  const minutes = localMinutes(phase?.now_local, now.getHours() * 60 + now.getMinutes());
+  // The hero is what the backend says this part of the day leads with; the blocks it stands in for are not shown a second time.
+  const hero = heroFor(phase, minutes);
+  const heroHasCall = hero === "wake" || hero === "session"; // these heroes carry today's call themselves
+
   const blocks: Partial<Record<SectionId, ReactNode>> = {};
   if (view) blocks.now = <NowCard view={view} phase={phaseId} hour={hourNow} />;
   else if (coach) blocks.now = <TodayCall coach={coach} />;
   // Late evening: the Now card already says "not today" in the backend's words, so the call card is not repeated.
-  if (view && coach && !quiet) blocks.planned = (<div className="space-y-6"><TodayCall coach={coach} /><PlannedToday plans={data.planned_today ?? []} /></div>);
+  if (view && coach && !quiet && !heroHasCall) blocks.planned = (<div className="space-y-6"><TodayCall coach={coach} /><PlannedToday plans={data.planned_today ?? []} /></div>);
   else if (coach || (data.planned_today ?? []).length) blocks.planned = <PlannedToday plans={data.planned_today ?? []} quietTitle={quiet ? phase?.copy?.session?.title : undefined} />;
   blocks.vitals = <VitalsRail metrics={data.metrics} weight={data.weight} today={data.today} phase={phaseId} order={phase?.vitals_order} />;
-  const minutes = localMinutes(phase?.now_local, now.getHours() * 60 + now.getMinutes());
   const meters = <TodayMeters rings={dayRings({ metrics: data.metrics, today: data.today, readiness: r ? r.score : null, sleepNeedH: coach?.tonight?.need_h ?? null, energy: data.energy, minutes })} />;
-  blocks.calories = <CaloriesCard energy={data.energy} phase={phase ?? null} isDemo={isDemo} meters={meters} minutes={minutes} />;
+  const caloriesCard = <CaloriesCard energy={data.energy} phase={phase ?? null} isDemo={isDemo} meters={meters} minutes={minutes} />;
+  blocks.calories = hero === "fuel" || hero === "balance" ? caloriesCard : <CalorieStrip energy={data.energy} phase={phase ?? null} isDemo={isDemo} full={caloriesCard} />;
   if (coach) blocks.status = <StatusCard coach={coach} onStatus={() => setSheet("status")} onTimeOff={() => setSheet("timeoff")} />;
   if (r || data.score) {
     blocks.scores = (
@@ -161,8 +167,16 @@ function Dashboard({ data }: { data: Extract<Overview, { has_data: true }> }) {
   if (coach && coach.streaks.length > 0) blocks.streaks = <StreakChips streaks={coach.streaks} />;
   if (coach) blocks.wins = <RecoveryWinsCard wins={coach.recovery_wins} />;
 
-  const caloriesBlock = blocks.calories; // burned vs eaten leads the page, whatever the phase
-  delete blocks.calories;
+  let lead: ReactNode;
+  switch (hero) {
+    case "wake": lead = <WakeHero data={data} coach={coach} view={view} phase={phase} hour={hourNow} onReadiness={r ? () => setSheet("readiness") : undefined} />; break;
+    case "session": lead = <SessionHero coach={coach} energy={data.energy} view={view} phase={phase} hour={hourNow} />; break;
+    case "winddown": lead = <WinddownHero data={data} coach={coach} energy={data.energy} view={view} phase={phase} hour={hourNow} />; break;
+    case "now": lead = blocks.now ?? (coach ? <TodayCall coach={coach} /> : null); break;
+    default: lead = blocks.calories; // fuel and balance: burned vs eaten with the day's meters
+  }
+  for (const id of heroReplaces(hero)) delete blocks[id];
+  if (hero === "fuel" || hero === "balance") delete blocks.calories;
   const available = new Set(Object.keys(blocks) as SectionId[]);
   const { primary, more } = sectionLayout(phase, available);
   const wrap = (id: SectionId) => <motion.div key={id} variants={rise}>{blocks[id]}</motion.div>;
@@ -180,7 +194,7 @@ function Dashboard({ data }: { data: Extract<Overview, { has_data: true }> }) {
         />
       </motion.div>
 
-      <motion.div variants={rise}>{caloriesBlock}</motion.div>
+      <motion.div variants={rise}><HomeHero hero={hero}>{lead}</HomeHero></motion.div>
 
       {primary.map(wrap)}
 

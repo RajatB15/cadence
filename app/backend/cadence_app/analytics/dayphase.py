@@ -15,6 +15,9 @@ Rules (design in docs/home-design.md, section C)
   "open" after 20:00, and a missed session is never presented as a failure.
 - Step prompts appear only when the remaining steps are reachable at a normal pace (at most 2,500 an hour until 21:30)
   and the phase is not sick, time off or late.
+- The hero (what the Home leads with) follows the phase (`HERO`): wake in the morning, fuel through the day, the session just
+  done after training, the balance in the evening, winding down late, and the phase card itself on rest, race, time-off and
+  unwell days. The web app renders the hero it is told; nothing on the client recomputes it.
 This is scheduling of what to show, not health advice.
 """
 
@@ -37,6 +40,15 @@ OFF_KINDS = ("travel", "vacation", "injury")
 DEFAULT_VITALS = ["steps", "sleep_hours", "hrv", "resting_hr", "body_battery", "stress"]
 MORNING_VITALS = ["sleep_hours", "hrv", "resting_hr", "body_battery", "stress", "steps"]
 EVENING_VITALS = ["steps", "stress", "body_battery", "sleep_hours", "hrv", "resting_hr"]
+
+# What leads the Home (the hero) by phase. wake = sleep, readiness and today's session; fuel = burned vs eaten with the day's meters;
+# session = the session just done and its refuel; balance = the day's balance with tonight's bedtime; winddown = bed time, totals and
+# tomorrow; now = the phase card itself (rest, race, time off, unwell).
+HEROES = ("wake", "fuel", "session", "balance", "winddown", "now")
+HERO: dict[str, str] = {
+    "dawn": "wake", "morning": "wake", "midday": "fuel", "afternoon": "fuel", "evening": "balance", "late": "winddown",
+    "post_workout": "session", "rest_day": "now", "race_week": "now", "race_day": "now", "time_off": "now", "sick": "now",
+}
 
 # (visible cards in order, dimmed cards). Hidden = everything not listed.
 CARDS: dict[str, tuple[list[str], list[str]]] = {
@@ -179,4 +191,14 @@ def phase(f: Facts) -> dict:
     }
     return {"phase": ph, "band": b, "flags": flags, "cards": cards, "dimmed": dimmed, "hidden": [c for c in
             ("vitals", "calories", "now", "readiness", "checkin", "week", "recent", "more") if c not in cards],
-            "vitals_order": vitals, "session_state": state, "hints": hints}
+            "vitals_order": vitals, "session_state": state, "hints": hints, "hero": hero_of(ph, state, m)}
+
+
+def hero_of(ph: str, state: str, m: int) -> str:
+    """Which card leads. The phase table decides, with one refinement: a morning whose session is already done (but not recently
+    enough to be post-workout) leads with that session rather than with waking up. `m` is the minute of day, kept for symmetry
+    with the other rules and future refinements."""
+    del m
+    if ph in ("dawn", "morning") and state == "done":
+        return "session"
+    return HERO[ph]

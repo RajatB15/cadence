@@ -174,6 +174,43 @@ export function sectionLayout(phase: HomePhase | null | undefined, available: Re
   return { primary, more };
 }
 
+// ---- the hero ------------------------------------------------------------------------------
+
+/** What leads the Home. The backend decides (`phase.hero`); the table below only stands in for an older server. */
+export type HeroId = "wake" | "fuel" | "session" | "balance" | "winddown" | "now";
+export const HERO_IDS: readonly HeroId[] = ["wake", "fuel", "session", "balance", "winddown", "now"];
+const HERO_BY_PHASE: Record<string, HeroId> = {
+  dawn: "wake", morning: "wake", midday: "fuel", afternoon: "fuel", evening: "balance", late: "winddown",
+  post_workout: "session", rest_day: "now", race_week: "now", race_day: "now", time_off: "now", sick: "now",
+};
+
+/** `minutes` is minutes after local midnight, the last resort when the server sent neither a hero nor a phase. */
+export function heroFor(phase: HomePhase | null | undefined, minutes: number): HeroId {
+  const sent = phase?.hero;
+  if (sent && (HERO_IDS as readonly string[]).includes(sent)) return sent as HeroId;
+  const byPhase = phase?.phase ? HERO_BY_PHASE[phase.phase] : undefined;
+  if (byPhase) return (byPhase === "wake" && phase?.session_state === "done") ? "session" : byPhase;
+  if (minutes < 4 * 60 || minutes >= 21 * 60) return "winddown";
+  if (minutes < 11 * 60 + 30) return "wake";
+  if (minutes < 18 * 60) return "fuel";
+  return "balance";
+}
+
+/** The ordinary blocks a hero stands in for, so they are not shown twice. */
+export function heroReplaces(hero: HeroId): SectionId[] {
+  switch (hero) {
+    case "fuel":
+    case "balance":
+      return ["calories"];
+    case "winddown":
+      return ["now", "tonight"];
+    case "wake":
+    case "session":
+    case "now":
+      return ["now"];
+  }
+}
+
 export interface NowView {
   eyebrow: string | null;
   headline: string | null;

@@ -57,6 +57,9 @@ def generate(start: date, end: date) -> Batch:
         battery = 62 + 6 * (sleep - 7.2) + 0.35 * (hrv - 55) - 0.08 * prev_load + rng.gauss(0, 6)
         sleep_score = 62 + 9 * (sleep - 6.5) + rng.gauss(0, 5)
         steps = rng.gauss(8200, 2200) + sum((a.distance_m or 0) * 1.25 for a in activities if a.activity_type == "run")
+        # Burn, like Garmin's burnedTotal: a resting share plus everyday movement and the day's sessions (synthetic, in kcal).
+        active = max(steps, 800) * 0.04 + sum(a.calories or 0 for a in activities) + rng.gauss(0, 40)
+        total = 1720 + rng.gauss(0, 35) + max(active, 0)
 
         if day >= start:
             values = {
@@ -68,6 +71,8 @@ def generate(start: date, end: date) -> Batch:
                 "body_battery": (min(max(battery, 5), 100), "score"),
                 "steps": (max(steps, 800), "steps"),
                 "training_load": (load, "load"),
+                "active_calories": (max(active, 0), "kcal"),
+                "total_calories": (total, "kcal"),
             }
             # Separate stream so adding sleep timing leaves every other demo value unchanged.
             clock = _rng(day, "sleep-time")

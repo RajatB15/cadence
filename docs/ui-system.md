@@ -34,10 +34,12 @@ Type scale (px): 11 `.eyebrow`, 12 caption, 14 body-small, 16 body, 20 `.t-title
 
 ## Motion rules
 
-1. Only `transform` and `opacity` animate; one blur layer per floating surface (tab bar, condensed bar). Film grain is off on touch.
-2. Durations: press 80 to 220ms, reveals 450 to 600ms, rings 1.1 to 1.4s. Stagger by index, never more than ~60ms.
-3. Everything animated is gated by `prefers-reduced-motion` (CSS `no-preference` blocks or `useReducedMotion`). Content must be complete with motion off.
-4. Celebrations are subtle, once, and only for fresh (not stale) data.
+The owner's brief (2026-11-15): the app must not look or feel like a generic fitness tracker. Motion, colour and ambience are allowed to be bold, continuous and expressive; the only hard limits are the ones below. Earlier rules ("calm and short", "celebrations subtle, once", "no glass on cards", "one blur layer") are withdrawn.
+
+1. Animate `transform` and `opacity` (and CSS custom properties that only feed gradients); never `filter: blur()` on anything large or continuous, and never layout properties. Film grain is off on touch.
+2. Everything animated is gated by `prefers-reduced-motion` (CSS `no-preference` blocks or `useReducedMotion`). Content must be complete and readable with motion off.
+3. Ambient layers must stay cheap on a phone: a handful of pre-blurred gradient layers moving on `transform`, no per-frame JavaScript on scroll, no full-screen blur filters.
+4. Celebrations are for fresh data only (`isFreshDay`), never for stale readings.
 
 ### Motion toolkit (`lib/motion.ts` + the end of `index.css`)
 

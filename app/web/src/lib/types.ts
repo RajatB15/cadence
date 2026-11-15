@@ -895,6 +895,8 @@ export interface HomePhase {
   /** Overview metric keys in the order the vitals rail should show them. */
   vitals_order?: string[];
   session_state?: "none" | "rest" | "done" | "upcoming" | "open" | "window_closed" | "deferred" | "race" | string;
+  /** What the Home leads with (dayphase.HERO); absent on an older server, in which case the web derives it from the phase. */
+  hero?: "wake" | "fuel" | "session" | "balance" | "winddown" | "now" | string;
   hints?: { phase?: string; session?: string; sleep?: "not_synced" | "recap" | "tile" | string; calories?: "left" | "day_total" | string; steps?: "prompt" | "tile" | string; protein_check?: boolean; yesterday_recap?: boolean };
   copy?: {
     headline?: string | null;

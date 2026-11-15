@@ -1,7 +1,8 @@
 /**
  * Motion tokens and pure helpers, the one place the app's animation numbers live (docs/ui-system.md, "Motion").
  * CSS twins: --ease-snap / --ease-spring / --ease-out-expo, `.stagger`, `.fade-in`, `.press`, `.ring-halo` in index.css.
- * Rules: animate only transform and opacity; calm and short; never required to understand content; honour reduced motion.
+ * Rules: animate transform and opacity (and custom properties that feed gradients); be as bold as you like, but never required to
+ * understand content; honour reduced motion; stay cheap on a phone (no continuous blur filters).
  */
 
 export const EASE = {

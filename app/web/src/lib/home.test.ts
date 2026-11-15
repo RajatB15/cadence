@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { todayBars } from "./balance";
-import { allowance, arcDash, circumference, energyState, formatClock, fraction, isDimmed, localHour, nowView, orderVitals, parseEatBack, parseManualKcal, projectionMissing, projectionRange, sectionLayout, vitalView, type SectionId } from "./home";
+import { allowance, arcDash, circumference, energyState, formatClock, fraction, heroFor, heroReplaces, HERO_IDS, isDimmed, localHour, nowView, orderVitals, parseEatBack, parseManualKcal, projectionMissing, projectionRange, sectionLayout, vitalView, type SectionId } from "./home";
 import fixtures from "./__fixtures__/home-payloads.json";
 import type { CalorieSettingsView, HomeEnergy, HomePhase, MetricSummary } from "./types";
 
@@ -90,6 +90,38 @@ describe("vitals", () => {
   it("keeps the last 7 spark points", () => {
     const spark = Array.from({ length: 12 }, (_, i) => ({ day: String(i), value: i }));
     expect(vitalView(metric("hrv", { spark }), "2026-11-08").spark).toEqual([5, 6, 7, 8, 9, 10, 11]);
+  });
+});
+
+describe("the hero", () => {
+  it("renders what the backend named and ignores an unknown id", () => {
+    expect(heroFor({ phase: "morning", hero: "fuel" }, 8 * 60)).toBe("fuel");
+    expect(heroFor({ phase: "morning", hero: "bogus" }, 8 * 60)).toBe("wake");
+  });
+  it("derives the hero from the phase on an older server, with the morning-done refinement", () => {
+    expect(heroFor({ phase: "dawn" }, 300)).toBe("wake");
+    expect(heroFor({ phase: "morning", session_state: "done" }, 540)).toBe("session");
+    expect(heroFor({ phase: "afternoon" }, 900)).toBe("fuel");
+    expect(heroFor({ phase: "evening" }, 1140)).toBe("balance");
+    expect(heroFor({ phase: "late" }, 1320)).toBe("winddown");
+    expect(heroFor({ phase: "post_workout" }, 600)).toBe("session");
+    for (const p of ["rest_day", "race_week", "race_day", "time_off", "sick"]) expect(heroFor({ phase: p }, 600)).toBe("now");
+  });
+  it("falls back to the clock with no phase at all", () => {
+    expect(heroFor(null, 30)).toBe("winddown");
+    expect(heroFor(null, 8 * 60)).toBe("wake");
+    expect(heroFor(null, 13 * 60)).toBe("fuel");
+    expect(heroFor(null, 19 * 60)).toBe("balance");
+    expect(heroFor(undefined, 22 * 60)).toBe("winddown");
+  });
+  it("names the blocks each hero stands in for, so nothing shows twice", () => {
+    expect(heroReplaces("fuel")).toEqual(["calories"]);
+    expect(heroReplaces("balance")).toEqual(["calories"]);
+    expect(heroReplaces("winddown")).toEqual(["now", "tonight"]);
+    expect(heroReplaces("wake")).toEqual(["now"]);
+    expect(heroReplaces("session")).toEqual(["now"]);
+    expect(heroReplaces("now")).toEqual(["now"]);
+    for (const h of HERO_IDS) expect(heroReplaces(h)).not.toContain("vitals"); // the vitals rail always stays
   });
 });
 
