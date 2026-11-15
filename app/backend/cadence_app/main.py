@@ -816,6 +816,7 @@ def create_app(
 
     @app.get("/api/garmin/status")
     def garmin_status(session: Session = Depends(get_session)) -> dict:
+        busy = garmin_jobs.busy  # read first: a job that ends after this point can only make the run below newer, never "running" while idle
         states = {
             s.dataset: s
             for s in session.scalars(select(DatasetState).where(DatasetState.source_id == "garmin"))
@@ -886,7 +887,7 @@ def create_app(
                 }
             )
         return {
-            "busy": garmin_jobs.busy,
+            "busy": busy,
             "run": _run_dict(latest) if latest else None,
             "vault": vault.stats(session),
             "totals": totals,
