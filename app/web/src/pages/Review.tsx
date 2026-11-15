@@ -9,17 +9,14 @@ import { ErrorBlock, PageSkeleton, PageHeader, Segmented } from "../components/S
 import { WhatIfCard } from "../components/WhatIfCard";
 import { PATTERN_LABEL } from "../components/StrengthClass";
 import { api } from "../lib/api";
-import { formatDate } from "../lib/format";
+import { formatDate, time12 } from "../lib/format";
 import type { Review } from "../lib/types";
 import { C } from "../lib/theme";
 
 const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 const at = (s: string) => new Date(`${s}T12:00:00`);
 const monthName = new Intl.DateTimeFormat(undefined, { month: "long", year: "numeric" });
-const clock = (m: number) => {
-  const v = ((Math.round(m) % 1440) + 1440) % 1440;
-  return `${String(Math.floor(v / 60)).padStart(2, "0")}:${String(v % 60).padStart(2, "0")}`;
-};
+const clock = time12;
 const pace = (s: number) => `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, "0")}`;
 
 function shift(r: Review, by: number): string {

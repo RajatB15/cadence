@@ -884,7 +884,7 @@ def finding(fid, severity, category, title, detail, action=None, evidence=None, 
 
 def fmt_clock(minutes: float) -> str:
     m = round(minutes) % 1440
-    return f"{m // 60:02d}:{m % 60:02d}"
+    return f"{(m // 60) % 12 or 12}:{m % 60:02d} {'AM' if m < 720 else 'PM'}"
 
 
 def _pace(s: float) -> str:

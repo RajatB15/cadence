@@ -1,3 +1,4 @@
+import { hour12 } from "./format";
 import type { Sport } from "./types";
 
 export type CustomSport = Exclude<Sport, "strength">;
@@ -49,4 +50,4 @@ export function toSpec(sport: CustomSport, f: CustomFields): CustomSpec | null {
   return spec;
 }
 
-export const hourLabel = (h: number) => `${String(h).padStart(2, "0")}:00`;
+export const hourLabel = hour12;

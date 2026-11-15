@@ -54,7 +54,7 @@ import { KIND_LABEL, STATUS_STYLE } from "../lib/trends";
 import { DemoChip, ErrorBlock } from "../components/Shell";
 import { Sparkline } from "../components/Sparkline";
 import { api } from "../lib/api";
-import { deltaTone, formatDuration, formatShortDate, formatWeekday, greeting } from "../lib/format";
+import { deltaTone, formatDuration, formatShortDate, formatWeekday, greeting, time12 } from "../lib/format";
 import { activityStyle } from "../lib/metrics";
 import type { Brief, MetricSummary, Overview, ReadinessComponent, ScoreSummary } from "../lib/types";
 import { C } from "../lib/theme";
@@ -586,10 +586,7 @@ function WeekStrip({ coach, onOpen }: { coach: Brief; onOpen: () => void }) {
   );
 }
 
-const hhmm = (m: number) => {
-  const v = ((Math.round(m) % 1440) + 1440) % 1440;
-  return `${String(Math.floor(v / 60)).padStart(2, "0")}:${String(v % 60).padStart(2, "0")}`;
-};
+const hhmm = time12;
 
 /** Early in a new week (or Sunday evening) and early in a month, point at the fresh review. */
 function ReviewPrompt() {
@@ -765,7 +762,7 @@ const STATUS: Record<NonNullable<Brief["today"]["status"]>, { label: string; col
   window_closed: { label: "Probably not today", color: C.violet },
 };
 
-const timeFmt = new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" });
+const timeFmt = new Intl.DateTimeFormat("en-US", { hour: "numeric", minute: "2-digit", hour12: true });
 
 function RecentSessions({ recent }: { recent: Brief["recent"] }) {
   return (

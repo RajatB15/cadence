@@ -196,7 +196,7 @@ function Header({ d }: { d: ActivityDetail }) {
         </span>
         <span>
           {when.toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "long", year: "numeric" })} ·{" "}
-          {when.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}
+          {when.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true })}
         </span>
         <span className="text-dim">{a.timezone}</span>
         <span className="ml-auto">

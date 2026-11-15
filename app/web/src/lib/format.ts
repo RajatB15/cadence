@@ -4,6 +4,15 @@ const dateFmt = new Intl.DateTimeFormat(undefined, { day: "numeric", month: "sho
 const shortDateFmt = new Intl.DateTimeFormat(undefined, { day: "numeric", month: "short" });
 const weekdayFmt = new Intl.DateTimeFormat(undefined, { weekday: "short", day: "numeric", month: "short" });
 
+/** "2:05 PM" from minutes after midnight (wraps around the day). The app shows every time of day on a 12-hour clock. */
+export function time12(min: number): string {
+  const v = ((Math.round(min) % 1440) + 1440) % 1440;
+  return `${Math.floor(v / 60) % 12 || 12}:${String(v % 60).padStart(2, "0")} ${v < 720 ? "AM" : "PM"}`;
+}
+
+/** "7 AM" for a whole hour of the day. */
+export const hour12 = (h: number) => `${h % 12 || 12} ${h % 24 < 12 ? "AM" : "PM"}`;
+
 /** Parse YYYY-MM-DD as a local calendar date (not UTC midnight). */
 export function parseDay(day: string): Date {
   const [y, m, d] = day.split("-").map(Number);

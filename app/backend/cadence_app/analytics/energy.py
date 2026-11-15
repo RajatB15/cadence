@@ -259,7 +259,7 @@ def later_summary(later: list[dict]) -> dict | None:
 
 
 def hhmm(minutes: int | None) -> str | None:
-    return None if minutes is None else f"{minutes // 60:02d}:{minutes % 60:02d}"
+    return None if minutes is None else f"{(minutes // 60) % 12 or 12}:{minutes % 60:02d} {'AM' if minutes < 720 else 'PM'}"
 
 
 def assemble(*, today: date, now_min: int, burn: dict | None, finals: dict[date, tuple[float | None, float | None]],

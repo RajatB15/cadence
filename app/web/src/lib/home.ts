@@ -1,3 +1,4 @@
+import { time12 } from "./format";
 // Pure helpers for the Home page: ring geometry, calorie-card state, vitals ordering and phase-to-cards mapping.
 // The backend decides the day phase and its copy; nothing here recomputes it, it only maps what was sent to layout.
 import type { HomeEnergy, HomePhase, MetricSummary } from "./types";
@@ -6,10 +7,10 @@ import type { HomeEnergy, HomePhase, MetricSummary } from "./types";
 
 export const formatKcal = (v: number) => Math.round(v).toLocaleString();
 
-/** "14:05" from minutes after local midnight; null when absent. */
+/** "2:05 PM" from minutes after local midnight; null when absent. */
 export function formatClock(min: number | null | undefined): string | null {
   if (min == null || !Number.isFinite(min) || min < 0 || min >= 1440) return null;
-  return `${String(Math.floor(min / 60)).padStart(2, "0")}:${String(Math.round(min % 60)).padStart(2, "0")}`;
+  return time12(min);
 }
 
 // ---- ring math ----------------------------------------------------------------------------

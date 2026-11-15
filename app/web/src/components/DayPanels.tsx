@@ -40,7 +40,7 @@ function offsetMs(p: Raw | null): number {
   return local != null && gmt != null ? local - gmt : 0;
 }
 
-const clock = new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit", timeZone: "UTC" });
+const clock = new Intl.DateTimeFormat("en-US", { hour: "numeric", minute: "2-digit", hour12: true, timeZone: "UTC" });
 export const fmtClock = (ms: number | null) => (ms == null ? "—" : clock.format(ms));
 
 function dur(seconds: number | null): string {

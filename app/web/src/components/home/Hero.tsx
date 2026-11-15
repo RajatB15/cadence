@@ -12,15 +12,13 @@ import { energyState, formatKcal, phaseAccent, type HeroId, type NowView } from 
 import { deltaTone, formatDuration, formatMetric } from "../../lib/format";
 import { activityStyle, METRIC_STYLES } from "../../lib/metrics";
 import { EASE } from "../../lib/motion";
+import { time12 } from "../../lib/format";
 import { C } from "../../lib/theme";
 import type { Brief, HomeEnergy, HomePhase, MetricSummary, Overview, PlannedSessionView } from "../../lib/types";
 
 type Data = Extract<Overview, { has_data: true }>;
 
-const hhmm = (m: number) => {
-  const v = ((Math.round(m) % 1440) + 1440) % 1440;
-  return `${String(Math.floor(v / 60)).padStart(2, "0")}:${String(v % 60).padStart(2, "0")}`;
-};
+const hhmm = time12;
 const hm = (h: number) => `${Math.floor(h)}h ${String(Math.round((h % 1) * 60)).padStart(2, "0")}m`;
 const metricOf = (ms: MetricSummary[], k: string) => ms.find((m) => m.metric === k) ?? null;
 
@@ -225,7 +223,7 @@ export function WinddownHero({ data, coach, energy, view, phase, hour }: { data:
       {t ? (
         <Link to="/coach#sleep" className="group block">
           <p className="text-sm text-mute">In bed by</p>
-          <p className="leading-none"><Vessel fill={Math.max(0, Math.min(1, (nowMin - 6 * 60) / Math.max(60, t.bed_min - 6 * 60)))} color={accent} className="text-[clamp(96px,34vw,170px)]">{hhmm(t.bed_min)}</Vessel></p>
+          <p className="leading-none"><Vessel fill={Math.max(0, Math.min(1, (nowMin - 6 * 60) / Math.max(60, t.bed_min - 6 * 60)))} color={accent} className="text-[clamp(64px,23vw,120px)]">{hhmm(t.bed_min)}</Vessel></p>
           <p className="mt-1 text-sm text-mute">
             {t.tonight_h.toFixed(1)} h to wake at <span className="num text-paper">{hhmm(t.wake_min)}</span>
             {bedSoon != null && bedSoon > 0 && bedSoon <= 180 ? ` · in about ${bedSoon >= 60 ? `${Math.floor(bedSoon / 60)} h ${bedSoon % 60 ? `${bedSoon % 60} min` : ""}` : `${bedSoon} min`}` : ""}

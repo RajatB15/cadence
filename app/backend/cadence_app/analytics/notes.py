@@ -305,9 +305,9 @@ def session(c: dict, activity_id: int, streams: dict | None = None, summary: dic
         e = _effect(c, "late_sleep")
         if e and e.diff < 0:
             notes.append(note("late", "info", "Sleep", "Late finish",
-                              f"Ended at {a.end_local:%H:%M}. On your history, workouts ending after 20:00 are followed by sleep scores of "
+                              f"Ended at {a.end_local:%-I:%M %p}. On your history, workouts ending after 8 PM are followed by sleep scores of "
                               f"{e.exposed_mean:.0f} vs {e.reference_mean:.0f} for daytime sessions.",
-                              "When you can, finish hard sessions before 18:00.", ev))
+                              "When you can, finish hard sessions before 6 PM.", ev))
 
     if a.family == "run" and a.distance_m:
         recent = [x.distance_m for x in c["acts"] if x.family == "run" and x.distance_m and a.day - timedelta(days=30) <= x.day < a.day]
@@ -363,7 +363,7 @@ def contributors(c: dict, d: date) -> list[str]:
         out.append(f"hard training the day before (load {round(load_prev)})")
     late = [a for a in c["acts"] if a.day == prev and a.end_local and a.end_local.hour >= 20 and a.load >= 20]
     if late:
-        out.append(f"a workout ending at {late[-1].end_local:%H:%M}")
+        out.append(f"a workout ending at {late[-1].end_local:%-I:%M %p}")
     bed = s.get("bedtime", {}).get(d)
     if bed is not None and bed >= 30:
         out.append(f"falling asleep at {fmt_clock(bed)}")
@@ -454,9 +454,9 @@ def day(c: dict, d: date) -> dict:  # noqa: C901 - one block per metric family
     if bed is not None and bed >= 30:
         e = _effect(c, "bed_score")
         notes.append(note("bedtime", "warn", "Sleep", "Late lights-out", f"Asleep at {fmt_clock(bed)}."
-                          + (f" Your nights after 00:30 average a sleep score of {e.exposed_mean:.0f} vs {e.reference_mean:.0f} before 23:30"
+                          + (f" Your nights after 12:30 AM average a sleep score of {e.exposed_mean:.0f} vs {e.reference_mean:.0f} before 11:30 PM"
                              f" ({e.n_exposed} vs {e.n_reference} nights)." if e and e.diff < 0 else ""),
-                          "Aim for lights out by 23:30.", None, sleep_tags))
+                          "Aim for lights out by 11:30 PM.", None, sleep_tags))
 
     for metric, label in (("deep_sleep_h", "deep"), ("rem_sleep_h", "REM")):
         v = g(metric).get(d)
@@ -785,7 +785,7 @@ def streaks(c: dict) -> list[dict]:
     bed = s.get("bedtime", {})
     if bed:
         cur, best = _streak({d: v <= -30 for d, v in bed.items()}, as_of)
-        out.append({"key": "bed", "label": "Asleep by 23:30", "current": cur, "best": best, "unit": "nights"})
+        out.append({"key": "bed", "label": "Asleep by 11:30 PM", "current": cur, "best": best, "unit": "nights"})
     return out
 
 
@@ -821,7 +821,7 @@ def week_progress(c: dict, plan: dict | None) -> dict:
         items.append({"key": "sleep", "label": f"Nights at {target:g} h", "done": sum(1 for h in nights if R.sleep_ok(h, target)), "target": len(nights)})
     beds = _window(s.get("bedtime", {}), ws, as_of)
     if beds:
-        items.append({"key": "bed", "label": "Asleep by 23:30", "done": sum(1 for b in beds if b <= -30), "target": len(beds)})
+        items.append({"key": "bed", "label": "Asleep by 11:30 PM", "done": sum(1 for b in beds if b <= -30), "target": len(beds)})
     return {"start": ws, "days_left": 6 - as_of.weekday(), "items": items, "hard_done": hard, "sessions_done": len(acts), "strength_done": strength,
             "time_off": plan.get("time_off") if plan and plan.get("time_off", {}).get("scale", 1) < 0.999 else None,
             "phase": plan["phase"]["phase"] if plan else None}

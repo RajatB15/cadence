@@ -68,7 +68,7 @@ describe("calorie card state", () => {
     expect(parseEatBack("-5").ok).toBe(false);
   });
   it("formats clock minutes", () => {
-    expect(formatClock(845)).toBe("14:05");
+    expect(formatClock(845)).toBe("2:05 PM");
     expect(formatClock(null)).toBeNull();
     expect(formatClock(1500)).toBeNull();
   });

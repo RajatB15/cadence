@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
-import { formatDate } from "../../lib/format";
+import { formatDate, hour12 } from "../../lib/format";
 import { ArrowLeftRight, BookOpen, ChevronDown, ChevronUp, Pencil, Plus, Timer, Trash2, X } from "lucide-react";
 import { useDeferredValue, useState } from "react";
 import { api } from "../../lib/api";
@@ -213,7 +213,7 @@ export function SessionEditor({ draft, onChange, onSave, saving, saveLabel, dirt
                 {scheduled.map((p) => (
                   <li key={p.plan_id} className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-line bg-white/[0.02] px-4 py-3">
                     <div>
-                      <p className="text-paper">{p.day === localDay(0) ? "Today" : p.day === localDay(1) ? "Tomorrow" : formatDate(p.day)}{p.start_hour != null ? ` · ${String(p.start_hour).padStart(2, "0")}:00` : ""}</p>
+                      <p className="text-paper">{p.day === localDay(0) ? "Today" : p.day === localDay(1) ? "Tomorrow" : formatDate(p.day)}{p.start_hour != null ? ` · ${hour12(p.start_hour)}` : ""}</p>
                       <p className="text-xs text-dim">{p.logged ? "Done and logged" : p.day < localDay(0) ? "Past, not logged" : "Planned"}</p>
                     </div>
                     <div className="flex flex-wrap items-center gap-2">
@@ -236,7 +236,7 @@ export function SessionEditor({ draft, onChange, onSave, saving, saveLabel, dirt
             <label className="block"><span className="eyebrow">Start</span>
               <select className="mt-1 block rounded-lg border border-line-strong bg-slate px-3 py-2 text-paper" value={hour ?? ""} onChange={(e) => setHour(e.target.value === "" ? null : Number(e.target.value))}>
                 <option value="">Usual time</option>
-                {Array.from({ length: 17 }, (_, i) => i + 5).map((h) => <option key={h} value={h}>{String(h).padStart(2, "0")}:00</option>)}
+                {Array.from({ length: 17 }, (_, i) => i + 5).map((h) => <option key={h} value={h}>{hour12(h)}</option>)}
               </select></label>
             <button type="button" className="pop" disabled={planning || steps.length === 0 || !draft.name.trim()} onClick={() => onPlan(day, hour)}>{planning ? "Adding…" : scheduled.length > 0 ? "Add another" : "Add to plan"}</button>
           </div>

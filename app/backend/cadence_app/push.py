@@ -136,7 +136,7 @@ def set_prefs(factory: sessionmaker, prefs: dict[str, bool]) -> dict[str, bool]:
 
 def _clock(minutes: float) -> str:
     m = round(minutes) % 1440
-    return f"{m // 60:02d}:{m % 60:02d}"
+    return f"{(m // 60) % 12 or 12}:{m % 60:02d} {'AM' if m < 720 else 'PM'}"
 
 
 def bedtime_due(now_local: datetime, tonight: dict | None) -> bool:

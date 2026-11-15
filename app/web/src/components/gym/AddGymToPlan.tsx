@@ -3,12 +3,12 @@ import { ImageUp } from "lucide-react";
 import { useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { api } from "../../lib/api";
-import { formatDate } from "../../lib/format";
+import { formatDate, hour12 } from "../../lib/format";
 import type { GymImportResult, GymSetting } from "../../lib/types";
 import { Segmented } from "../Shell";
 import { useGymSessions, useGymSettings } from "./useGym";
 
-const hourLabel = (h: number) => `${String(h).padStart(2, "0")}:00`;
+const hourLabel = hour12;
 
 /** Add a gym session to a day, two ways: from screenshots (read, matched to the exercise library, reviewed) or one of your saved sessions. */
 export function AddGymToPlan({ day, today }: { day: string; today: string }) {

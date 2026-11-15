@@ -11,7 +11,7 @@ import { C } from "../lib/theme";
 
 const POLL_MS = 15_000;
 const nf = new Intl.NumberFormat();
-const clock = (iso: string) => new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+const clock = (iso: string) => new Date(iso).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true });
 
 /** One stacked bar for a set of states, with a legend that carries the numbers so colour is never the only cue. */
 function StackedBar({ segments, label }: { segments: Segment[]; label: string }) {
@@ -39,7 +39,7 @@ function StackedBar({ segments, label }: { segments: Segment[]; label: string })
 
 function timelineOptions(tl: FoodCrawlProgress["timeline"]): { total: ChartOption; rate: ChartOption } {
   const tip = (rows: string[][]) => (rows.map(([k, v]) => `<div style="display:flex;justify-content:space-between;gap:16px"><span style="color:${C.mute}">${k}</span><b>${v}</b></div>`).join(""));
-  const when = (v: number) => new Date(v).toLocaleString([], { weekday: "short", hour: "2-digit", minute: "2-digit" });
+  const when = (v: number) => new Date(v).toLocaleString("en-US", { weekday: "short", hour: "numeric", minute: "2-digit", hour12: true });
   const base = { ...chartBase, animation: false, grid: { ...chartBase.grid, left: 4, right: 12 } };
   return {
     total: {
@@ -126,7 +126,7 @@ export function FoodCrawlPage() {
                 <Row k="Fetchers running" v={String(p.workers.fetchers)} />
                 <Row k="Retry runner" v={p.workers.retry ? "running" : "idle"} />
                 <Row k="Pace, last hour" v={p.rate_per_min == null ? "measuring" : `${p.rate_per_min} pages/min`} />
-                <Row k="Finish (rough)" v={p.finish ? new Date(p.finish).toLocaleString([], { weekday: "short", hour: "2-digit", minute: "2-digit" }) : "not yet known"} />
+                <Row k="Finish (rough)" v={p.finish ? new Date(p.finish).toLocaleString("en-US", { weekday: "short", hour: "numeric", minute: "2-digit", hour12: true }) : "not yet known"} />
               </dl>
               <p className="eyebrow mb-3 mt-6">Why pages failed</p>
               {p.failed_reasons.length === 0 ? (
@@ -164,7 +164,7 @@ export function FoodCrawlPage() {
               <thead><tr className="text-left text-mute"><th className="py-1 font-normal">Time</th><th className="py-1 text-right font-normal">Parsed in 10 min</th><th className="py-1 text-right font-normal">Total parsed</th></tr></thead>
               <tbody>
                 {[...p.timeline].reverse().slice(0, 36).map((r) => (
-                  <tr key={r.at} className="border-t border-line"><td className="py-1">{new Date(r.at).toLocaleString([], { weekday: "short", hour: "2-digit", minute: "2-digit" })}</td><td className="py-1 text-right">{r.pages}</td><td className="py-1 text-right">{nf.format(r.cumulative)}</td></tr>
+                  <tr key={r.at} className="border-t border-line"><td className="py-1">{new Date(r.at).toLocaleString("en-US", { weekday: "short", hour: "numeric", minute: "2-digit", hour12: true })}</td><td className="py-1 text-right">{r.pages}</td><td className="py-1 text-right">{nf.format(r.cumulative)}</td></tr>
                 ))}
               </tbody>
             </table>

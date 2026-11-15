@@ -76,7 +76,7 @@ def test_day_notes_tag_metrics_and_explain_low_hrv():
     }
     out = notes.day(ctx([], series, days=60), d)
     by = {n["id"]: n for n in out["notes"]}
-    assert by["hrv"]["severity"] == "warn" and "falling asleep at 00:55" in by["hrv"]["detail"]
+    assert by["hrv"]["severity"] == "warn" and "falling asleep at 12:55 AM" in by["hrv"]["detail"]
     assert by["sleep_duration"]["title"] == "Short night" and "sleep_hours" in by["sleep_duration"]["metrics"]
     assert by["spo2"]["metrics"] == ["spo2"] and "diagnosis" in by["spo2"]["action"]
     assert out["readiness"] is not None

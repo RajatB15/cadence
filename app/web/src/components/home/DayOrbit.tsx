@@ -1,3 +1,4 @@
+import { time12 } from "../../lib/format";
 import { motion, useReducedMotion } from "motion/react";
 import { useMemo, useState } from "react";
 import { Sheet } from "../Sheet";
@@ -14,7 +15,7 @@ const SKY_STOPS: { from: number; to: number; stage: "night" | "dawn" | "morning"
   { from: 960, to: 1110, stage: "golden" }, { from: 1110, to: 1230, stage: "dusk" }, { from: 1230, to: 1440, stage: "night" },
 ];
 const KIND_NAME: Record<OrbitKind, string> = { sleep: "Sleep", session: "Done today", planned: "Planned", eat: "Usual eating window" };
-const hhmm = (m: number) => `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(Math.round(m % 60)).padStart(2, "0")}`;
+const hhmm = time12;
 
 /**
  * The day as a ring you can read at a glance: the sky's colours around the edge, last night's sleep, today's sessions and the usual
@@ -79,7 +80,7 @@ export function DayOrbit({ input, children }: { input: OrbitInput; children?: Re
           {children ?? (
             <>
               <p className="eyebrow !text-[11px]">{m.next ? m.next.label : "Now"}</p>
-              <p className="poster mt-1 text-[clamp(44px,15vw,64px)]">{hhmm(m.next ? m.next.at : m.now)}</p>
+              <p className="poster mt-1 text-[clamp(34px,11vw,50px)]">{hhmm(m.next ? m.next.at : m.now)}</p>
             </>
           )}
         </div>
