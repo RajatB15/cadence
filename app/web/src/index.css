@@ -619,11 +619,11 @@ body {
 @property --sky-3 { syntax: "<color>"; inherits: true; initial-value: #0ea5a4; }
 :root {
   --sky-1: #4f46e5; --sky-2: #7c3aed; --sky-3: #0ea5a4;
-  --aurora-opacity: 0.46;
+  --aurora-opacity: 0.4;
   --aurora-speed: 1;
   transition: --sky-1 4s ease, --sky-2 4s ease, --sky-3 4s ease;
 }
-:root[data-theme="light"] { --aurora-opacity: 0.5; }
+:root[data-theme="light"] { --aurora-opacity: 0.34; }
 :root[data-sky="dawn"] { --sky-1: #fb7185; --sky-2: #fbbf24; --sky-3: #a78bfa; }
 :root[data-sky="morning"] { --sky-1: #ffb347; --sky-2: #55b8ff; --sky-3: #38e8c0; }
 :root[data-sky="day"] { --sky-1: #55b8ff; --sky-2: #38e8c0; --sky-3: #b8f53d; }
@@ -730,4 +730,11 @@ body {
 @media (prefers-reduced-motion: no-preference) {
   .orbit-sun { animation: orbit-breathe 5s ease-in-out infinite; transform-origin: center; transform-box: fill-box; }
   @keyframes orbit-breathe { 0%, 100% { transform: scale(0.92); opacity: 0.85; } 50% { transform: scale(1.12); opacity: 1; } }
+}
+
+/* Text that sits directly on the sky (outside any card) uses the stronger secondary colour so it stays readable over every tint. */
+main > .eyebrow, main header .eyebrow, main header .eyebrow span { color: color-mix(in srgb, var(--color-mute) 55%, var(--color-paper)); }
+/* A hint that the vitals row scrolls sideways on a phone: the right edge fades out. */
+@media (max-width: 639px) {
+  .peek-x { -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 36px), transparent); mask-image: linear-gradient(90deg, #000 calc(100% - 36px), transparent); }
 }

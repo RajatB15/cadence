@@ -71,7 +71,7 @@ export function VitalsRail({ metrics, weight, today, phase, order }: { metrics: 
         <p className="eyebrow">Vitals · today vs your usual</p>
         <p className="eyebrow hidden !text-dim sm:block">7-day line, dashed = usual</p>
       </div>
-      <div className="-mx-5 flex snap-x snap-mandatory gap-3 overflow-x-auto scroll-px-5 px-5 pb-2 [scrollbar-width:none] sm:mx-0 sm:grid sm:grid-cols-3 sm:overflow-visible sm:px-0 lg:grid-cols-7 [&::-webkit-scrollbar]:hidden">
+      <div className="peek-x -mx-5 flex snap-x snap-mandatory gap-3 overflow-x-auto scroll-px-5 px-5 pb-2 [scrollbar-width:none] sm:mx-0 sm:grid sm:grid-cols-3 sm:overflow-visible sm:px-0 lg:grid-cols-7 [&::-webkit-scrollbar]:hidden">
         {tiles.map((m, i) => (
           <VitalTile key={m.metric} m={m} today={today} index={i} />
         ))}

@@ -1,5 +1,6 @@
 import { motion, useReducedMotion } from "motion/react";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
+import { Sheet } from "../Sheet";
 import { orbitModel, orbitPath, orbitPoint, type OrbitInput, type OrbitKind } from "../../lib/orbit";
 import { skyStage } from "../../lib/sky";
 
@@ -12,6 +13,7 @@ const SKY_STOPS: { from: number; to: number; stage: "night" | "dawn" | "morning"
   { from: 0, to: 300, stage: "night" }, { from: 300, to: 420, stage: "dawn" }, { from: 420, to: 660, stage: "morning" }, { from: 660, to: 960, stage: "day" },
   { from: 960, to: 1110, stage: "golden" }, { from: 1110, to: 1230, stage: "dusk" }, { from: 1230, to: 1440, stage: "night" },
 ];
+const KIND_NAME: Record<OrbitKind, string> = { sleep: "Sleep", session: "Done today", planned: "Planned", eat: "Usual eating window" };
 const hhmm = (m: number) => `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(Math.round(m % 60)).padStart(2, "0")}`;
 
 /**
@@ -26,8 +28,16 @@ export function DayOrbit({ input, children }: { input: OrbitInput; children?: Re
   const sun = orbitPoint(CX, CY, R, m.now);
   const bed = m.bed != null ? orbitPoint(CX, CY, R, m.bed) : null;
   const summary = [`It is ${hhmm(m.now)}.`, ...m.arcs.filter((a) => a.kind !== "eat").map((a) => a.label), m.next ? `${m.next.label} ${hhmm(m.next.at)}.` : ""].filter(Boolean).join(" ");
+  const [open, setOpen] = useState(false);
+  const legend = [
+    ...m.arcs.filter((a) => a.kind === "sleep").map((a) => ({ k: "sleep" as OrbitKind, t: `Slept ${a.label.replace("Slept ", "")}` })),
+    ...(m.arcs.some((a) => a.kind === "session") ? [{ k: "session" as OrbitKind, t: "Done today" }] : []),
+    ...(m.arcs.some((a) => a.kind === "planned") ? [{ k: "planned" as OrbitKind, t: "Planned" }] : []),
+    { k: "eat" as OrbitKind, t: "Usual eating hours" },
+  ];
   return (
-    <div className="relative mx-auto w-full max-w-[340px]" role="img" aria-label={summary}>
+    <>
+    <button type="button" onClick={() => setOpen(true)} aria-label={`${summary} Show the day in detail`} className="relative mx-auto block w-full max-w-[300px] cursor-pointer text-left sm:max-w-[340px]" data-no-press>
       <svg viewBox="0 0 300 300" className="block h-auto w-full overflow-visible" aria-hidden>
         <defs>
           <radialGradient id="orbit-sun" cx="50%" cy="50%" r="50%"><stop offset="0" stopColor="#fff" stopOpacity="0.95" /><stop offset="0.35" stopColor={night ? "#c7d2fe" : "#ffd27a"} stopOpacity="0.9" /><stop offset="1" stopColor={night ? "#818cf8" : "#ff8a3d"} stopOpacity="0" /></radialGradient>
@@ -74,6 +84,30 @@ export function DayOrbit({ input, children }: { input: OrbitInput; children?: Re
           )}
         </div>
       </div>
-    </div>
+    </button>
+    <ul className="mx-auto mt-2 flex max-w-[340px] flex-wrap justify-center gap-x-4 gap-y-1 text-[11px] font-semibold text-mute" aria-hidden>
+      {legend.map((l) => (
+        <li key={l.k} className="flex items-center gap-1.5"><i className="h-2 w-2 rounded-full" style={{ background: ARC_COLOR[l.k] }} />{l.t}</li>
+      ))}
+    </ul>
+    <Sheet open={open} onOpenChange={setOpen} eyebrow={`Now ${hhmm(m.now)}`} title="Your day">
+      <ul className="divide-y divide-line">
+        {m.arcs.map((a, i) => (
+          <li key={`${a.kind}${i}`} className="flex items-center gap-4 py-3">
+            <i className="h-3 w-3 shrink-0 rounded-full" style={{ background: ARC_COLOR[a.kind] }} aria-hidden />
+            <span className="min-w-0 flex-1"><span className="block text-paper">{KIND_NAME[a.kind]}</span>{a.label !== KIND_NAME[a.kind] && <span className="block text-xs text-dim">{a.label}</span>}</span>
+            <span className="num text-sm text-mute">{hhmm(a.from)}–{hhmm(a.to)}</span>
+          </li>
+        ))}
+        {m.bed != null && (
+          <li className="flex items-center gap-4 py-3">
+            <i className="h-3 w-3 shrink-0 rounded-full" style={{ background: "var(--color-violet)" }} aria-hidden />
+            <span className="flex-1 text-paper">In bed by</span><span className="num text-sm text-mute">{hhmm(m.bed)}</span>
+          </li>
+        )}
+      </ul>
+      <p className="mt-4 text-xs text-dim">Sleep is last night's hours placed before your usual wake time; it is an approximation of when you slept. The eating hours are your usual routine, not what you logged.</p>
+    </Sheet>
+    </>
   );
 }

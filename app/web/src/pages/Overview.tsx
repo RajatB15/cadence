@@ -137,8 +137,8 @@ function Dashboard({ data }: { data: Extract<Overview, { has_data: true }> }) {
   if (coach) blocks.status = <StatusCard coach={coach} onStatus={() => setSheet("status")} onTimeOff={() => setSheet("timeoff")} />;
   if (r || data.score) {
     blocks.scores = (
-      <section aria-label="Scores" className={clsx("grid grid-cols-2 gap-3 sm:gap-4", dim && "opacity-60")}>
-        {r && coach?.call && (
+      <section aria-label="Scores" className={clsx("grid gap-3 sm:gap-4", hero === "wake" || !r || !coach?.call ? "grid-cols-1" : "grid-cols-2", dim && "opacity-60")}>
+        {r && coach?.call && hero !== "wake" && (
           <Dial label="Readiness" score={r.score} ring={r.live ? "live" : "today"} size={dialSize} title={coach.call.headline}
             foot={r.live && r.morning_score != null && r.morning_score !== r.score ? `${r.morning_score} this morning` : "Updates through the day"} onClick={() => setSheet("readiness")} />
         )}
@@ -210,9 +210,10 @@ function Dashboard({ data }: { data: Extract<Overview, { has_data: true }> }) {
         />
       </motion.div>
 
-      <motion.div variants={rise}><DayOrbit input={orbitInput} /></motion.div>
-
-      <motion.div variants={rise}><HomeHero hero={hero}>{lead}</HomeHero></motion.div>
+      <div className="space-y-6 lg:grid lg:grid-cols-[minmax(340px,420px)_1fr] lg:items-start lg:gap-10 lg:space-y-0">
+        <motion.div variants={rise} className="lg:sticky lg:top-8"><DayOrbit input={orbitInput} /></motion.div>
+        <motion.div variants={rise}><HomeHero hero={hero}>{lead}</HomeHero></motion.div>
+      </div>
 
       {primary.map(wrap)}
 
